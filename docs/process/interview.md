@@ -1,5 +1,10 @@
 # AI 인터뷰 - interview.md
 
+> 단계 1 프로세스 가이드. (단계 2: `prd.md`, 단계 3: `issues.md`)
+> 이 문서는 **절차 정의**이며, 실제 산출물은 `docs/result/spec-fixed.md`에 따로 생성한다.
+> 아래 `docs/features/{name}/` 경로는 강의 원문 표기다.
+> 우리 프로젝트의 실제 경로는 `issues.md`의 "우리 프로젝트의 실제 경로"를 참고한다.
+
 ## 요구사항 인터뷰
 
 ### 목적

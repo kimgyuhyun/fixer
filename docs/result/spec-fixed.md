@@ -1,7 +1,7 @@
 # spec-fixed.md — 확정 사양서
 
 > 출처: `docs/features/planner/planner.md`
-> 절차: `docs/features/interview/interview.md` (AI 인터뷰 6라운드)
+> 절차: `docs/process/interview.md` (AI 인터뷰 6라운드)
 > 확정일: 2026-08-16
 > 상태: **[GATE] 사용자 확정 대기**
 

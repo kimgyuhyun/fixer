@@ -1,0 +1,57 @@
+# PRD 색인
+
+> 단계 2 산출물. 절차는 `docs/process/prd.md`, 상위 사양은 `docs/result/spec-fixed.md`
+
+## spec-fixed.md와의 관계
+
+| 문서 | 답하는 질문 |
+|---|---|
+| `spec-fixed.md` | **무엇을** 만드는가 — 제품 규칙, 엣지 케이스, 용어 |
+| `prd/*.md` | **어떤 구조**로, **왜** 그렇게 골랐는가 — 아키텍처 3안 비교와 ADR |
+
+PRD의 핵심 가치는 **Alternatives(거부한 안과 그 이유)** 다. 근거가 남지 않으면 사람도 AI도 이미 기각한 안을 다시 검토하거나 임의로 바꾼다.
+
+---
+
+## 진행 현황
+
+| # | PRD | 담당 | ADR 수 | 2-1 뼈대 | 2-2 3안 비교 | 2-3 ADR 작성 |
+|---|---|---|---|---|---|---|
+| 1 | [auth-member](auth-member.md) | A | 4 | 완료 | 대기 | 대기 |
+| 2 | [agreement](agreement.md) | A | 4 | 완료 | 대기 | 대기 |
+| 3 | [job-post](job-post.md) | B | 5 | 완료 | 대기 | 대기 |
+| 4 | [application](application.md) | B | 5 | 완료 | 대기 | 대기 |
+| 5 | [penalty-rating](penalty-rating.md) | B | 4 | 완료 | 대기 | 대기 |
+| 6 | [point-money](point-money.md) | 공동 | 6 | 완료 | 대기 | 대기 |
+| 7 | [notification](notification.md) | A/B | 5 | 완료 | 대기 | 대기 |
+
+**ADR 총 33건.**
+
+---
+
+## 2-2 진행 권장 순서
+
+의존 관계를 따라간다. 앞 도메인의 구조 결정이 뒤 도메인의 선택지를 좁히기 때문이다.
+
+| 순서 | PRD | 이유 |
+|---|---|---|
+| 1 | `job-post` | `ADR-JOB-1`(버전 이력 저장 구조)이 **프로젝트 전체에서 가장 중요한 구조 결정**이다. 이게 정해져야 `application`의 재동의 흐름을 설계할 수 있다 |
+| 2 | `application` | 정원 제어·재동의가 `job-post` 결정에 종속 |
+| 3 | `point-money` | `HOLD`/`PAYOUT` 시점이 위 두 도메인의 상태 전이에 걸린다. **두 사람이 함께 결정** |
+| 4 | `auth-member` | 독립적이라 언제 해도 되지만, 스키마가 모든 FK의 기준이므로 늦지 않게 |
+| 5 | `notification` | 위 도메인들이 무엇을 언제 알릴지 정해진 뒤 |
+| 6 | `penalty-rating` | `application`의 취소 이벤트에 종속 |
+| 7 | `agreement` | 완전히 독립적. 마지막이어도 무방 |
+
+---
+
+## 게이트
+
+각 PRD마다 두 번 멈춘다.
+
+```
+[GATE] 2-2 — 사용자가 3안 중 하나를 선택할 때까지 대기
+[GATE] 2-4 — 사용자가 Out of Scope을 읽고 확정할 때까지 대기
+```
+
+Out of Scope 초안은 2-1에서 이미 작성해두었으므로, 2-4에서는 검토·확정만 하면 된다.
