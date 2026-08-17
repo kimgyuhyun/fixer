@@ -1,0 +1,17 @@
+// 도메인 모델은 아직 정의하지 않았다. docs/features/planner/planner.md의
+// 회원가입 / 일거리 / 평점 / 포인트 설계가 확정되면 이 파일에 모델을 추가하고
+// `pnpm db:migrate`로 마이그레이션 파일을 생성해 커밋한다.
+// 운영 DB에 직접 DDL을 실행하지 않는다.
+
+generator client {
+  provider = "prisma-client"
+  // Nest가 tsc로 src 아래만 컴파일하므로 생성물도 src 안에 둔다.
+  output   = "../src/generated/prisma"
+  // Nest 런타임이 CommonJS라 생성 클라이언트도 CJS로 맞춘다.
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  // 접속 문자열은 prisma.config.ts가 루트 .env에서 읽어 주입한다.
+}

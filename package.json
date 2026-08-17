@@ -1,0 +1,26 @@
+{
+  "name": "fixer",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @fixer/shared --filter \"./apps/*\" dev",
+    "dev:web": "pnpm --filter @fixer/web dev",
+    "dev:api": "pnpm --filter @fixer/api dev",
+    "build": "pnpm --filter @fixer/shared build && pnpm --parallel --filter \"./apps/*\" build",
+    "lint": "pnpm --recursive lint",
+    "typecheck": "pnpm --recursive typecheck",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:reset": "docker compose down -v && docker compose up -d",
+    "db:migrate": "pnpm --filter @fixer/api prisma:migrate",
+    "db:studio": "pnpm --filter @fixer/api prisma:studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

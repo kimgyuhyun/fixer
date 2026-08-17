@@ -1,0 +1,119 @@
+/*
+ * 전역 기초 스타일. 이 파일은 리셋과 CSS 변수만 담는다.
+ * 화면별 스타일은 각 폴더의 *.module.css에 두고, 이 파일을 늘리지 않는다.
+ */
+
+/* ---------- 리셋 (프로젝트에 하나만 존재해야 한다) ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+ul,
+ol {
+  list-style: none;
+  padding: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* ---------- 디자인 토큰 ---------- */
+:root {
+  --color-bg: #ffffff;
+  --color-surface: #f8fafc;
+  --color-text: #1f2937;
+  --color-text-muted: #6b7280;
+  --color-border: #e5e7eb;
+  --color-primary: #2563eb;
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2rem;
+
+  --radius: 6px;
+
+  /* 한글 본문 가독성을 위해 시스템 한글 폰트를 앞에 둔다.
+     웹폰트를 쓰지 않아 빌드 시 외부 네트워크 요청이 없다. */
+  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0b1120;
+    --color-surface: #131c2e;
+    --color-text: #e5e7eb;
+    --color-text-muted: #9ca3af;
+    --color-border: #26324a;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+}
+
+/* ---------- 기본 문서 스타일 (모바일 기준) ---------- */
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  color: var(--color-text);
+  background: var(--color-bg);
+  font-family: var(--font-sans);
+}

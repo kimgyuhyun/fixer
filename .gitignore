@@ -1,24 +1,34 @@
-# Compiled class file
-*.class
+# dependencies
+node_modules/
+.pnpm-store/
 
-# Log file
+# build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# prisma 생성물 (schema.prisma와 migrations/는 반드시 커밋한다)
+**/generated/prisma/
+
+# env — .env.example만 커밋한다
+.env
+.env.*
+!.env.example
+
+# test / coverage
+coverage/
+.nyc_output/
+
+# logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
 
-# BlueJ files
-*.ctxt
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files #
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
-
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+# editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
