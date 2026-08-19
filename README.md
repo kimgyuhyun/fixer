@@ -30,6 +30,7 @@ pnpm install && cp .env.example .env
 
 | 해야 할 것                                         | 왜                                                                                      |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **pnpm 전역 설치** (`npm i -g pnpm`)               | 루트 스크립트가 내부에서 `pnpm`을 다시 호출한다                                         |
 | `pnpm install`                                     | node_modules, husky 훅 활성화, 위의 생성물 3종                                          |
 | **gitleaks 바이너리 설치**                         | npm 패키지가 아니다. 없으면 pre-commit이 커밋을 **차단**한다                            |
 | **Claude Code 세션은 반드시 저장소 루트에서 열기** | 하위·상위 디렉터리에서 열면 `.claude/settings.json`을 읽지 않아 훅이 전부 조용히 죽는다 |
@@ -42,7 +43,15 @@ winget install gitleaks
 
 macOS는 `brew install gitleaks`. 설치 후에는 새 셸을 열어야 PATH에 잡힌다.
 
-pnpm이 전역에 없어도 된다. Node 22에 번들된 corepack이 `packageManager` 핀(`pnpm@11.22.0`)을 그대로 따르므로 `corepack pnpm install`로도 동일하게 동작하고, pre-push 훅도 pnpm이 없으면 corepack으로 넘어간다.
+**`pnpm`은 명령으로 잡혀 있어야 한다.** 루트 스크립트(`pnpm dev`, `pnpm lint`, `pnpm typecheck`, `pnpm db:*`)가 내부에서 다시 `pnpm`을 호출하기 때문에, corepack으로만 우회하면 `pnpm is not recognized`로 실패한다.
+
+```bash
+npm i -g pnpm
+```
+
+관리자 권한이 필요 없다. pnpm 10+는 `packageManager` 핀(`pnpm@11.22.0`)을 보고 스스로 그 버전으로 전환한다. `corepack enable pnpm`은 Node 설치 디렉터리에 써야 해서 Windows에서는 관리자 권한이 필요하다.
+
+훅 자체는 pnpm이 전역에 없어도 동작한다. pre-push는 pnpm이 없으면 corepack으로 넘어가고, Claude Stop 훅은 pnpm을 거치지 않고 각 패키지의 tsc를 node로 직접 실행한다.
 
 ## 개발 중
 
