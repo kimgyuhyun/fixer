@@ -81,13 +81,15 @@ pnpm dev
 
 ### git 훅 (husky)
 
-| 시점         | 하는 일                                                     |
-| ------------ | ----------------------------------------------------------- |
-| `pre-commit` | 스테이지된 파일 `prettier --write` + gitleaks 시크릿 스캔   |
-| `commit-msg` | commitlint — Conventional Commits, 제목 72자 이하, 마침표 X |
-| `pre-push`   | `pnpm -r lint` (자동수정 없음)                              |
+| 시점         | 하는 일                                                            |
+| ------------ | ------------------------------------------------------------------ |
+| `pre-commit` | 스테이지된 파일 `prettier --write` + gitleaks 시크릿 스캔          |
+| `commit-msg` | commitlint — Conventional Commits, 제목 72자 이하, 마침표 X        |
+| `pre-push`   | shared 빌드 → `pnpm -r typecheck` → `pnpm -r lint` (자동수정 없음) |
 
-실측: pre-commit + commit-msg 합쳐 약 3.4초, pre-push 약 8.5초(실패 시 4.5초).
+실측: pre-commit + commit-msg 합쳐 약 3.4초, pre-push 약 13초(앞 단계에서 실패하면 더 짧다).
+
+pre-push는 CI가 없는 동안의 임시 방지턱이다. **사람이 직접 편집해서 커밋한 경로는 여기 말고 타입 검사를 하는 곳이 없다** — Claude Stop 훅은 에이전트로 작업할 때만 돌고, 세션을 루트에서 열지 않으면 아예 돌지 않는다. CI가 생기면 이 훅의 내용을 그대로 CI로 옮기고 여기서는 지운다.
 
 ### Claude Code 훅 (`.claude/settings.json`)
 
@@ -125,7 +127,7 @@ CI는 아직 없다. 만들 때 아래를 넣는다. 로컬 훅에 없거나, �
 - **`pnpm lint` (자동수정 없이)** — 지금은 pre-push에 있지만 `--no-verify`로 우회할 수 있다
 - **`packages/shared`의 eslint 설정** — 현재 이 패키지에는 eslint 설정이 없어 `pnpm -r lint`가 건너뛴다
 - **gitleaks 전 히스토리 스캔** (`gitleaks git .`) — pre-commit은 스테이지된 변경만 본다. 실측 0.7초
-- **`pnpm typecheck`** — Stop 훅은 소스 지문이 같으면 건너뛰고, 세션을 루트에서 열지 않으면 아예 돌지 않는다
+- **`pnpm typecheck`** — pre-push와 Claude Stop 훅에 있지만 둘 다 우회 가능하다(`--no-verify`, 세션을 루트가 아닌 곳에서 열기)
 - **`pnpm build`** — 빌드는 로컬 훅에 전혀 없다
 - **테스트** — 아직 없다. 생기면 CI와 Stop 훅 양쪽에 넣는다
 - **Prisma 마이그레이션 검증** (`prisma migrate status` / `migrate diff`) — DB 컨테이너가 필요해 위 기준 2번(클론 직후 로컬 완결)을 못 넘긴다. 명확히 CI 몫이다
