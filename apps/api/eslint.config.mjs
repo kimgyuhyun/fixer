@@ -6,7 +6,10 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['eslint.config.mjs'],
+    // 생성된 Prisma 클라이언트는 린트 대상이 아니다.
+    // lint 스크립트에 --fix가 붙어 있어 두면 생성물을 자동수정하게 되고,
+    // 타입 인식 규칙이 대용량 생성 파일을 파싱해 린트가 크게 느려진다.
+    ignores: ['eslint.config.mjs', 'src/generated/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
