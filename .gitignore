@@ -30,6 +30,9 @@ coverage/
 npm-debug.log*
 pnpm-debug.log*
 
+# Claude Code 개인 설정 (.claude/settings.json은 팀 공유이므로 커밋한다)
+.claude/settings.local.json
+
 # editor / OS
 .vscode/*
 !.vscode/extensions.json
