@@ -11,47 +11,83 @@ packages/shared 프론트/백 공용 Zod 스키마
 docker-compose.yml  PostgreSQL 17 (로컬 개발용, DB만 컨테이너)
 ```
 
-## 처음 한 번
+## 새 환경에서 처음 세팅
 
-```bash
-pnpm install && cp .env.example .env
-```
+### 1. 먼저 깔려 있어야 하는 것
 
-`pnpm install`이 자동으로 해주는 것 — 따로 명령을 칠 필요가 없다.
-
-- husky git 훅 활성화 (`prepare` 스크립트)
-- `packages/shared` 빌드, `prisma generate`, `next typegen` (각 패키지 `postinstall`)
-
-마지막 세 개는 편의가 아니라 전제 조건이다. 하나라도 없으면 `pnpm typecheck`가 코드와 무관한 오류로 실패해서, 훅이 첫 턴부터 빨간불이 된다.
-
-### `git pull`로 따라오지 않는 것
-
-기기마다 한 번씩 직접 해야 한다.
-
-| 해야 할 것                                         | 왜                                                                                      |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **pnpm 전역 설치** (`npm i -g pnpm`)               | 루트 스크립트가 내부에서 `pnpm`을 다시 호출한다                                         |
-| `pnpm install`                                     | node_modules, husky 훅 활성화, 위의 생성물 3종                                          |
-| **gitleaks 바이너리 설치**                         | npm 패키지가 아니다. 없으면 pre-commit이 커밋을 **차단**한다                            |
-| **Claude Code 세션은 반드시 저장소 루트에서 열기** | 하위·상위 디렉터리에서 열면 `.claude/settings.json`을 읽지 않아 훅이 전부 조용히 죽는다 |
-
-gitleaks 설치:
-
-```bash
-winget install gitleaks
-```
-
-macOS는 `brew install gitleaks`. 설치 후에는 새 셸을 열어야 PATH에 잡힌다.
-
-**`pnpm`은 명령으로 잡혀 있어야 한다.** 루트 스크립트(`pnpm dev`, `pnpm lint`, `pnpm typecheck`, `pnpm db:*`)가 내부에서 다시 `pnpm`을 호출하기 때문에, corepack으로만 우회하면 `pnpm is not recognized`로 실패한다.
+| 도구         | 필요 버전                                        | 확인                  | 왜 이 버전인가                                                                                                                             |
+| ------------ | ------------------------------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Node.js**  | **22 이상**                                      | `node -v`             | 루트 `package.json`의 `engines`. 22.17.0에서 검증했다                                                                                      |
+| **pnpm**     | **10 이상** (전역 설치)                          | `pnpm -v`             | 10+는 `packageManager` 핀(`pnpm@11.22.0`)을 보고 스스로 그 버전으로 전환한다. 11.22.0에서 검증했다                                         |
+| **gitleaks** | `git` 서브커맨드 지원 버전 (8.19+로 알려져 있다) | `gitleaks git --help` | 훅이 `gitleaks git --staged`를 쓴다. 구버전에는 이 서브커맨드가 없어 pre-commit이 `unknown command`로 커밋을 차단한다. 8.30.1에서 검증했다 |
+| **Docker**   | (DB 컨테이너용)                                  | `docker -v`           | `pnpm db:up`이 PostgreSQL 17을 띄운다                                                                                                      |
 
 ```bash
 npm i -g pnpm
 ```
 
-관리자 권한이 필요 없다. pnpm 10+는 `packageManager` 핀(`pnpm@11.22.0`)을 보고 스스로 그 버전으로 전환한다. `corepack enable pnpm`은 Node 설치 디렉터리에 써야 해서 Windows에서는 관리자 권한이 필요하다.
+```bash
+winget install gitleaks
+```
 
-훅 자체는 pnpm이 전역에 없어도 동작한다. pre-push는 pnpm이 없으면 corepack으로 넘어가고, Claude Stop 훅은 pnpm을 거치지 않고 각 패키지의 tsc를 node로 직접 실행한다.
+macOS는 `brew install gitleaks`. **설치 후 새 셸을 열어야** PATH에 잡힌다.
+
+gitleaks 버전이 맞는지는 `gitleaks git --help`가 exit 0으로 끝나는지로 확인한다. 서브커맨드가 없는 구버전이면 exit 1이 나오고, 그 상태로는 커밋이 전부 막힌다.
+
+pnpm은 `corepack enable pnpm`으로도 되지만 Node 설치 디렉터리에 써야 해서 Windows에서는 관리자 권한이 필요하다. `npm i -g pnpm`은 권한이 필요 없다.
+
+**pnpm은 전역에 있어야 한다.** 루트 스크립트(`pnpm dev`, `pnpm lint`, `pnpm typecheck`, `pnpm db:*`)가 내부에서 다시 `pnpm`을 호출하기 때문에, `corepack pnpm ...`으로만 우회하면 `pnpm is not recognized`로 실패한다. 다만 **훅 자체는 pnpm이 없어도 동작한다** — pre-push는 pnpm이 없으면 corepack으로 넘어가고, Claude Stop 훅은 pnpm을 거치지 않고 각 패키지의 tsc를 node로 직접 실행한다.
+
+### 2. 세팅
+
+```bash
+pnpm install && cp .env.example .env
+```
+
+이게 전부다. `pnpm install`이 나머지를 자동으로 한다(아래 "전달 경로" 참고).
+
+### 3. 잘 됐는지 확인
+
+```bash
+pnpm typecheck
+```
+
+통과하면 생성물 3종이 제대로 만들어진 것이다. 실패하면 아래 전달 경로 표에서 빠진 단계를 찾는다.
+
+훅까지 확인하려면 더미 커밋을 한 번 만들어 본다.
+
+```bash
+printf 'export const probe = {a:1,   b:"x"}\n' > packages/shared/src/probe.ts && git add . && git commit -m "test: hook probe"
+```
+
+- 커밋 후 `probe.ts`가 `export const probe = { a: 1, b: 'x' };`로 바뀌어 있으면 **pre-commit 정상**
+- `git commit -m "잘못된 메시지"`가 차단되면 **commit-msg 정상**
+- 확인이 끝나면 `git reset --hard HEAD~1`로 되돌린다
+
+### 전달 경로 — 훅 두 종류가 오는 방식이 다르다
+
+|                   | Claude Code 훅                                         | git 훅                                          |
+| ----------------- | ------------------------------------------------------ | ----------------------------------------------- |
+| 파일              | `.claude/settings.json`, `.claude/hooks/*.mjs`         | `.husky/pre-commit`, `commit-msg`, `pre-push`   |
+| `git pull`로 오나 | 온다 (커밋된 파일)                                     | 온다 (커밋된 파일)                              |
+| 추가 활성화 필요? | **불필요** — 파일만 있으면 동작한다                    | **필요** — `core.hooksPath`를 `.husky/_`로 지정 |
+| 누가 활성화하나   | —                                                      | **husky** (`pnpm install`의 `prepare` 스크립트) |
+| 안 도는 조건      | 세션을 저장소 루트가 아닌 곳에서 열면 설정을 안 읽는다 | `pnpm install`을 안 하면 훅이 아예 없다         |
+
+git 훅은 원래 `.git/hooks/`에 두는데 **`.git`은 git이 추적하지 않아서 팀원에게 따라오지 않는다.** husky가 하는 일은 훅 스크립트를 추적되는 `.husky/`에 두고 `pnpm install` 때 `core.hooksPath`를 그쪽으로 바꿔주는 것뿐이다. 검사 자체는 husky가 하지 않는다.
+
+`pnpm install`이 자동으로 해주는 것:
+
+| 하는 것                | 어디에 설정돼 있나                | 없으면                              |
+| ---------------------- | --------------------------------- | ----------------------------------- |
+| husky 훅 활성화        | 루트 `package.json`의 `prepare`   | git 훅이 전부 안 돈다               |
+| `packages/shared` 빌드 | `packages/shared`의 `postinstall` | `@fixer/shared`를 못 찾는 타입 오류 |
+| `prisma generate`      | `apps/api`의 `postinstall`        | Prisma 클라이언트 타입 오류         |
+| `next typegen`         | `apps/web`의 `postinstall`        | `LayoutProps`를 못 찾는 타입 오류   |
+
+뒤의 세 개는 편의가 아니라 전제 조건이다. 하나라도 없으면 `pnpm typecheck`가 코드와 무관한 오류로 실패하고, 훅이 첫 턴부터 빨간불이 되어 아무도 훅을 믿지 않게 된다.
+
+> 이 저장소의 훅은 **Windows에서만 실측했다.** OS 종속 명령을 쓰지 않고, 훅 파일은 `.gitattributes`로 LF 고정, 의존 바이너리는 모두 직접 의존성이라 macOS·Linux에서도 동작할 구조지만 실제 실행은 확인되지 않았다. 다른 OS에서 처음 클론했다면 위 3번 검증을 한 번 돌려보고, 안 되면 알려주면 된다.
 
 ## 개발 중
 
