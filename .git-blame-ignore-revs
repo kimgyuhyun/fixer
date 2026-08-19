@@ -1,0 +1,6 @@
+# 일괄 포매팅 커밋. 코드 의미 변경이 없으므로 blame에서 제외한다.
+# 사용: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (git 2.23+ / GitHub는 자동 인식)
+
+# style: apply prettier to the entire workspace
+64e23f5c88ecac96a3da555cfcf3caa501198987
