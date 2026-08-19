@@ -7,6 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "prepare": "husky",
     "dev": "pnpm --parallel --filter @fixer/shared --filter \"./apps/*\" dev",
     "dev:web": "pnpm --filter @fixer/web dev",
     "dev:api": "pnpm --filter @fixer/api dev",
@@ -23,6 +24,10 @@
     "db:studio": "pnpm --filter @fixer/api prisma:studio"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
     "prettier": "^3.9.6",
     "typescript": "^5.9.2"
   }

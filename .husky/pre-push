@@ -1,0 +1,17 @@
+# 린터 (leash) — CI가 없으므로 코드가 저장소를 떠나기 전 여기서 한 번 돌린다.
+#
+# pre-commit이 아니라 pre-push에 있는 이유: apps/api가 타입 인식 린팅이라
+# 파일 1개만 넘겨도 3.2초, 두 앱을 합치면 6초를 넘는다. 커밋마다 물리면
+# --no-verify가 습관이 되지만, push는 빈도가 낮고 어차피 네트워크를 기다리는
+# 지점이라 감수할 수 있다. CI가 생기면 이 훅의 내용을 그대로 CI로 옮기면 된다.
+#
+# 자동수정은 하지 않는다(apps/api는 lint:fix가 따로 있다).
+# push 도중에 파일을 고치면 실제로 푸시되는 내용과 작업 트리가 어긋난다.
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm --recursive lint
+else
+  # pnpm이 전역 설치되지 않은 기기용. corepack은 node에 번들되어 있고
+  # package.json의 packageManager 핀을 그대로 따른다.
+  # 프롬프트를 끄지 않으면 훅이 입력을 기다리며 멈춘다.
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --recursive lint
+fi
