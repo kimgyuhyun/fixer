@@ -1,6 +1,6 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
 
 # create-next-app이 apps/web에 만들던 설정을 루트로 올린 것.
 # pnpm은 워크스페이스 루트의 이 파일만 읽으므로 하위 패키지에 두면 무시된다.

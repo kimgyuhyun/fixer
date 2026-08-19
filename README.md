@@ -29,14 +29,14 @@ pnpm dev
 
 `pnpm dev`는 web, api, shared(watch)를 동시에 띄운다. 브라우저에서 http://localhost:3000 을 열면 API와 DB 연결 상태가 보인다.
 
-| 명령 | 하는 일 |
-| --- | --- |
-| `pnpm dev` | web + api + shared 워치 동시 실행 |
-| `pnpm db:up` / `pnpm db:down` | PostgreSQL 컨테이너 기동 / 정지 |
-| `pnpm db:reset` | 볼륨까지 지우고 DB 재생성 |
-| `pnpm db:migrate` | Prisma 마이그레이션 생성·적용 |
-| `pnpm db:studio` | Prisma Studio |
-| `pnpm typecheck` | 전체 타입 검사 |
+| 명령                          | 하는 일                           |
+| ----------------------------- | --------------------------------- |
+| `pnpm dev`                    | web + api + shared 워치 동시 실행 |
+| `pnpm db:up` / `pnpm db:down` | PostgreSQL 컨테이너 기동 / 정지   |
+| `pnpm db:reset`               | 볼륨까지 지우고 DB 재생성         |
+| `pnpm db:migrate`             | Prisma 마이그레이션 생성·적용     |
+| `pnpm db:studio`              | Prisma Studio                     |
+| `pnpm typecheck`              | 전체 타입 검사                    |
 
 ## 알아둘 것
 

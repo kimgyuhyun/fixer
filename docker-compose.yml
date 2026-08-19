@@ -4,19 +4,23 @@ services:
     container_name: fixer-postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-fixer}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fixer_local_pw}
       POSTGRES_DB: ${POSTGRES_DB:-fixer}
       # 한글 데이터 정렬·비교를 위해 초기화 시점에 UTF-8 로케일을 강제한다.
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
       TZ: Asia/Seoul
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       # 앱이 기동 직후 붙었다가 실패하지 않도록, 실제 접속 가능 시점까지 기다린다.
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fixer} -d ${POSTGRES_DB:-fixer}"]
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-fixer} -d ${POSTGRES_DB:-fixer}',
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
