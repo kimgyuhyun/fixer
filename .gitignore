@@ -9,6 +9,10 @@ build/
 out/
 *.tsbuildinfo
 
+# Next가 재생성한다. next dev와 next typegen이 서로 다른 경로를 기록해
+# 추적하면 계속 modified로 뜬다. create-next-app 기본 .gitignore와 동일한 처리.
+apps/web/next-env.d.ts
+
 # prisma 생성물 (schema.prisma와 migrations/는 반드시 커밋한다)
 **/generated/prisma/
 
