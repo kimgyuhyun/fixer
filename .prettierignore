@@ -1,0 +1,16 @@
+# 생성물·락파일 — 사람이 고치지 않으므로 포맷 대상이 아니다
+pnpm-lock.yaml
+apps/web/next-env.d.ts
+apps/api/skills-lock.json
+**/generated/prisma/
+
+# 벤더된 Prisma 스킬 문서. 업스트림에서 받아온 그대로 두어야 갱신 시 diff가 깨끗하다
+apps/api/.claude/
+
+# 빌드 산출물
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/

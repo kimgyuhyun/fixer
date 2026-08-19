@@ -1,0 +1,14 @@
+# 값은 현재 코드 실측치(들여쓰기 공백 2칸)에 맞춘 것이며 prettier.config.mjs와 일치시켜 둔다.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+# 마크다운은 줄 끝 공백 두 칸이 줄바꿈을 뜻하므로 지우면 안 된다
+trim_trailing_whitespace = false

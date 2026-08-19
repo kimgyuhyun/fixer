@@ -9,7 +9,6 @@
     "start": "node dist/main",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write \"src/**/*.ts\"",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
@@ -37,9 +36,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
-    "eslint-plugin-prettier": "^5.2.2",
     "globals": "^17.0.0",
-    "prettier": "^3.4.2",
     "prisma": "^7.9.1",
     "source-map-support": "^0.5.21",
     "ts-loader": "^9.5.2",
