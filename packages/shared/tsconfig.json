@@ -5,5 +5,6 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  // 테스트는 Vitest가 직접 실행한다. dist에 넣으면 소비자(web/api) 번들에 딸려간다.
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "vitest.config.ts"]
 }

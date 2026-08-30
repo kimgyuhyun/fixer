@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  # main에 직접 들어간 커밋도 검증한다. 지금은 문서·스킬을 main에 직접 커밋하고 있다.
+  push:
+    branches: [main]
+
+# 같은 브랜치에 새 커밋이 오면 이전 실행을 취소한다.
+# 2인 팀이라 러너를 아껴야 하고, 어차피 마지막 커밋 결과만 의미가 있다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 빌드 · 타입 · 린트 · 테스트
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # package.json engines가 >=22. 로컬과 같은 메이저로 맞춘다.
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      # Prisma 클라이언트 생성물은 커밋하지 않으므로 CI에서 매번 만든다.
+      # 없으면 apps/api 타입 검사가 실패한다.
+      - name: Prisma Client 생성
+        run: pnpm --filter @fixer/api prisma:generate
+
+      # 빌드가 타입 검사보다 먼저다. 순서를 바꾸면 apps/web에서 실패한다.
+      #   - shared는 dist를 참조하는 워크스페이스 의존이라 먼저 빌드해야
+      #     web/api가 @fixer/shared 타입을 찾는다.
+      #   - Next 16은 LayoutProps 같은 전역 타입을 next build 때 .next/types에 생성한다.
+      #     빌드 전에는 tsc가 그 타입을 찾지 못해 layout.tsx에서 실패한다.
+      - name: 빌드
+        run: pnpm build
+
+      - name: 타입 검사
+        run: pnpm typecheck
+
+      - name: 린트
+        run: pnpm lint
+
+      # 통합 테스트는 Testcontainers로 진짜 Postgres를 띄운다.
+      # ubuntu-latest 러너에는 Docker가 이미 올라와 있어 별도 서비스 설정이 필요 없다.
+      - name: 테스트
+        run: pnpm test
+
+  audit:
+    name: 의존성 취약점
+    runs-on: ubuntu-latest
+    # 이 잡은 PR을 막지 않는다.
+    #
+    # pnpm audit은 도달 경로를 판별하지 못한다 — peerDependency를 운영 트리로 세기 때문에
+    # 실제로는 CLI 전용인 것이 운영 의존성으로 잡힌다. 자동으로 차단하면 빌드 도구
+    # 취약점에 매주 막히고, 결국 감사를 꺼버리게 된다.
+    #
+    # 그래서 여기서는 신호만 내고, 판정은 /security-review에서 사람이 한다.
+    # 수용한 항목은 docs/result/security-exceptions.md에 기록한다.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: 취약점 점검
+        run: pnpm audit --audit-level moderate
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    needs: verify
+    # Playwright를 아직 설치하지 않았다. 설정 파일이 생기면 이 잡이 자동으로 켜진다.
+    if: hashFiles('apps/web/playwright.config.ts') != ''
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma Client 생성
+        run: pnpm --filter @fixer/api prisma:generate
+
+      - name: 빌드
+        run: pnpm build
+
+      - name: 브라우저 설치
+        run: pnpm --filter @fixer/web exec playwright install --with-deps chromium
+
+      - name: E2E 실행
+        run: pnpm --filter @fixer/web test:e2e
+
+      # 실패했을 때 원인을 찾을 증거를 남긴다. E2E는 CI에서 재현이 어렵다.
+      - name: 리포트 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7

@@ -8,5 +8,12 @@ allowBuilds:
   # Prisma는 postinstall에서 쿼리 엔진 바이너리를 내려받는다. 막으면 DB 접속이 안 된다.
   '@prisma/engines': true
   prisma: true
+  # Vitest가 쓰는 네이티브 바이너리. 막으면 테스트가 아예 안 돈다.
+  esbuild: true
+  # Testcontainers가 Docker 데몬과 통신할 때 쓴다.
+  ssh2: true
+  protobufjs: true
   sharp: false
+  # ssh2의 선택적 네이티브 가속. 없어도 순수 JS로 동작하므로 빌드 툴체인을 요구하지 않는다.
+  cpu-features: false
   unrs-resolver: false

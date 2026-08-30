@@ -17,12 +17,16 @@
     "postinstall": "tsc",
     "dev": "tsc --watch --preserveWatchOutput",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "typescript": "^5.9.2"
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.11"
   }
 }
