@@ -15,3 +15,24 @@ datasource db {
   provider = "postgresql"
   // 접속 문자열은 prisma.config.ts가 루트 .env에서 읽어 주입한다.
 }
+
+/// 이메일 인증 코드 발급 이력. (이슈 #1, ADR-AUTH-4)
+///
+/// 발급할 때마다 행을 추가한다. 유효한 코드는 "가장 최근의, 소비되지 않은,
+/// 만료되지 않은" 행 하나뿐이다. 쿨다운은 최근 행의 createdAt으로,
+/// 시간당 발송 수는 최근 1시간 내 행 수로 판정한다.
+model EmailVerification {
+  id           String    @id @default(cuid())
+  email        String
+  /// 평문 저장 금지. 유출돼도 코드를 알 수 없어야 한다.
+  codeHash     String
+  expiresAt    DateTime
+  /// 인증에 사용된 시각. 1회용이므로 값이 있으면 재사용 불가.
+  consumedAt   DateTime?
+  /// 틀린 횟수. maxAttempts에 도달하면 이 코드는 폐기된다.
+  attemptCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  // 쿨다운(최근 1건)과 시간당 발송 수(최근 1시간) 판정에 함께 쓰인다.
+  @@index([email, createdAt])
+}
