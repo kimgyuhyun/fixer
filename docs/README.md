@@ -25,6 +25,8 @@ docs/
     │   └── notification.md
     ├── issues.md            단계 3 결과 · 이슈 39개 (수직 슬라이스 + AC)
     ├── adr/                 단계 2-2 · 3안 비교 원본
+    ├── scenarios/           이슈별 시그니처·테스트 시나리오
+    ├── security-exceptions.md 수용한 보안 취약점 대장
     └── roadmap-and-split.md 팀 분담 및 스프린트 계획
 ```
 
@@ -35,21 +37,22 @@ docs/
 | 이 서비스가 무엇을 하는가    | `result/spec-fixed.md`                       |
 | 용어가 정확히 무슨 뜻인가    | `result/spec-fixed.md` §0                    |
 | 왜 이 구조로 만들었는가      | `result/prd/{도메인}.md` 의 "기술 결정(ADR)" |
-| 거부된 안과 비교표는          | `result/adr/{도메인}.md`                     |
+| 거부된 안과 비교표는         | `result/adr/{도메인}.md`                     |
 | 이번에 만들지 않는 것        | `result/prd/{도메인}.md` 의 "Out of Scope"   |
 | 지금 무엇을 만들면 되는가    | `result/issues.md`                           |
 | 누가 무엇을 맡는가           | `result/roadmap-and-split.md`                |
 | 이 절차 자체를 다시 돌리려면 | `process/*.md`                               |
+| 이 취약점은 왜 넘어갔나      | `result/security-exceptions.md`              |
 
 ## 진행 현황
 
-| 단계               | 산출물                 | 상태                                 |
-| ------------------ | ---------------------- | ------------------------------------ |
-| 1. AI 인터뷰       | `result/spec-fixed.md` | ✅ 확정                              |
+| 단계               | 산출물                 | 상태                                               |
+| ------------------ | ---------------------- | -------------------------------------------------- |
+| 1. AI 인터뷰       | `result/spec-fixed.md` | ✅ 확정                                            |
 | 2. PRD + ADR       | `result/prd/*.md`      | 🟡 뼈대 7개 / ADR **job-post 5건 확정**, 28건 미완 |
-| 3. 이슈 분해       | `result/issues.md`     | 🟡 39개 작성 / **GitHub 등록 대기**  |
-| 4. 테스트 시나리오 | —                      | ⬜                                   |
-| 5. TDD 사이클      | 코드                   | ⬜                                   |
+| 3. 이슈 분해       | `result/issues.md`     | 🟡 39개 작성 / **GitHub 등록 대기**                |
+| 4. 테스트 시나리오 | —                      | ⬜                                                 |
+| 5. TDD 사이클      | 코드                   | ⬜                                                 |
 
 **코드는 5단계에서 처음 나온다.** 1~3단계는 전부 문서다.
 
