@@ -407,3 +407,35 @@ describe('verifyCode', () => {
     );
   });
 });
+
+/**
+ * AC 4의 뒷절 — "남은 시간이 안내된다".
+ *
+ * 거절만 하고 얼마나 기다려야 하는지 알려주지 않으면 사용자는 버튼을 계속
+ * 누르게 된다. 남은 초를 에러에 실어 경계 밖(HTTP·화면)이 쓸 수 있게 한다.
+ */
+describe('requestCode 쿨다운 남은 시간', () => {
+  it('should carry the remaining cooldown seconds when rejected within the cooldown', async () => {
+    const { service } = setup();
+    await service.requestCode(EMAIL);
+
+    vi.setSystemTime(new Date(NOW.getTime() + 1_000));
+
+    await expect(service.requestCode(EMAIL)).rejects.toMatchObject({
+      code: EMAIL_VERIFICATION_ERRORS.RESEND_COOLDOWN,
+      retryAfterSeconds: EMAIL_VERIFICATION_RULES.resendCooldownSeconds - 1,
+    });
+  });
+
+  it('should round the remaining seconds up so the client does not retry too early', async () => {
+    // 0.5초 남았는데 0으로 내림하면 곧바로 다시 눌러 또 거절당한다.
+    const { service } = setup();
+    await service.requestCode(EMAIL);
+
+    vi.setSystemTime(new Date(NOW.getTime() + COOLDOWN_MS - 500));
+
+    await expect(service.requestCode(EMAIL)).rejects.toMatchObject({
+      retryAfterSeconds: 1,
+    });
+  });
+});

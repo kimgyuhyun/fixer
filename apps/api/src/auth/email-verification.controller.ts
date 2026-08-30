@@ -11,7 +11,10 @@ import {
 } from '@fixer/shared';
 import { BadRequestException } from '@nestjs/common';
 import { ZodError } from 'zod';
-import { EmailVerificationService } from './email-verification.service';
+import {
+  EmailVerificationError,
+  EmailVerificationService,
+} from './email-verification.service';
 import { EmailVerificationHttpError } from './email-verification.http-error';
 
 @Controller('auth/email-verification')
@@ -71,16 +74,17 @@ function toHttpError(error: unknown): unknown {
     });
   }
 
-  const message = error instanceof Error ? error.message : '';
-  const matched = (
-    Object.values(EMAIL_VERIFICATION_ERRORS) as EmailVerificationErrorCode[]
-  ).find((code) => message.includes(code));
-
-  if (!matched) {
-    // 우리가 아는 도메인 에러가 아니면 그대로 올려보내 500이 되게 둔다.
-    // 여기서 삼키면 원인 모를 400이 되어 디버깅이 어려워진다.
-    return error;
+  // 문자열을 뒤지지 않고 타입으로 판단한다. 메시지를 고치다가 매핑이
+  // 조용히 끊기는 일이 없어야 한다.
+  if (error instanceof EmailVerificationError) {
+    return new EmailVerificationHttpError(
+      error.code,
+      STATUS_BY_CODE[error.code],
+      error.retryAfterSeconds,
+    );
   }
 
-  return new EmailVerificationHttpError(matched, STATUS_BY_CODE[matched]);
+  // 우리가 아는 도메인 에러가 아니면 그대로 올려보내 500이 되게 둔다.
+  // 여기서 삼키면 원인 모를 400이 되어 디버깅이 어려워진다.
+  return error;
 }

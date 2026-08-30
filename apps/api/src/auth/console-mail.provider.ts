@@ -15,6 +15,11 @@ export class ConsoleMailProvider implements MailProvider {
   private readonly logger = new Logger(ConsoleMailProvider.name);
 
   constructor() {
+    // FIXME(#37): 이 검사는 fail-open이다. NODE_ENV가 비어 있는 채로 배포되면
+    // 그냥 통과해 인증 코드가 운영 로그에 남는다. 허용 목록으로 바꿔야 하지만
+    // `nest start`가 NODE_ENV를 설정하지 않아 개발 서버가 뜨지 않는다.
+    // 제대로 된 해결은 AuthModule이 환경을 보고 메일러를 고르는 것이고,
+    // 실제 발송(Resend)을 붙이는 #37에서 함께 한다.
     if (process.env.NODE_ENV === 'production') {
       throw new Error(
         'ConsoleMailProvider는 개발 전용이다. 운영에서는 실제 MailProvider를 주입한다.',

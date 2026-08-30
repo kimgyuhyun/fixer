@@ -4,9 +4,27 @@ import {
   EMAIL_VERIFICATION_ERRORS,
   EMAIL_VERIFICATION_RULES,
   emailVerificationRequestSchema,
+  type EmailVerificationErrorCode,
   type EmailVerificationSent,
   type EmailVerified,
 } from '@fixer/shared';
+
+/**
+ * 이 도메인이 내는 실패. 코드를 message에 담아 두어 기존 호출부가 그대로 돌고,
+ * HTTP 경계는 `code`로 분기한다.
+ *
+ * 쿨다운은 남은 초까지 실어 보낸다. "나중에 다시 하라"고만 하면 사용자는
+ * 버튼을 계속 누르게 되고, 그때마다 또 거절당한다.
+ */
+export class EmailVerificationError extends Error {
+  constructor(
+    readonly code: EmailVerificationErrorCode,
+    readonly retryAfterSeconds?: number,
+  ) {
+    super(code);
+    this.name = 'EmailVerificationError';
+  }
+}
 
 /**
  * 발급된 인증 코드 한 건. ADR-AUTH-4의 `EmailVerification` 행에 대응한다.
@@ -82,7 +100,13 @@ export class EmailVerificationService {
 
     const latest = await this.store.findLatest(email);
     if (latest && now.getTime() - latest.createdAt.getTime() < COOLDOWN_MS) {
-      throw new Error(EMAIL_VERIFICATION_ERRORS.RESEND_COOLDOWN);
+      const remainingMs =
+        latest.createdAt.getTime() + COOLDOWN_MS - now.getTime();
+      // 올림한다. 0.5초 남았는데 0초로 안내하면 곧바로 눌러 또 거절당한다.
+      throw new EmailVerificationError(
+        EMAIL_VERIFICATION_ERRORS.RESEND_COOLDOWN,
+        Math.ceil(remainingMs / 1000),
+      );
     }
 
     // ADR-AUTH-4: 최근 1시간 내 발급된 행을 세어 판정한다. Penalty의 180일 롤링과 같은 방식.
@@ -91,7 +115,9 @@ export class EmailVerificationService {
       new Date(now.getTime() - HOUR_MS),
     );
     if (sentWithinHour >= EMAIL_VERIFICATION_RULES.maxSendsPerHour) {
-      throw new Error(EMAIL_VERIFICATION_ERRORS.RESEND_LIMIT_EXCEEDED);
+      throw new EmailVerificationError(
+        EMAIL_VERIFICATION_ERRORS.RESEND_LIMIT_EXCEEDED,
+      );
     }
 
     const code = generateCode();
@@ -118,21 +144,23 @@ export class EmailVerificationService {
 
     // 발급된 적 없음·이미 소비됨을 따로 알리지 않는다. 가입 여부가 새어나간다.
     if (!latest || latest.consumedAt) {
-      throw new Error(EMAIL_VERIFICATION_ERRORS.INVALID);
+      throw new EmailVerificationError(EMAIL_VERIFICATION_ERRORS.INVALID);
     }
 
     if (latest.attemptCount >= EMAIL_VERIFICATION_RULES.maxAttempts) {
-      throw new Error(EMAIL_VERIFICATION_ERRORS.ATTEMPTS_EXCEEDED);
+      throw new EmailVerificationError(
+        EMAIL_VERIFICATION_ERRORS.ATTEMPTS_EXCEEDED,
+      );
     }
 
     if (now.getTime() >= latest.expiresAt.getTime()) {
-      throw new Error(EMAIL_VERIFICATION_ERRORS.EXPIRED);
+      throw new EmailVerificationError(EMAIL_VERIFICATION_ERRORS.EXPIRED);
     }
 
     if (hashCode(code) !== latest.codeHash) {
       await this.store.incrementAttempt(latest.id);
       // 이번 실패로 한도에 도달했으면 그 사실을 알려 재발송을 유도한다.
-      throw new Error(
+      throw new EmailVerificationError(
         latest.attemptCount + 1 >= EMAIL_VERIFICATION_RULES.maxAttempts
           ? EMAIL_VERIFICATION_ERRORS.ATTEMPTS_EXCEEDED
           : EMAIL_VERIFICATION_ERRORS.INVALID,

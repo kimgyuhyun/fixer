@@ -11,9 +11,38 @@ import {
  * message는 그대로 출력한다.
  */
 export class EmailVerificationHttpError extends HttpException {
-  constructor(errorCode: EmailVerificationErrorCode, status: HttpStatus) {
-    super({ errorCode, message: MESSAGES[errorCode] }, status);
+  constructor(
+    errorCode: EmailVerificationErrorCode,
+    status: HttpStatus,
+    retryAfterSeconds?: number,
+  ) {
+    super(buildBody(errorCode, retryAfterSeconds), status);
   }
+}
+
+/**
+ * 쿨다운은 남은 초를 문구와 본문에 함께 넣는다.
+ *
+ * 문구에 넣는 것은 화면이 서버 문구를 그대로 출력하기 때문이고,
+ * 본문 필드로도 넣는 것은 화면이 카운트다운을 다시 시작할 수 있어야 하기 때문이다.
+ * 문구만 있으면 화면이 숫자를 파싱해야 한다.
+ */
+function buildBody(
+  errorCode: EmailVerificationErrorCode,
+  retryAfterSeconds?: number,
+): Record<string, unknown> {
+  if (
+    errorCode === EMAIL_VERIFICATION_ERRORS.RESEND_COOLDOWN &&
+    retryAfterSeconds !== undefined
+  ) {
+    return {
+      errorCode,
+      message: `${retryAfterSeconds}초 뒤에 다시 요청할 수 있습니다.`,
+      retryAfterSeconds,
+    };
+  }
+
+  return { errorCode, message: MESSAGES[errorCode] };
 }
 
 const MESSAGES: Record<EmailVerificationErrorCode, string> = {
