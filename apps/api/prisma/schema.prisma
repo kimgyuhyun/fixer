@@ -30,6 +30,38 @@ model User {
   name         String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  addresses UserAddress[]
+}
+
+/// 회원의 주소. (이슈 #3, ADR-AUTH-2)
+///
+/// 회원당 여러 행을 허용하고 라벨로 구분한다. 그래서 userId에 유니크를 걸지 않는다.
+/// 통 문자열 컬럼을 두지 않고 분해해서 담는다 — 관리자 지역 필터가 시/도 →
+/// 시/군/구 두 단계로 좁히기 때문이다(`spec-fixed.md` §11).
+model UserAddress {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 여러 주소를 구분하는 이름. 정하지 않으면 "기본"
+  label        String
+  /// 5자리 새 우편번호 (카카오 zonecode)
+  postalCode   String
+  roadAddress  String
+  jibunAddress String
+  /// 관리자 지역 필터 1단계 (spec-fixed §11)
+  sido         String
+  /// 관리자 지역 필터 2단계. 세종특별자치시처럼 없는 지역은 빈 문자열
+  sigungu      String
+  /// 좌표 변환 실패를 저장 실패로 만들지 않는다 (AC3)
+  lat          Float?
+  lng          Float?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  /// 관리자 지역 필터가 시/도 → 시/군/구 두 단계로 좁힌다
+  @@index([sido, sigungu])
 }
 
 /// 이메일 인증 코드 발급 이력. (이슈 #1, ADR-AUTH-4)
