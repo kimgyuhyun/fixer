@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { AuthUserStore } from './login.service';
 import type { UserRecord, UserStore } from './signup.service';
 
 /**
@@ -11,11 +12,16 @@ import type { UserRecord, UserStore } from './signup.service';
  * 이메일 정규화(소문자)는 서비스가 이미 마친 상태로 넘어온다.
  */
 @Injectable()
-export class PrismaUserStore implements UserStore {
+export class PrismaUserStore implements UserStore, AuthUserStore {
   constructor(private readonly prisma: PrismaService) {}
 
   async findByEmail(email: string): Promise<UserRecord | null> {
     return this.prisma.user.findUnique({ where: { email } });
+  }
+
+  /** 로그인(#4)이 토큰의 회원 id로 다시 조회할 때 쓴다 */
+  async findById(id: string): Promise<UserRecord | null> {
+    return this.prisma.user.findUnique({ where: { id } });
   }
 
   async create(input: {

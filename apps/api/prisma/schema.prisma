@@ -30,6 +30,9 @@ model User {
   name         String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  /// 로그인 세션들. (#4)
+  refreshTokens RefreshToken[]
 }
 
 /// 이메일 인증 코드 발급 이력. (이슈 #1, ADR-AUTH-4)
@@ -51,4 +54,23 @@ model EmailVerification {
 
   // 쿨다운(최근 1건)과 시간당 발송 수(최근 1시간) 판정에 함께 쓰인다.
   @@index([email, createdAt])
+}
+
+/// 로그인 세션 하나. (이슈 #4, ADR-AUTH-1)
+///
+/// 로그인할 때마다 행을 추가한다. 회원당 여러 행이 쌓인다 — 휴대폰과 PC에
+/// 동시에 로그인할 수 있어야 하기 때문이다. 회전(rotation)하지 않으므로
+/// Access를 갱신해도 이 행은 그대로 있다.
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  /// 평문 저장 금지. 조회 키라서 유니크는 userId가 아니라 여기에 건다.
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// 전체 무효화(deleteMany(userId))와 만료 행 정리에 쓰인다.
+  @@index([userId])
 }

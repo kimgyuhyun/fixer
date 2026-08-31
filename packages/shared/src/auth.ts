@@ -152,3 +152,74 @@ export const signedUpSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 export type SignedUp = z.infer<typeof signedUpSchema>;
+
+/**
+ * 로그인 토큰 규칙. (이슈 #4, spec-fixed §2.5)
+ *
+ * 이 값들은 사양에서 이미 확정됐다. 여기서 다시 정하지 않는다.
+ */
+export const AUTH_TOKEN_RULES = {
+  /** Access 토큰(JWT)의 수명 */
+  accessTokenMinutes: 15,
+  /** Refresh 토큰의 수명 */
+  refreshTokenDays: 14,
+} as const;
+
+/**
+ * 토큰을 담는 쿠키 이름.
+ *
+ * 웹 미들웨어(#5)와 API가 같은 문자열을 봐야 하므로 shared에 둔다.
+ */
+export const AUTH_COOKIES = {
+  access: 'fixer_access',
+  refresh: 'fixer_refresh',
+} as const;
+
+/**
+ * 로그인·인증이 내는 에러 코드.
+ */
+export const LOGIN_ERRORS = {
+  /**
+   * 이메일이 없거나 비밀번호가 틀렸다.
+   *
+   * 둘을 구분해서 알려주지 않는다. 구분하면 이메일만 넣어보고 가입 여부를
+   * 알아낼 수 있다.
+   */
+  INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
+  /** 유효한 Access도, 살아 있는 Refresh도 없다 */
+  UNAUTHENTICATED: 'AUTH_UNAUTHENTICATED',
+} as const;
+
+export type LoginErrorCode = (typeof LOGIN_ERRORS)[keyof typeof LOGIN_ERRORS];
+
+export const loginRequestSchema = z.object({
+  email: z.email({ error: '이메일 형식이 올바르지 않습니다.' }),
+  password: z
+    .string({ error: '비밀번호를 입력해 주세요.' })
+    .min(1, { error: '비밀번호를 입력해 주세요.' }),
+});
+export type LoginRequest = z.infer<typeof loginRequestSchema>;
+
+/** 로그인 성공 응답. 토큰은 본문이 아니라 httpOnly 쿠키로만 나간다 */
+export const signedInSchema = z.object({
+  id: z.string(),
+  email: z.email(),
+  name: z.string(),
+});
+export type SignedIn = z.infer<typeof signedInSchema>;
+
+/** 마이페이지가 읽는 내 정보 */
+export const myProfileSchema = z.object({
+  id: z.string(),
+  email: z.email(),
+  name: z.string(),
+  /**
+   * 주소는 #3(주소 등록)이 채운다. 그전까지 항상 null이다.
+   *
+   * 자리를 아예 비워두지 않는 이유는, 나중에 #3이 응답 모양을 바꾸면 웹이
+   * 함께 깨지기 때문이다. 자리만 만들어 두고 채우는 것은 #3에 맡긴다.
+   */
+  address: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type MyProfile = z.infer<typeof myProfileSchema>;
