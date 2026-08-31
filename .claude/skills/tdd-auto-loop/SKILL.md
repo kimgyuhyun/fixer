@@ -73,6 +73,14 @@ A 몫이 끝나면 → B 몫으로 넘어간다
 
 단, **선행 이슈가 SKIP된 이슈는 함께 건너뛴다.** 결과물이 없으니 어차피 막힌다.
 
+### 재시도 한도 — 이게 없으면 무한히 돈다
+
+**agent가 죽으면(사망·정지·오류) 그 이슈는 딱 한 번만 다시 띄운다. 두 번째로 죽으면 재시도하지 말고 `agent_died_2x`로 SKIP하고 사람에게 넘긴다.**
+
+**이슈 하나에 90분을 넘기면 결과와 무관하게 멈추고 사람에게 넘긴다.**
+
+실제로 이 한도가 없어서 이슈 #3 하나에 agent를 네 번 다시 띄웠고, 사용자가 자는 동안 밤새 돌았다. `green_failed_3x`는 **agent 안쪽** 한도지 메인이 몇 번 다시 띄우는지가 아니다. 그 빈칸을 메우는 규칙이다.
+
 ---
 
 ## 사람에게 묻는 유일한 경우
@@ -262,27 +270,29 @@ gh issue comment {N} --body-file {리포트파일}
 
 ## SKIP 사유 목록
 
-| 사유                    | 뜻                                         |
-| ----------------------- | ------------------------------------------ |
-| `no_ac`                 | 이슈에 AC가 없다                           |
-| `dirty_worktree`        | 커밋되지 않은 변경이 있다                  |
-| `blocked_by_open_issue` | 선행 이슈가 열려 있다                      |
-| `blocked_by_skipped`    | 선행 이슈가 이번 루프에서 SKIP됐다         |
-| `branch_exists`         | 대상 브랜치가 이미 있다                    |
-| `docker_off`            | Docker가 꺼져 있다                         |
-| `gh_unauthenticated`    | `gh` 로그인이 안 되어 있다                 |
-| `ac_not_covered`        | 시나리오가 AC를 다 덮지 못한다             |
-| `red_has_passing_test`  | 구현이 없는데 통과한 테스트가 있다 (가짜)  |
-| `collect_mismatch`      | 더한 테스트 수와 시나리오 수가 다르다      |
-| `green_failed_3x`       | 3회 시도에도 통과하지 못했다               |
-| `ac_gap`                | AC 충족이 확인되지 않았다                  |
-| `refactor_broke_tests`  | 롤백 후에도 테스트가 깨져 있다             |
-| `security_blocking`     | 즉시 수정이 필요한 항목이 있다             |
-| `commitlint_failed`     | 커밋 메시지가 규칙을 어긴다                |
-| `e2e_failed`            | E2E가 실패했다                             |
-| `push_failed`           | push가 거부됐다                            |
-| `adr_todo`              | 구조 결정이 필요한데 문서에 답이 없다      |
-| `schema_violation`      | agent가 스키마를 어겼다 (복구 요청 후에도) |
+| 사유                    | 뜻                                          |
+| ----------------------- | ------------------------------------------- |
+| `no_ac`                 | 이슈에 AC가 없다                            |
+| `dirty_worktree`        | 커밋되지 않은 변경이 있다                   |
+| `blocked_by_open_issue` | 선행 이슈가 열려 있다                       |
+| `blocked_by_skipped`    | 선행 이슈가 이번 루프에서 SKIP됐다          |
+| `branch_exists`         | 대상 브랜치가 이미 있다                     |
+| `docker_off`            | Docker가 꺼져 있다                          |
+| `gh_unauthenticated`    | `gh` 로그인이 안 되어 있다                  |
+| `ac_not_covered`        | 시나리오가 AC를 다 덮지 못한다              |
+| `red_has_passing_test`  | 구현이 없는데 통과한 테스트가 있다 (가짜)   |
+| `collect_mismatch`      | 더한 테스트 수와 시나리오 수가 다르다       |
+| `green_failed_3x`       | 3회 시도에도 통과하지 못했다                |
+| `ac_gap`                | AC 충족이 확인되지 않았다                   |
+| `refactor_broke_tests`  | 롤백 후에도 테스트가 깨져 있다              |
+| `security_blocking`     | 즉시 수정이 필요한 항목이 있다              |
+| `commitlint_failed`     | 커밋 메시지가 규칙을 어긴다                 |
+| `e2e_failed`            | E2E가 실패했다                              |
+| `push_failed`           | push가 거부됐다                             |
+| `adr_todo`              | 구조 결정이 필요한데 문서에 답이 없다       |
+| `schema_violation`      | agent가 스키마를 어겼다 (복구 요청 후에도)  |
+| `agent_died_2x`         | agent가 두 번 죽었다. 재시도 금지, 사람에게 |
+| `over_time_budget`      | 이슈 하나에 90분을 넘겼다                   |
 
 ---
 
