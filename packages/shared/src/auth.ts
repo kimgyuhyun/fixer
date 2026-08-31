@@ -65,3 +65,90 @@ export const emailVerifiedSchema = z.object({
   verifiedAt: z.iso.datetime(),
 });
 export type EmailVerified = z.infer<typeof emailVerifiedSchema>;
+
+/**
+ * 가입 규칙. (이슈 #2)
+ *
+ * 인증을 마친 이메일에 비밀번호와 이름을 붙여 `User`를 만든다.
+ * 주소(#3)와 동의서(#7)는 뒤 이슈가 붙인다.
+ */
+export const SIGNUP_RULES = {
+  /** 8자 미만은 거절된다 */
+  passwordMinLength: 8,
+  /**
+   * bcrypt(비밀번호 단방향 해시 알고리즘)는 72바이트를 넘는 입력을 조용히
+   * 잘라낸다. 상한을 두지 않으면 73바이트부터는 뒷부분이 비밀번호에 아무
+   * 영향을 주지 않는데 사용자는 그 사실을 알 수 없다.
+   *
+   * 글자 수가 아니라 바이트 수로 재는 이유가 이것이다 — 한글 한 글자는 3바이트다.
+   */
+  passwordMaxBytes: 72,
+  /** 공백만 있는 이름을 막는다. 앞뒤를 다듬은 뒤에 잰다 */
+  nameMinLength: 1,
+  /** 방어적 상한. 사양에 값이 없어 입력 폭주만 막는 선에서 정했다 */
+  nameMaxLength: 20,
+  /** spec-fixed §2.2 "비밀번호 설정 (bcrypt cost 12)" */
+  bcryptCostFactor: 12,
+} as const;
+
+/**
+ * 가입이 내는 에러 코드. 둘 다 이슈 #2의 AC에 적힌 문자열 그대로다.
+ */
+export const SIGNUP_ERRORS = {
+  /** 이메일 인증을 마치지 않았다 */
+  EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
+  /** 그 이메일로 이미 회원이 있다 */
+  EMAIL_ALREADY_EXISTS: 'MEMBER_EMAIL_ALREADY_EXISTS',
+} as const;
+
+export type SignupErrorCode =
+  (typeof SIGNUP_ERRORS)[keyof typeof SIGNUP_ERRORS];
+
+/**
+ * 문자열의 UTF-8 바이트 길이. 한글 한 글자는 3바이트다.
+ *
+ * `TextEncoder`를 쓰지 않는 이유는 이 패키지가 웹과 API 양쪽에서 쓰이는데
+ * 브라우저·Node 타입 정의를 어느 쪽도 끌어오지 않기 때문이다. 코드 포인트를
+ * 직접 세면 어디서든 같은 값이 나온다. (`for...of`는 서로게이트 쌍을
+ * 한 글자로 순회한다)
+ */
+export function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint <= 0x7f) bytes += 1;
+    else if (codePoint <= 0x7ff) bytes += 2;
+    else if (codePoint <= 0xffff) bytes += 3;
+    else bytes += 4;
+  }
+  return bytes;
+}
+
+export const signupRequestSchema = z.object({
+  email: z.email({ error: '이메일 형식이 올바르지 않습니다.' }),
+  password: z
+    .string({ error: '비밀번호를 입력해 주세요.' })
+    .min(SIGNUP_RULES.passwordMinLength, {
+      error: `비밀번호는 ${SIGNUP_RULES.passwordMinLength}자 이상이어야 합니다.`,
+    })
+    .refine((value) => utf8ByteLength(value) <= SIGNUP_RULES.passwordMaxBytes, {
+      error: `비밀번호가 너무 깁니다. (최대 ${SIGNUP_RULES.passwordMaxBytes}바이트)`,
+    }),
+  name: z
+    .string({ error: '이름을 입력해 주세요.' })
+    .trim()
+    .min(SIGNUP_RULES.nameMinLength, { error: '이름을 입력해 주세요.' })
+    .max(SIGNUP_RULES.nameMaxLength, {
+      error: `이름은 ${SIGNUP_RULES.nameMaxLength}자 이내로 입력해 주세요.`,
+    }),
+});
+export type SignupRequest = z.infer<typeof signupRequestSchema>;
+
+/** 가입 결과. 비밀번호도 해시도 여기에 들어가지 않는다 */
+export const signedUpSchema = z.object({
+  id: z.string(),
+  email: z.email(),
+  name: z.string(),
+  createdAt: z.iso.datetime(),
+});
+export type SignedUp = z.infer<typeof signedUpSchema>;

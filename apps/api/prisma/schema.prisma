@@ -16,6 +16,22 @@ datasource db {
   // 접속 문자열은 prisma.config.ts가 루트 .env에서 읽어 주입한다.
 }
 
+/// 회원. (이슈 #2)
+///
+/// 서비스의 모든 행위 주체다. 이 이슈는 "가입되는 최소한의 User"까지만 만든다.
+/// 주소(#3)·동의서(#7)·평점·잔액 캐시는 각 이슈가 자기 컬럼을 들고 온다.
+/// role과 deactivatedAt은 ADR-AUTH-3(계정 생명주기)이 확정된 뒤에 붙인다.
+model User {
+  id           String   @id @default(cuid())
+  /// 소문자로 정규화해서 저장한다. 대소문자만 다른 중복 계정을 막는다.
+  email        String   @unique
+  /// bcrypt 해시. 평문 저장 금지.
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 /// 이메일 인증 코드 발급 이력. (이슈 #1, ADR-AUTH-4)
 ///
 /// 발급할 때마다 행을 추가한다. 유효한 코드는 "가장 최근의, 소비되지 않은,
