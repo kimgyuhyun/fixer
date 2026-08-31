@@ -4,6 +4,7 @@ import type {
   EmailVerificationRecord,
   EmailVerificationStore,
 } from './email-verification.service';
+import type { EmailVerificationChecker } from './signup.service';
 
 /**
  * `EmailVerificationStore`의 Prisma 구현체.
@@ -12,8 +13,30 @@ import type {
  * 여기는 조회·쓰기만 한다 — 그래야 판정을 DB 없이 단위 테스트할 수 있다.
  */
 @Injectable()
-export class PrismaEmailVerificationStore implements EmailVerificationStore {
+export class PrismaEmailVerificationStore
+  implements EmailVerificationStore, EmailVerificationChecker
+{
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * 가입(#2)이 묻는 "이 이메일이 인증을 마쳤는가".
+   *
+   * ADR-AUTH-4에는 인증됨 플래그가 따로 없다. 코드를 맞힌 순간 그 행의
+   * consumedAt이 채워지므로, 소비된 행이 하나라도 있으면 인증을 마친 것이다.
+   */
+  async isVerified(email: string): Promise<boolean> {
+    const consumed = await this.prisma.emailVerification.findFirst({
+      // #1은 사용자가 입력한 대소문자 그대로 발급 이력을 쌓는다. 가입은
+      // 소문자로 정규화한 주소로 물으므로 여기서 대소문자를 무시해야
+      // "인증은 했는데 가입이 막히는" 상태가 생기지 않는다.
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        consumedAt: { not: null },
+      },
+      select: { id: true },
+    });
+    return consumed !== null;
+  }
 
   async create(input: {
     email: string;

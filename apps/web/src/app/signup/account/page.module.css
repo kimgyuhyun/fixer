@@ -1,9 +1,9 @@
 /*
- * 이슈 #1 · 이메일 인증 화면.
+ * 이슈 #2 · 가입 정보 입력 화면.
  *
  * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만,
  * 터치 목표 최소 44px, 입력 글자는 1rem 이상(iOS 확대 방지).
- * 새 색을 만들지 않는다.
+ * #1의 인증 화면과 같은 폼 규격을 쓴다.
  */
 
 .page {
@@ -72,19 +72,13 @@
   outline-offset: 1px;
 }
 
-/* 6자리 숫자는 자릿수를 세기 쉽게 넓혀서 보여준다. */
-.codeInput {
-  font-family: var(--font-mono);
-  font-size: 1.5rem;
-  letter-spacing: 0.4em;
-  text-align: center;
-}
-
-.hint {
-  color: var(--color-text-muted);
+/* 칸별 오류는 그 칸 바로 아래에 붙는다. 어느 칸이 문제인지 즉시 보이게. */
+.fieldError {
+  color: var(--color-danger);
   font-size: 0.8125rem;
 }
 
+/* 폼 전체에 대한 오류(서버가 돌려준 거절)는 테두리를 둘러 구분한다. */
 .error {
   padding: var(--space-2);
   border: 1px solid var(--color-danger);
@@ -95,11 +89,6 @@
 
 .submit,
 .secondary {
-  /* Link로도 쓰이므로 가운데 정렬을 둘 다에 둔다. */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
   min-height: 2.75rem;
   padding: var(--space-2) var(--space-3);
 
@@ -116,6 +105,10 @@
 }
 
 .secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
   background: var(--color-surface);
   color: var(--color-text);
   border-color: var(--color-border);

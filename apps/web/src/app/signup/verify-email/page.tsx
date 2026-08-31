@@ -78,6 +78,9 @@ export default function VerifyEmailPage() {
         return;
       }
       emailVerifiedSchema.parse(json);
+      // 다음 단계(#2 가입 정보 입력)가 이 주소를 이어받는다. 주소창에 싣지
+      // 않는 이유는 이메일이 개인정보라 이력·공유 링크에 남으면 안 되기 때문이다.
+      sessionStorage.setItem('fixer.signup.email', email);
       setStep('done');
     } catch {
       setError('요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -93,9 +96,9 @@ export default function VerifyEmailPage() {
         <p className={styles.lead}>
           <strong>{email}</strong> 주소가 확인되었습니다.
         </p>
-        <p className={styles.note}>
-          다음 단계(비밀번호 설정)는 이슈 #2에서 만듭니다.
-        </p>
+        <Link className={styles.submit} href="/signup/account">
+          가입 정보 입력하기
+        </Link>
         <Link className={styles.secondary} href="/">
           처음으로
         </Link>
