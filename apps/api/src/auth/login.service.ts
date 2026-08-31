@@ -94,6 +94,21 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** 추측할 수 없을 만큼 넉넉한 길이. 16진수 문자열로는 64자가 된다 */
 const REFRESH_TOKEN_BYTES = 32;
 
+/**
+ * 그 이메일의 회원이 없을 때 대신 대조할 해시.
+ *
+ * 회원이 없다고 곧바로 거절하면, 없는 이메일은 bcrypt 연산 없이 즉시
+ * 응답하고 틀린 비밀번호는 수백 밀리초를 쓴 뒤 응답한다. 에러 코드와 문구가
+ * 같아도 **걸린 시간이 가입 여부를 알려준다** — AC2가 막으려는 바로 그
+ * 노출이다. 그래서 회원이 없을 때도 같은 비용을 치르게 한다.
+ *
+ * 값은 아무도 모르는 32바이트 난수를 cost 12(가입이 쓰는 값, `SIGNUP_RULES`)로
+ * 해시한 결과다. 어떤 비밀번호와도 일치하지 않으며 비밀값이 아니다 —
+ * 원문을 만들어낸 쪽이 없으므로 이 해시를 알아도 할 수 있는 일이 없다.
+ */
+const ABSENT_MEMBER_PASSWORD_HASH =
+  '$2b$12$qnLRrwhAZfQpjxhZ5xUFRuZ5XHLceWJDY65FgzwSNo6w.djgUaHde';
+
 @Injectable()
 export class LoginService {
   constructor(
@@ -115,7 +130,14 @@ export class LoginService {
 
     // 없는 이메일과 틀린 비밀번호를 구분해서 알려주지 않는다. 구분하면
     // 이메일만 넣어보고 가입 여부를 알아낼 수 있다. (AC2)
-    if (!user || !(await compare(password, user.passwordHash))) {
+    //
+    // 회원이 없어도 대조를 건너뛰지 않는다. 건너뛰면 문구는 같은데 응답이
+    // 눈에 띄게 빨라져서, 시간만 재도 가입 여부를 알 수 있게 된다.
+    const passwordMatches = await compare(
+      password,
+      user?.passwordHash ?? ABSENT_MEMBER_PASSWORD_HASH,
+    );
+    if (!user || !passwordMatches) {
       throw new LoginError(LOGIN_ERRORS.INVALID_CREDENTIALS);
     }
 

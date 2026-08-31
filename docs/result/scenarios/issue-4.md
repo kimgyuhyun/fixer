@@ -329,12 +329,16 @@ HTTP 컨텍스트 없이는 테스트할 수 없어서, AC4의 "만료됐지만 
 - [x] [경계] `authenticate` — should keep the refresh token value unchanged when it renews the access token
 - [x] [경계] `authenticate` — should reject a refresh token whose expiresAt is exactly the current time
 - [x] [경계] `getMyProfile` — should return a null address until the address feature exists
+- [x] [경계] `AccessTokenSigner` — should accept the token one second before its expiry and reject it exactly at the expiry _(ac-verifier 보강)_
+- [x] [경계] `authenticate` — should still accept the access token one second before its 15-minute expiry without renewing it _(ac-verifier 보강)_
+- [x] [경계] `authenticate` — should renew the access token exactly at its 15-minute expiry _(ac-verifier 보강)_
 
 ### 예외
 
 - [x] [예외] `login` — should throw AUTH_INVALID_CREDENTIALS when no member has that email
 - [x] [예외] `login` — should throw AUTH_INVALID_CREDENTIALS when the password does not match
 - [x] [예외] `login` — should give the same error code and message for a wrong email and a wrong password
+- [x] [예외] `login` — should still run a password comparison when no member has that email _(ac-verifier 보강)_
 - [x] [예외] `authenticate` — should throw AUTH_UNAUTHENTICATED when neither cookie is present
 - [x] [예외] `authenticate` — should throw AUTH_UNAUTHENTICATED when the access token expired and the refresh token is unknown
 - [x] [예외] `AccessTokenSigner` — should reject a token whose payload, signature or alg header was tampered with
@@ -353,18 +357,21 @@ HTTP 컨텍스트 없이는 테스트할 수 없어서, AC4의 "만료됐지만 
 - [x] [화면] `MyPage` — should show my email and name
 - [x] [화면] `MyPage` — should show that no address is registered yet
 
-**총 25개** (정상 6 / 경계 5 / 예외 6 / HTTP 4 / 화면 4)
+**총 29개** (정상 6 / 경계 8 / 예외 7 / HTTP 4 / 화면 4)
+
+> 뒤의 4개는 `@ac-verifier 4`가 ⚠️로 짚은 갭을 메우려고 Red/Green으로 되돌아가
+> 추가한 것이다. 무엇이 왜 모자랐는지는 아래 "ac-verifier가 짚은 갭"에 적었다.
 
 ---
 
 ## AC 대조
 
-| #   | AC                                                                                                                  | 커버하는 시나리오                                                                                                                                                                                                                                                                                                                                                                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Given 가입한 회원, When 올바른 이메일·비밀번호로 로그인하면, Then Access·Refresh 토큰이 httpOnly 쿠키로 내려온다    | `[정상] login — should issue an access token and a refresh token…`<br>`[정상] login — should store the refresh token as a hash…`<br>`[정상] login — should add one refresh token row per login…`<br>`[경계] login — should expire … 15 minutes … 14 days`<br>`[경계] login — case-insensitively`<br>`[정상] POST /auth/login — httpOnly, secure, SameSite=Lax…`<br>`[화면] LoginPage — should send … and move to the my page`   |
-| 2   | Given 틀린 비밀번호, When 로그인하면, Then `AUTH_INVALID_CREDENTIALS`로 거절되고 어느 쪽이 틀렸는지 알려주지 않는다 | `[예외] login — …when no member has that email`<br>`[예외] login — …when the password does not match`<br>`[예외] login — should give the same error code and message…`<br>`[예외] POST /auth/login — should return 401…`<br>`[화면] LoginPage — without telling which field was wrong`                                                                                                                                          |
-| 3   | Given 로그인 상태, When 마이페이지를 열면, Then 내 이메일·이름·주소가 보인다                                        | `[정상] getMyProfile — should return the email and name…`<br>`[경계] getMyProfile — should return a null address…`<br>`[화면] MyPage — should show my email and name`<br>`[화면] MyPage — should show that no address is registered yet`<br>`[정상] authenticate — …when the access token is still valid`                                                                                                                       |
-| 4   | Given Access 토큰이 만료됐고 Refresh는 유효할 때, When 보호 API를 부르면, Then 토큰이 갱신되고 요청이 성공한다      | `[정상] authenticate — should renew the access token…`<br>`[경계] authenticate — should keep the refresh token value unchanged…`<br>`[경계] authenticate — …expiresAt is exactly the current time`<br>`[예외] authenticate — …when neither cookie is present`<br>`[예외] authenticate — …refresh token is unknown`<br>`[정상] GET /auth/me — should set a renewed access cookie…`<br>`[예외] GET /auth/me — should return 401…` |
+| #   | AC                                                                                                                  | 커버하는 시나리오                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Given 가입한 회원, When 올바른 이메일·비밀번호로 로그인하면, Then Access·Refresh 토큰이 httpOnly 쿠키로 내려온다    | `[정상] login — should issue an access token and a refresh token…`<br>`[정상] login — should store the refresh token as a hash…`<br>`[정상] login — should add one refresh token row per login…`<br>`[경계] login — should expire … 15 minutes … 14 days`<br>`[경계] login — case-insensitively`<br>`[정상] POST /auth/login — httpOnly, secure, SameSite=Lax…`<br>`[화면] LoginPage — should send … and move to the my page`                                                                                                                                                                                                                                                                                     |
+| 2   | Given 틀린 비밀번호, When 로그인하면, Then `AUTH_INVALID_CREDENTIALS`로 거절되고 어느 쪽이 틀렸는지 알려주지 않는다 | `[예외] login — …when no member has that email`<br>`[예외] login — …when the password does not match`<br>`[예외] login — should give the same error code and message…`<br>`[예외] login — should still run a password comparison when no member has that email`<br>`[예외] POST /auth/login — should return 401…`<br>`[화면] LoginPage — without telling which field was wrong`                                                                                                                                                                                                                                                                                                                                   |
+| 3   | Given 로그인 상태, When 마이페이지를 열면, Then 내 이메일·이름·주소가 보인다                                        | `[정상] getMyProfile — should return the email and name…`<br>`[경계] getMyProfile — should return a null address…`<br>`[화면] MyPage — should show my email and name`<br>`[화면] MyPage — should show that no address is registered yet`<br>`[정상] authenticate — …when the access token is still valid`                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 4   | Given Access 토큰이 만료됐고 Refresh는 유효할 때, When 보호 API를 부르면, Then 토큰이 갱신되고 요청이 성공한다      | `[정상] authenticate — should renew the access token…`<br>`[경계] authenticate — …one second before its 15-minute expiry without renewing it`<br>`[경계] authenticate — should renew the access token exactly at its 15-minute expiry`<br>`[경계] AccessTokenSigner — …one second before its expiry and reject it exactly at the expiry`<br>`[경계] authenticate — should keep the refresh token value unchanged…`<br>`[경계] authenticate — …expiresAt is exactly the current time`<br>`[예외] authenticate — …when neither cookie is present`<br>`[예외] authenticate — …refresh token is unknown`<br>`[정상] GET /auth/me — should set a renewed access cookie…`<br>`[예외] GET /auth/me — should return 401…` |
 
 **커버리지: AC 4개 전부 커버 / 시나리오 25개 / 미커버 0개**
 
@@ -437,6 +444,48 @@ Red에서 25개 전부 실패(통과 0개)를 확인한 뒤 Green으로 넘어�
       행이 두 개 쌓이는가 — 유니크가 `userId`가 아니라 `tokenHash`에 걸렸다는
       것은 스키마 제약이라 가짜 저장소로는 확인되지 않는다. Testcontainers로
       옮겨야 한다.
+
+---
+
+## ac-verifier가 짚은 갭
+
+`@ac-verifier 4`의 판정은 **✅ 2 / ⚠️ 2 / ❌ 0**이었다. ⚠️ 둘을 메우고 다시
+초록불을 확인했다. 가짜 테스트는 발견되지 않았고, ADR-AUTH-1(세션당 한 행 ·
+`tokenHash` 유니크 · 회전 없음)과 spec-fixed §2.5(15분 / 14일)는 코드와
+일치했다.
+
+### AC2 — 없는 이메일이 응답 시간으로 새어나갔다
+
+에러 코드와 문구는 같았지만 `!user || !(await compare(...))`가 **조기
+반환(short-circuit, 앞 조건에서 결과가 정해지면 뒤를 계산하지 않는 것)**을
+해서, 회원이 없으면 bcrypt를 아예 부르지 않았다. 틀린 비밀번호는 cost 12의
+해시 대조에 수백 밀리초를 쓰는데 없는 이메일은 즉시 돌아오니, **시간만 재면
+가입 여부를 알 수 있는 상태**였다 — AC2가 막으려던 그 노출이다.
+
+회원이 없을 때도 더미 해시(`ABSENT_MEMBER_PASSWORD_HASH`)와 대조해 같은 비용을
+치르게 고쳤다. 더미 값은 아무도 모르는 32바이트 난수를 cost 12로 해시한 것이라
+어떤 비밀번호와도 일치하지 않으며, 원문을 아는 쪽이 없으므로 비밀값이 아니다.
+
+**시간을 재서 단언하지 않았다.** 그런 테스트는 기계가 느린 날 깨진다. 대신
+`compare` **호출 횟수**를 세는 것으로 같은 것을 확인한다 — 조기 반환이
+돌아오면 횟수가 0이 되어 즉시 빨간불이 된다.
+
+### AC4 — 15분 경계가 비어 있었다
+
+"유효함"은 발급 후 1분에서, "만료됨"은 16분에서만 확인하고 있었다. 둘 다
+경계에서 멀어, **만료 판정이 1분 밀려도 테스트는 그대로 통과**한다.
+`exp` 직전 · 정확히 `exp` · `exp` 직후 세 지점을 서명자(`AccessTokenSigner`)와
+갱신 경로(`authenticate`) 양쪽에 채웠다. 구현은 이미 Refresh와 같은 `>=`
+규칙이라 고칠 것이 없었고, 테스트만 보강했다.
+
+### 메우지 않고 남긴 것
+
+| 항목                                                                 | 왜                                                                                                                    |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 컨트롤러 세 개에 흩어진 `toHttpError`·`toFieldErrors` 중복           | 공통화하려면 `signup.controller.ts`·`email-verification.controller.ts`를 함께 고쳐야 하는데 둘 다 이 이슈 범위 밖이다 |
+| 웹 네 화면의 `messageOf` 중복                                        | 같은 이유. 넷 중 둘만 옮기면 오히려 모양이 셋으로 갈린다                                                              |
+| `page.module.css`의 `color: #ffffff`                                 | `--color-on-primary` 토큰이 없다. 만들면 `globals.css`와 #1·#2의 CSS까지 함께 고쳐야 한다                             |
+| Prisma 어댑터 0% 커버리지, `RefreshToken` 행이 두 개 쌓이는지의 확인 | 스키마 제약이라 가짜 저장소로 확인되지 않는다. Testcontainers 몫                                                      |
 
 ---
 

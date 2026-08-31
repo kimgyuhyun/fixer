@@ -1,6 +1,6 @@
 import { hash } from 'bcrypt';
 import { AUTH_TOKEN_RULES, LOGIN_ERRORS } from '@fixer/shared';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { AccessTokenSigner } from './access-token';
 import {
   LoginService,
@@ -9,6 +9,26 @@ import {
   type RefreshTokenStore,
 } from './login.service';
 import type { UserRecord } from './signup.service';
+
+/**
+ * `compare` 호출 횟수만 센다. 실제 bcrypt를 그대로 부르므로 대조 결과는
+ * 진짜다 — 세는 것 말고는 아무것도 바꾸지 않는다.
+ *
+ * 시간을 재서 단언하면 기계가 느린 날 깨진다. "몇 번 불렀나"는 같은 것을
+ * 확인하면서도 항상 같은 답이 나온다.
+ */
+const bcryptCalls = vi.hoisted(() => ({ compare: 0 }));
+
+vi.mock('bcrypt', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('bcrypt')>();
+  return {
+    ...actual,
+    compare: (data: string, encrypted: string) => {
+      bcryptCalls.compare += 1;
+      return actual.compare(data, encrypted);
+    },
+  };
+});
 
 const SECRET = 'test-secret-value-for-hs256-signing';
 const EMAIL = 'worker@example.com';
@@ -185,6 +205,19 @@ describe('login', () => {
     expect(codeOf(error)).toBe(LOGIN_ERRORS.INVALID_CREDENTIALS);
   });
 
+  it('should still run a password comparison when no member has that email', async () => {
+    const { service } = setup();
+    bcryptCalls.compare = 0;
+
+    await rejectionOf(
+      service.login({ email: 'nobody@example.com', password: PASSWORD }, NOW),
+    );
+
+    // 회원이 없다고 대조를 건너뛰면 그 경로만 눈에 띄게 빨라진다. 코드와
+    // 문구가 같아도 걸린 시간이 가입 여부를 알려준다. (AC2)
+    expect(bcryptCalls.compare).toBe(1);
+  });
+
   it('should give the same error code and message for a wrong email and a wrong password', async () => {
     const { service } = setup();
 
@@ -235,6 +268,49 @@ describe('authenticate', () => {
         refreshToken: session.refreshToken.value,
       },
       afterExpiry,
+    );
+
+    expect(authenticated.userId).toBe('usr_1');
+    expect(authenticated.renewedAccessToken?.value).not.toBe(
+      session.accessToken.value,
+    );
+  });
+
+  it('should still accept the access token one second before its 15-minute expiry without renewing it', async () => {
+    const { service } = setup();
+    const session = await service.login(
+      { email: EMAIL, password: PASSWORD },
+      NOW,
+    );
+
+    const authenticated = await service.authenticate(
+      {
+        accessToken: session.accessToken.value,
+        refreshToken: session.refreshToken.value,
+      },
+      new Date(session.accessToken.expiresAt.getTime() - 1000),
+    );
+
+    // 아직 살아 있으므로 갱신하지 않는다. 여기서 갱신하면 15분이 사실상
+    // 무의미해지고, 만료 경계가 밀려도 아무도 눈치채지 못한다.
+    expect(authenticated.userId).toBe('usr_1');
+    expect(authenticated.renewedAccessToken).toBeUndefined();
+  });
+
+  it('should renew the access token exactly at its 15-minute expiry', async () => {
+    const { service } = setup();
+    const session = await service.login(
+      { email: EMAIL, password: PASSWORD },
+      NOW,
+    );
+
+    const authenticated = await service.authenticate(
+      {
+        accessToken: session.accessToken.value,
+        refreshToken: session.refreshToken.value,
+      },
+      // 만료 시각 그 자체는 이미 만료다. Refresh 판정과 같은 경계를 쓴다.
+      session.accessToken.expiresAt,
     );
 
     expect(authenticated.userId).toBe('usr_1');
