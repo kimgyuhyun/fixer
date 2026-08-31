@@ -108,12 +108,55 @@ export const coordinateSchema = z.object({
 export type Coordinate = z.infer<typeof coordinateSchema>;
 
 /**
+ * 카카오 우편번호 팝업이 주는 모양. **카카오 필드명이 등장하는 유일한 곳**이다.
+ *
+ * 카카오가 이름을 바꾸면 고칠 곳이 이 파일 하나다. (ADR-AUTH-2 Consequences)
+ */
+const kakaoPostcodeResultSchema = z.object({
+  /** 5자리 새 우편번호 */
+  zonecode: z.string(),
+  roadAddress: z.string(),
+  jibunAddress: z.string(),
+  /**
+   * 지번만 있는 주소를 고르면 카카오가 `roadAddress`를 비우고 여기에 담아 준다.
+   * 반대 경우도 같아서 둘 다 대체값으로 쓴다.
+   */
+  autoRoadAddress: z.string().optional(),
+  autoJibunAddress: z.string().optional(),
+  sido: z.string(),
+  sigungu: z.string(),
+});
+
+/** 카카오 로컬 주소검색 응답. `x`가 경도, `y`가 위도다 */
+const kakaoLocalResponseSchema = z.object({
+  documents: z.array(
+    z.object({
+      x: z.coerce.number(),
+      y: z.coerce.number(),
+    }),
+  ),
+});
+
+/** 비어 있으면 대체값을 쓴다. 카카오는 없는 값을 빈 문자열로 준다 */
+function orFallback(value: string, fallback: string | undefined): string {
+  return value !== '' ? value : (fallback ?? '');
+}
+
+/**
  * 카카오 우편번호 팝업 결과를 우리 모양으로 옮긴다.
  *
  * 모양이 어긋나면 `ZodError`를 던진다 — 주소가 없으면 저장할 것이 없기 때문이다.
  */
-export function parseKakaoPostcodeResult(_raw: unknown): AddressSelection {
-  throw new Error('not implemented');
+export function parseKakaoPostcodeResult(raw: unknown): AddressSelection {
+  const result = kakaoPostcodeResultSchema.parse(raw);
+
+  return addressSelectionSchema.parse({
+    postalCode: result.zonecode,
+    roadAddress: orFallback(result.roadAddress, result.autoRoadAddress),
+    jibunAddress: orFallback(result.jibunAddress, result.autoJibunAddress),
+    sido: result.sido,
+    sigungu: result.sigungu,
+  });
 }
 
 /**
@@ -122,6 +165,14 @@ export function parseKakaoPostcodeResult(_raw: unknown): AddressSelection {
  * 던지지 않고 `null`을 준다. 좌표는 없어도 되는 값이라 실패가 예외가 아니라
  * 결과다. (이슈 #3 AC3)
  */
-export function parseKakaoCoordinate(_raw: unknown): Coordinate | null {
-  throw new Error('not implemented');
+export function parseKakaoCoordinate(raw: unknown): Coordinate | null {
+  const parsed = kakaoLocalResponseSchema.safeParse(raw);
+  const first = parsed.success ? parsed.data.documents[0] : undefined;
+
+  if (first === undefined) {
+    return null;
+  }
+
+  // x가 경도, y가 위도다. 뒤집으면 거리 검색이 통째로 어긋난다.
+  return { lat: first.y, lng: first.x };
 }

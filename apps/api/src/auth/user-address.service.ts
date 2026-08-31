@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import type {
-  AddressErrorCode,
-  Coordinate,
-  RegisterAddressRequest,
-  RegisteredAddress,
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  ADDRESS_ERRORS,
+  ADDRESS_RULES,
+  registerAddressRequestSchema,
+  type AddressErrorCode,
+  type Coordinate,
+  type RegisterAddressRequest,
+  type RegisteredAddress,
 } from '@fixer/shared';
 
 /**
@@ -75,17 +78,79 @@ export interface Geocoder {
 
 @Injectable()
 export class UserAddressService {
+  private readonly logger = new Logger(UserAddressService.name);
+
   constructor(
     private readonly addresses: UserAddressStore,
     private readonly members: MemberChecker,
     private readonly geocoder: Geocoder,
   ) {}
 
-  /** 회원 확인 → 검증 → 좌표 시도 → 저장 순으로 간다 */
-  register(
-    _userId: string,
-    _input: RegisterAddressRequest,
+  /** 검증 → 회원 확인 → 좌표 시도 → 저장 순으로 간다 */
+  async register(
+    userId: string,
+    input: RegisterAddressRequest,
   ): Promise<RegisteredAddress> {
-    throw new Error('not implemented');
+    // 검증이 가장 먼저다. 형식이 틀린 요청은 저장소를 건드리지 않고 끝난다.
+    // (`SignupService`와 같은 순서)
+    const selected = registerAddressRequestSchema.parse(input);
+
+    // 없는 회원에 주소를 매달면 FK 위반이 그대로 올라가 500이 된다.
+    if (!(await this.members.exists(userId))) {
+      throw new UserAddressError(ADDRESS_ERRORS.MEMBER_NOT_FOUND);
+    }
+
+    const coordinate = await this.toCoordinateOrNull(selected);
+
+    const saved = await this.addresses.create({
+      userId,
+      label: selected.label ?? ADDRESS_RULES.defaultLabel,
+      postalCode: selected.postalCode,
+      roadAddress: selected.roadAddress,
+      jibunAddress: selected.jibunAddress,
+      sido: selected.sido,
+      sigungu: selected.sigungu,
+      lat: coordinate?.lat ?? null,
+      lng: coordinate?.lng ?? null,
+    });
+
+    return {
+      id: saved.id,
+      label: saved.label,
+      postalCode: saved.postalCode,
+      roadAddress: saved.roadAddress,
+      jibunAddress: saved.jibunAddress,
+      sido: saved.sido,
+      sigungu: saved.sigungu,
+      lat: saved.lat,
+      lng: saved.lng,
+      createdAt: saved.createdAt.toISOString(),
+    };
+  }
+
+  /**
+   * 좌표를 구해 본다. 못 구하면 `null`이다.
+   *
+   * 포트는 `null`을 주기로 했지만 실제 구현은 네트워크 예외를 던질 수 있다.
+   * 컨트롤러까지 올라가면 500이 되어 AC3("저장 자체는 성공한다")이 깨지므로
+   * 여기서 끊는다.
+   */
+  private async toCoordinateOrNull(selected: {
+    roadAddress: string;
+    jibunAddress: string;
+  }): Promise<Coordinate | null> {
+    // 도로명이 없는 주소가 있다. 그때는 지번으로 묻는다.
+    const query =
+      selected.roadAddress !== ''
+        ? selected.roadAddress
+        : selected.jibunAddress;
+
+    try {
+      return await this.geocoder.toCoordinate(query);
+    } catch {
+      // 주소는 개인정보라 로그에 남기지 않는다. 실패했다는 사실만 남긴다.
+      this.logger.warn('좌표 변환에 실패해 좌표 없이 주소를 저장한다.');
+      return null;
+    }
   }
 }
