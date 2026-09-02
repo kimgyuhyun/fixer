@@ -85,6 +85,19 @@ describe('SignupAddressPage', () => {
     );
   });
 
+  it('should show an error message when opening the popup fails', async () => {
+    // 스크립트를 못 내려받거나 카카오가 이상한 모양을 주면 여기로 온다.
+    // try/catch가 없으면 처리되지 않은 예외가 되고 화면은 아무 반응도 하지 않는다.
+    popup.mockRejectedValue(new Error('script load failed'));
+    render(<SignupAddressPage />);
+
+    await chooseAddress();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '주소 검색을 열지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    );
+  });
+
   it('should keep the form empty when the popup is closed without choosing', async () => {
     popup.mockResolvedValue(null);
     render(<SignupAddressPage />);
