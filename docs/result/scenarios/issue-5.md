@@ -89,7 +89,7 @@ export const config = { matcher: [...] }
 
 ### 지워진 토큰은 거절 (AC4)
 
-- [x] [예외] `authenticate` — should reject with AUTH_SESSION_EXPIRED when the refresh token row was deleted
+- [x] [예외] `authenticate` — should reject with AUTH_UNAUTHENTICATED when the refresh token row was deleted
 - [x] [예외] `GET /auth/me` — should return 401 when the refresh token was deleted by a logout
 
 ### 보호 페이지 접근 (AC2)
@@ -107,9 +107,15 @@ export const config = { matcher: [...] }
 ### 화면 (AC1·AC2)
 
 - [x] [화면] `MyPage` — should call the logout endpoint and move to /login when 로그아웃 is pressed
+- [x] [화면] `MyPage` — should invalidate the client router cache so a back navigation cannot replay /my
 - [x] [화면] `MyPage` — should still move to /login when the logout request fails
 
-**총 16개** (정상 7 / 경계 6 / 예외 2 / 화면 2 — 일부 중복 집계 없음)
+**총 17개** (정상 7 / 경계 6 / 예외 2 / 화면 3)
+
+> AC 검증에서 잡힌 갭으로 화면 시나리오 하나가 늘었다. `spec-fixed.md` §2.5는
+> 뒤로가기 방어를 **셋**으로 요구하는데(미들웨어 검사 / `no-store` / 클라이언트
+> 라우터 캐시 무효화) 셋째가 빠져 있었다. bfcache는 `no-store`로 막히지만 Next의
+> 클라이언트 Router Cache는 별개 메커니즘이라 따로 지워야 한다.
 
 ---
 
@@ -117,12 +123,12 @@ export const config = { matcher: [...] }
 
 | #   | AC                                                          | 커버하는 시나리오                                                                                                                                                                                                                                                                                                               |
 | --- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | 로그아웃하면 쿠키가 지워지고 서버의 Refresh 토큰도 삭제된다 | `logout — should delete the refresh token row...` 외 3<br>`POST /auth/logout — should return 204 and clear both auth cookies` 외 1<br>`MyPage — should call the logout endpoint...`                                                                                                                                             |
+| 1   | 로그아웃하면 쿠키가 지워지고 서버의 Refresh 토큰도 삭제된다 | `logout — should delete the refresh token row...` 외 3<br>`POST /auth/logout — should return 204 and clear both auth cookies` 외 1<br>`MyPage — should call the logout endpoint...`<br>`MyPage — should invalidate the client router cache...`                                                                                  |
 | 2   | 로그아웃 직후 뒤로가기로 마이페이지에 가면 로그인 화면으로  | `middleware — should redirect to /login when no auth cookie is present`<br>`middleware — should let the request through...`<br>`middleware — should not touch public paths...`<br>`middleware — should redirect ... only the access cookie was cleared`<br>`MyPage — should still move to /login when the logout request fails` |
 | 3   | 보호 페이지 응답에 `Cache-Control: no-store`가 있다         | `middleware — should set Cache-Control no-store on a protected page response`<br>`middleware — should not set no-store on a public page response`                                                                                                                                                                               |
-| 4   | 로그아웃된 Refresh 토큰으로 갱신을 시도하면 거절된다        | `authenticate — should reject with AUTH_SESSION_EXPIRED when the refresh token row was deleted`<br>`GET /auth/me — should return 401 when the refresh token was deleted by a logout`                                                                                                                                            |
+| 4   | 로그아웃된 Refresh 토큰으로 갱신을 시도하면 거절된다        | `authenticate — should reject with AUTH_UNAUTHENTICATED when the refresh token row was deleted`<br>`GET /auth/me — should return 401 when the refresh token was deleted by a logout`                                                                                                                                            |
 
-**커버리지: AC 4개 전부 커버 / 시나리오 16개 / 미커버 0개**
+**커버리지: AC 4개 전부 커버 / 시나리오 17개 / 미커버 0개**
 
 ---
 

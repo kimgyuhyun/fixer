@@ -21,6 +21,11 @@ export default function MyPage() {
    *
    * 서버가 실패해도 로그인 화면으로 보낸다 — 여기 남아 있으면 로그아웃한 줄
    * 알았는데 보호 페이지가 그대로 보인다. 사용자가 보기에 그게 더 나쁘다.
+   *
+   * `spec-fixed.md` §2.5가 요구하는 뒤로가기 방어 셋 중 세 번째가
+   * `router.refresh()`다. 미들웨어 검사와 `no-store`는 브라우저의 HTTP 캐시를
+   * 막지만, Next의 **클라이언트 Router Cache는 별개 메커니즘**이라 여기서
+   * 명시적으로 지우지 않으면 뒤로가기가 이 화면을 그대로 되살린다.
    */
   async function logout() {
     try {
@@ -28,6 +33,7 @@ export default function MyPage() {
     } catch {
       // 무시하고 아래로 간다
     }
+    router.refresh();
     router.replace('/login');
   }
 

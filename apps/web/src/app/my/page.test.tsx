@@ -5,8 +5,9 @@ import MyPage from './page';
 
 /** 로그아웃 뒤에 어디로 보냈는지만 본다. 실제 라우팅은 Next의 몫이다 */
 const replace = vi.hoisted(() => vi.fn());
+const refresh = vi.hoisted(() => vi.fn());
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace, push: replace, refresh: vi.fn() }),
+  useRouter: () => ({ replace, push: replace, refresh }),
 }));
 
 const EMAIL = 'worker@example.com';
@@ -76,6 +77,23 @@ describe('MyPage 로그아웃', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(replace).toHaveBeenCalledWith('/login');
+  });
+
+  it('should invalidate the client router cache so a back navigation cannot replay /my', async () => {
+    // spec-fixed §2.5의 세 번째 방어. bfcache는 no-store로 막히지만 Next의
+    // 클라이언트 Router Cache는 별개 메커니즘이라 명시적으로 지워야 한다.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(profile()),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<MyPage />);
+    await screen.findByText(EMAIL);
+
+    await userEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+
+    expect(refresh).toHaveBeenCalled();
   });
 
   it('should still move to /login when the logout request fails', async () => {
