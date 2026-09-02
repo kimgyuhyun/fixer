@@ -69,6 +69,22 @@ GET /categories  →  200 Category[]
 - [x] [정상] `listActive` — should order the categories by sortOrder ascending
 - [x] [경계] `listActive` — should return an empty array when every category is inactive
 - [x] [정상] `GET /categories` — should return 200 with the active categories
+- [x] [정상] `GET /categories` — should not leak isActive to the response
+
+### 실제 쿼리 (AC 검증에서 갭으로 잡혀 추가)
+
+서비스 테스트의 가짜 저장소가 **자기가 필터·정렬을 하므로** 실제 Prisma 쿼리의
+정확성을 전혀 증명하지 못했다. 거르고 정렬하는 코드는 `PrismaCategoryStore` 하나뿐이다.
+
+- [x] [정상] `PrismaCategoryStore.listActive` — should ask only for active categories
+- [x] [정상] `PrismaCategoryStore.listActive` — should ask for them ordered by sortOrder ascending
+- [x] [정상] `PrismaCategoryStore.listActive` — should return the rows as the database gave them
+
+### seed 등록 (AC 검증에서 갭으로 잡혀 추가)
+
+`prisma.config.ts`에 `migrations.seed`가 없어 `prisma db seed`가 seed.ts를 찾지
+못하고 "No seed command configured"로 조용히 끝났다. **AC1의 전제인 "seed된
+카테고리"를 만들 방법이 아예 없었다.** 등록하고 실제로 돌려 6건이 들어가는 것을 확인했다.
 
 ### 안내 문구 (AC2)
 
@@ -82,7 +98,7 @@ GET /categories  →  200 Category[]
 - [x] [화면] `NewJobPostPage` — should swap the placeholder when another category is chosen
 - [x] [화면] `NewJobPostPage` — should show a guide before any category is chosen
 
-**총 10개** (정상 5 / 경계 3 / 화면 4 — 일부 중복 집계 없음)
+**총 14개** (정상 9 / 경계 3 / 화면 4 — 일부 중복 집계 없음)
 
 > `categorySchema` 두 건은 Red에서 바로 통과한다. zod 스키마는 선언 자체가
 > 구현이라 "시그니처만 있는 stub"이 성립하지 않는다. 가짜 테스트가 아니라
@@ -99,7 +115,7 @@ GET /categories  →  200 Category[]
 | 2   | 카테고리를 고르면 그 `placeholderText`가 상세 내용 입력란에 뜬다 | `categorySchema — placeholderText through unchanged` · `— reject empty`<br>`NewJobPostPage — should show the placeholderText...` · `— should swap the placeholder...` · `— guide before any category` |
 | 3   | `isActive=false` 카테고리는 보이지 않는다                        | `listActive — only active` · `— empty when every category is inactive`<br>`NewJobPostPage — should list the active categories in sort order`                                                          |
 
-**커버리지: AC 3개 전부 커버 / 시나리오 10개 / 미커버 0개**
+**커버리지: AC 3개 전부 커버 / 시나리오 14개 / 미커버 0개**
 
 ---
 

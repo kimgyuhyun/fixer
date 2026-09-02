@@ -1,5 +1,10 @@
+import { config as loadEnv } from 'dotenv';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+
+// 환경변수는 저장소 루트의 .env 하나로만 관리한다.
+// prisma.config.ts와 같은 이유로 두 단계 위를 가리킨다.
+loadEnv({ path: '../../.env' });
 
 /**
  * 카테고리 초기값. (`spec-fixed.md` §3.1 — 관리자 CRUD 화면 없이 seed로만 관리)
