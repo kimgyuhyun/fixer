@@ -28,6 +28,12 @@ const READY: Feature[] = [
     summary: '이메일로 6자리 코드를 받아 10분 안에 검증한다.',
     href: '/signup/verify-email',
   },
+  {
+    issue: 11,
+    title: '공고 카테고리 안내',
+    summary: '카테고리를 고르면 그 업종에서 적어야 할 것이 안내된다.',
+    href: '/job-posts/new',
+  },
 ];
 
 /** 아직 만들지 않은 것. 이 화면이 "무엇이 없는지"까지 말하게 한다. */

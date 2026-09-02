@@ -21,6 +21,6 @@ export class CategoryService {
   constructor(private readonly store: CategoryStore) {}
 
   async listActive(): Promise<CategoryRecord[]> {
-    throw new Error('not implemented');
+    return this.store.listActive();
   }
 }

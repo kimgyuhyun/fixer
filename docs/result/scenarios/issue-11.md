@@ -65,22 +65,22 @@ GET /categories  →  200 Category[]
 
 ### 목록 조회 (AC1·AC3)
 
-- [ ] [정상] `listActive` — should return only active categories
-- [ ] [정상] `listActive` — should order the categories by sortOrder ascending
-- [ ] [경계] `listActive` — should return an empty array when every category is inactive
-- [ ] [정상] `GET /categories` — should return 200 with the active categories
+- [x] [정상] `listActive` — should return only active categories
+- [x] [정상] `listActive` — should order the categories by sortOrder ascending
+- [x] [경계] `listActive` — should return an empty array when every category is inactive
+- [x] [정상] `GET /categories` — should return 200 with the active categories
 
 ### 안내 문구 (AC2)
 
-- [ ] [정상] `categorySchema` — should carry placeholderText through unchanged
-- [ ] [경계] `categorySchema` — should reject a category whose placeholderText is empty
+- [x] [정상] `categorySchema` — should carry placeholderText through unchanged
+- [x] [경계] `categorySchema` — should reject a category whose placeholderText is empty
 
 ### 화면 (AC1·AC2·AC3)
 
-- [ ] [화면] `NewJobPostPage` — should list the active categories in sort order
-- [ ] [화면] `NewJobPostPage` — should show the placeholderText of the chosen category in the detail field
-- [ ] [화면] `NewJobPostPage` — should swap the placeholder when another category is chosen
-- [ ] [화면] `NewJobPostPage` — should show a guide before any category is chosen
+- [x] [화면] `NewJobPostPage` — should list the active categories in sort order
+- [x] [화면] `NewJobPostPage` — should show the placeholderText of the chosen category in the detail field
+- [x] [화면] `NewJobPostPage` — should swap the placeholder when another category is chosen
+- [x] [화면] `NewJobPostPage` — should show a guide before any category is chosen
 
 **총 10개** (정상 5 / 경계 3 / 화면 4 — 일부 중복 집계 없음)
 
