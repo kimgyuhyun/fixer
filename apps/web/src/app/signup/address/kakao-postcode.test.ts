@@ -25,9 +25,15 @@ const KAKAO_RESULT = {
  */
 function stubDaum(behave: (options: PostcodeOptions) => void) {
   const open = vi.fn();
-  const Postcode = vi.fn((options: PostcodeOptions) => ({
-    open: open.mockImplementation(() => behave(options)),
-  }));
+
+  // 화살표 함수는 `new`로 부를 수 없다. 카카오가 생성자를 주므로 클래스로 흉내 낸다.
+  class Postcode {
+    constructor(options: PostcodeOptions) {
+      open.mockImplementation(() => behave(options));
+    }
+    open = open;
+  }
+
   vi.stubGlobal('daum', { Postcode });
   return { Postcode, open };
 }

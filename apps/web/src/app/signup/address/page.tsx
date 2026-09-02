@@ -62,7 +62,16 @@ export default function SignupAddressPage() {
   async function search() {
     setError(null);
 
-    const chosen = await openPostcodePopup();
+    // 스크립트를 못 내려받거나 카카오가 모르는 모양을 주면 여기로 온다.
+    // 잡지 않으면 처리되지 않은 예외가 되고 화면은 아무 반응도 하지 않는다.
+    let chosen: AddressSelection | null;
+    try {
+      chosen = await openPostcodePopup();
+    } catch {
+      setError('주소 검색을 열지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+
     if (chosen === null) {
       return;
     }

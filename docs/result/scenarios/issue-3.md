@@ -280,49 +280,49 @@ export function openPostcodePopup(): Promise<AddressSelection | null>;
 
 ### 정상
 
-- [ ] [정상] `parseKakaoPostcodeResult` — should map zonecode, roadAddress and jibunAddress into a postal code and two address lines
-- [ ] [정상] `parseKakaoPostcodeResult` — should carry sido and sigungu through unchanged
-- [ ] [정상] `parseKakaoCoordinate` — should read lng from x and lat from y of the first document
-- [ ] [정상] `register` — should store the decomposed address with sido and sigungu when the member exists
-- [ ] [정상] `register` — should store the coordinate that the geocoder returned
-- [ ] [정상] `register` — should label the address 기본 when no label was given
+- [x] [정상] `parseKakaoPostcodeResult` — should map zonecode, roadAddress and jibunAddress into a postal code and two address lines
+- [x] [정상] `parseKakaoPostcodeResult` — should carry sido and sigungu through unchanged
+- [x] [정상] `parseKakaoCoordinate` — should read lng from x and lat from y of the first document
+- [x] [정상] `register` — should store the decomposed address with sido and sigungu when the member exists
+- [x] [정상] `register` — should store the coordinate that the geocoder returned
+- [x] [정상] `register` — should label the address 기본 when no label was given
 
 ### 경계
 
-- [ ] [경계] `parseKakaoPostcodeResult` — should keep sigungu empty when the popup returns an empty sigungu
-- [ ] [경계] `parseKakaoPostcodeResult` — should fall back to autoRoadAddress when roadAddress is empty
-- [ ] [경계] `parseKakaoCoordinate` — should return null when documents is an empty array
-- [ ] [경계] `register` — should store lat and lng as null when the geocoder returns null
-- [ ] [경계] `register` — should reject a label that is only whitespace
-- [ ] [경계] `register` — should not touch the address store when the input fails validation
+- [x] [경계] `parseKakaoPostcodeResult` — should keep sigungu empty when the popup returns an empty sigungu
+- [x] [경계] `parseKakaoPostcodeResult` — should fall back to autoRoadAddress when roadAddress is empty
+- [x] [경계] `parseKakaoCoordinate` — should return null when documents is an empty array
+- [x] [경계] `register` — should store lat and lng as null when the geocoder returns null
+- [x] [경계] `register` — should reject a label that is only whitespace
+- [x] [경계] `register` — should not touch the address store when the input fails validation
 
 ### 예외
 
-- [ ] [예외] `parseKakaoPostcodeResult` — should reject when both the road address and the jibun address are empty
-- [ ] [예외] `parseKakaoPostcodeResult` — should reject when the postal code is not 5 digits
-- [ ] [예외] `parseKakaoCoordinate` — should return null when the response has no documents field
-- [ ] [예외] `register` — should still store the address when the geocoder throws
-- [ ] [예외] `register` — should throw MEMBER_NOT_FOUND when the member does not exist
-- [ ] [예외] `register` — should not call the geocoder at all when the member does not exist
+- [x] [예외] `parseKakaoPostcodeResult` — should reject when both the road address and the jibun address are empty
+- [x] [예외] `parseKakaoPostcodeResult` — should reject when the postal code is not 5 digits
+- [x] [예외] `parseKakaoCoordinate` — should return null when the response has no documents field
+- [x] [예외] `register` — should still store the address when the geocoder throws
+- [x] [예외] `register` — should throw MEMBER_NOT_FOUND when the member does not exist
+- [x] [예외] `register` — should not call the geocoder at all when the member does not exist
 
 ### 경계 · HTTP
 
-- [ ] [정상] `POST /members/:userId/addresses` — should return 201 with the created address
-- [ ] [정상] `POST /members/:userId/addresses` — should return 201 with null lat and lng when geocoding failed
-- [ ] [예외] `POST /members/:userId/addresses` — should return 404 with MEMBER_NOT_FOUND when the member does not exist
-- [ ] [예외] `POST /members/:userId/addresses` — should return 400 with VALIDATION_FAILED and a postalCode field error when the postal code is malformed
-- [ ] [예외] `POST /members/:userId/addresses` — should let an unknown error through so it becomes 500
+- [x] [정상] `POST /members/:userId/addresses` — should return 201 with the created address
+- [x] [정상] `POST /members/:userId/addresses` — should return 201 with null lat and lng when geocoding failed
+- [x] [예외] `POST /members/:userId/addresses` — should return 404 with MEMBER_NOT_FOUND when the member does not exist
+- [x] [예외] `POST /members/:userId/addresses` — should return 400 with VALIDATION_FAILED and a postalCode field error when the postal code is malformed
+- [x] [예외] `POST /members/:userId/addresses` — should let an unknown error through so it becomes 500
 
 ### 화면
 
 AC1의 "폼에 채워진다"는 화면 없이는 확인할 수 없다.
 
-- [ ] [화면] `SignupAddressPage` — should fill the road address, jibun address and postal code when the popup returns a selection
-- [ ] [화면] `SignupAddressPage` — should keep the form empty when the popup is closed without choosing
-- [ ] [화면] `SignupAddressPage` — should send the chosen address and show the completion state when saving succeeds
-- [ ] [화면] `SignupAddressPage` — should send no request when no address has been chosen yet
-- [ ] [화면] `SignupAddressPage` — should show the server message when the server rejects the save
-- [ ] [화면] `SignupAddressPage` — should guide back to signup when no signed-up member was carried over
+- [x] [화면] `SignupAddressPage` — should fill the road address, jibun address and postal code when the popup returns a selection
+- [x] [화면] `SignupAddressPage` — should keep the form empty when the popup is closed without choosing
+- [x] [화면] `SignupAddressPage` — should send the chosen address and show the completion state when saving succeeds
+- [x] [화면] `SignupAddressPage` — should send no request when no address has been chosen yet
+- [x] [화면] `SignupAddressPage` — should show the server message when the server rejects the save
+- [x] [화면] `SignupAddressPage` — should guide back to signup when no signed-up member was carried over
 
 ### 팝업 자체 (AC 검증에서 갭으로 잡혀 추가)
 
@@ -332,9 +332,9 @@ AC1의 "폼에 채워진다"는 화면 없이는 확인할 수 없다.
 카카오 스크립트를 내려받는 부분은 여전히 테스트하지 않는다 — 외부 서비스이므로
 `window.daum`을 가짜로 심고 **우리 코드가 그것을 어떻게 쓰는지**만 본다.
 
-- [ ] [정상] `openPostcodePopup` — should resolve the parsed selection when the user picks an address in the popup
-- [ ] [정상] `openPostcodePopup` — should resolve null when the popup is closed without choosing
-- [ ] [예외] `SignupAddressPage` — should show an error message when opening the popup fails
+- [x] [정상] `openPostcodePopup` — should resolve the parsed selection when the user picks an address in the popup
+- [x] [정상] `openPostcodePopup` — should resolve null when the popup is closed without choosing
+- [x] [예외] `SignupAddressPage` — should show an error message when opening the popup fails
 
 **총 32개** (정상 8 / 경계 6 / 예외 7 / HTTP 5 / 화면 6)
 
