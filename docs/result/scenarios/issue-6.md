@@ -106,6 +106,7 @@ POST /auth/password-reset/confirm  →  204   (재설정)
 - [x] [경계] `requestReset` — should resolve without sending anything when no member has that email
 - [x] [경계] `requestReset` — should find the member case-insensitively
 - [x] [정상] `POST /auth/password-reset` — should return 204
+- [x] [예외] `POST /auth/password-reset` — should return 400 when the email is malformed
 - [x] [경계] `POST /auth/password-reset` — should return 204 even when the email belongs to nobody
 
 ### 재설정 실행 (AC2)
@@ -115,6 +116,7 @@ POST /auth/password-reset/confirm  →  204   (재설정)
 - [x] [정상] `resetPassword` — should mark the token consumed
 - [x] [경계] `resetPassword` — should reject a new password shorter than 8 characters and change nothing
 - [x] [정상] `POST /auth/password-reset/confirm` — should return 204
+- [x] [경계] `POST /auth/password-reset/confirm` — should return 400 without calling the service when the new password is too short
 
 ### 토큰 재사용·만료 (AC3)
 
@@ -128,8 +130,16 @@ POST /auth/password-reset/confirm  →  204   (재설정)
 
 - [x] [화면] `MyPage` — should not offer a 비밀번호 변경 menu **(회귀 방지 — Red에서 이미 통과한다)**
 - [x] [화면] `PasswordResetPage` — should show a sent notice after requesting a reset mail
+- [x] [화면] `PasswordResetPage` — should show the same notice when the email belongs to nobody
+- [x] [화면] `PasswordResetConfirmPage` — should submit the token from the URL query with the entered password
+- [x] [화면] `PasswordResetConfirmPage` — should show the server message when the token was already used
+- [x] [화면] `PasswordResetConfirmPage` — should reject a password shorter than 8 characters before calling fetch
 
-**총 18개** (정상 8 / 경계 5 / 예외 3 / 화면 2)
+**총 25개** (정상 8 / 경계 7 / 예외 4 / 화면 6)
+
+> 처음엔 18개로 셌고 체크박스를 일괄로 채웠는데, **HTTP 컨트롤러 테스트와 confirm
+> 화면 테스트를 쓰지도 않고 완료로 표시**했다. AC 검증이 그걸 잡아 7개를 더 썼다.
+> 체크박스는 테스트를 실제로 쓴 뒤에 하나씩 채워야 한다.
 
 > AC4는 "메뉴가 **없다**"라 구현할 것이 없고, 그 테스트는 Red 단계에서 이미 통과한다.
 > 가짜 테스트가 아니라 **회귀 방지**다 — 나중에 누가 마이페이지에 변경 메뉴를 붙이면
@@ -146,7 +156,7 @@ POST /auth/password-reset/confirm  →  204   (재설정)
 | 3   | 이미 쓴 토큰을 다시 쓰면 거절된다                                | `resetPassword — ...already consumed`<br>`...has expired`<br>`...does not exist`<br>`...exactly at the expiry instant`<br>`POST .../confirm — should return 400...`                                                                                                                                            |
 | 4   | 마이페이지에 "비밀번호 변경" 메뉴가 없다                         | `MyPage — should not offer a 비밀번호 변경 menu`                                                                                                                                                                                                                                                               |
 
-**커버리지: AC 4개 전부 커버 / 시나리오 18개 / 미커버 0개**
+**커버리지: AC 4개 전부 커버 / 시나리오 25개 / 미커버 0개**
 
 ---
 
