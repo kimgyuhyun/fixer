@@ -67,6 +67,8 @@ export interface EmailVerificationStore {
 
 export interface MailProvider {
   sendVerificationCode(email: string, code: string): Promise<void>;
+  /** 재설정 링크(#6). 토큰은 링크 쿼리에 실린다 */
+  sendPasswordResetLink(email: string, token: string): Promise<void>;
 }
 
 const COOLDOWN_MS = EMAIL_VERIFICATION_RULES.resendCooldownSeconds * 1000;

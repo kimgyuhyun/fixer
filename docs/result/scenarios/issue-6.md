@@ -126,10 +126,14 @@ POST /auth/password-reset/confirm  →  204   (재설정)
 
 ### 마이페이지에 변경 메뉴가 없다 (AC4)
 
-- [ ] [화면] `MyPage` — should not offer a 비밀번호 변경 menu
+- [ ] [화면] `MyPage` — should not offer a 비밀번호 변경 menu **(회귀 방지 — Red에서 이미 통과한다)**
 - [ ] [화면] `PasswordResetPage` — should show a sent notice after requesting a reset mail
 
 **총 18개** (정상 8 / 경계 5 / 예외 3 / 화면 2)
+
+> AC4는 "메뉴가 **없다**"라 구현할 것이 없고, 그 테스트는 Red 단계에서 이미 통과한다.
+> 가짜 테스트가 아니라 **회귀 방지**다 — 나중에 누가 마이페이지에 변경 메뉴를 붙이면
+> 이 테스트가 깨져 §2.4를 어긴 것을 알려준다. Red 판정에서 이 한 건은 제외해 센다.
 
 ---
 

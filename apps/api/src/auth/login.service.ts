@@ -53,6 +53,8 @@ export interface RefreshTokenStore {
   findByTokenHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
   /** 로그아웃이 그 세션의 행 하나만 지운다 (ADR-AUTH-1) */
   deleteByTokenHash(tokenHash: string): Promise<void>;
+  /** 비밀번호 재설정이 그 회원의 세션을 전부 끊는다 (spec-fixed §2.4) */
+  deleteAllForUser(userId: string): Promise<void>;
 }
 
 /**
@@ -66,6 +68,8 @@ export interface RefreshTokenStore {
 export interface AuthUserStore {
   findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
+  /** 재설정(#6)이 새 해시로 바꾼다 */
+  updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
 }
 
 /** 로그인이 발급한 것. 컨트롤러가 이걸 쿠키 두 개로 옮긴다 */

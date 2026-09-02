@@ -116,3 +116,17 @@ describe('MyPage 로그아웃', () => {
     expect(replace).toHaveBeenCalledWith('/login');
   });
 });
+
+describe('MyPage 비밀번호', () => {
+  it('should not offer a 비밀번호 변경 menu', async () => {
+    // spec-fixed §2.4 — 마이페이지 변경은 아예 만들지 않는다. 재설정만 연다.
+    mockFetchOnce(200, profile());
+    render(<MyPage />);
+    await screen.findByText(EMAIL);
+
+    expect(screen.queryByText(/비밀번호 변경/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /비밀번호 변경/ }),
+    ).not.toBeInTheDocument();
+  });
+});
