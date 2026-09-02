@@ -79,6 +79,16 @@ export class LoginController {
       throw toHttpError(error);
     }
   }
+
+  /** 로그아웃. 쿠키를 지우고 서버의 Refresh 행도 지운다 */
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(
+    @Req() _req: Request,
+    @Res({ passthrough: true }) _res: Response,
+  ): Promise<void> {
+    throw new Error('not implemented');
+  }
 }
 
 /**

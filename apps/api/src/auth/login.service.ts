@@ -51,6 +51,8 @@ export interface RefreshTokenStore {
   }): Promise<RefreshTokenRecord>;
 
   findByTokenHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
+  /** 로그아웃이 그 세션의 행 하나만 지운다 (ADR-AUTH-1) */
+  deleteByTokenHash(tokenHash: string): Promise<void>;
 }
 
 /**
@@ -207,6 +209,16 @@ export class LoginService {
       address: null,
       createdAt: user.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * 로그아웃. 서버에 남은 Refresh 토큰 행을 지운다.
+   *
+   * 토큰이 없거나 이미 지워졌어도 성공으로 본다 — 로그아웃은 멱등해야 한다.
+   * "이미 로그아웃된 상태"는 사용자가 고칠 수 있는 잘못이 아니다.
+   */
+  async logout(_refreshToken: string | undefined): Promise<void> {
+    throw new Error('not implemented');
   }
 }
 

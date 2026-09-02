@@ -96,6 +96,14 @@ class FakeRefreshTokenStore implements RefreshTokenStore {
       this.rows.find((row) => row.tokenHash === tokenHash) ?? null,
     );
   }
+
+  deleteByTokenHash(tokenHash: string): Promise<void> {
+    const at = this.rows.findIndex((row) => row.tokenHash === tokenHash);
+    if (at !== -1) {
+      this.rows.splice(at, 1);
+    }
+    return Promise.resolve();
+  }
 }
 
 function setup(members: UserRecord[] = [member()]) {
@@ -410,5 +418,81 @@ describe('getMyProfile', () => {
 
     // 주소 컬럼은 #3이 들고 온다. 그전까지 자리만 있고 값은 없다.
     expect(profile.address).toBeNull();
+  });
+});
+
+describe('logout', () => {
+  it('should delete the refresh token row that matches the given token', async () => {
+    const { service, refreshTokens } = setup();
+    const session = await service.login(
+      { email: EMAIL, password: PASSWORD },
+      NOW,
+    );
+    expect(refreshTokens.rows).toHaveLength(1);
+
+    await service.logout(session.refreshToken.value);
+
+    expect(refreshTokens.rows).toHaveLength(0);
+  });
+
+  it('should leave the refresh tokens of other sessions untouched', async () => {
+    // ADR-AUTH-1: 세션당 한 행이다. 로그아웃은 그 기기만 끊는다.
+    const { service, refreshTokens } = setup();
+    const phone = await service.login(
+      { email: EMAIL, password: PASSWORD },
+      NOW,
+    );
+    await service.login({ email: EMAIL, password: PASSWORD }, NOW);
+    expect(refreshTokens.rows).toHaveLength(2);
+
+    await service.logout(phone.refreshToken.value);
+
+    expect(refreshTokens.rows).toHaveLength(1);
+  });
+
+  it('should succeed when no refresh token was given', async () => {
+    // 로그아웃은 멱등하다. 이미 로그아웃된 상태는 사용자의 잘못이 아니다.
+    const { service } = setup();
+
+    await expect(service.logout(undefined)).resolves.toBeUndefined();
+  });
+
+  it('should succeed when the refresh token is already gone', async () => {
+    const { service } = setup();
+    const session = await service.login(
+      { email: EMAIL, password: PASSWORD },
+      NOW,
+    );
+    await service.logout(session.refreshToken.value);
+
+    await expect(
+      service.logout(session.refreshToken.value),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should reject authenticate with AUTH_UNAUTHENTICATED after the refresh token row was deleted', async () => {
+    // AC4. 행이 없으면 findByTokenHash가 못 찾으므로 갱신이 막힌다.
+    const { service, accessTokens } = setup();
+    const session = await service.login(
+      { email: EMAIL, password: PASSWORD },
+      NOW,
+    );
+    await service.logout(session.refreshToken.value);
+
+    const expired = new Date(
+      NOW.getTime() + AUTH_TOKEN_RULES.accessTokenMinutes * MINUTE_MS + 1000,
+    );
+    const error = await rejectionOf(
+      service.authenticate(
+        {
+          accessToken: session.accessToken.value,
+          refreshToken: session.refreshToken.value,
+        },
+        expired,
+      ),
+    );
+
+    expect(codeOf(error)).toBe(LOGIN_ERRORS.UNAUTHENTICATED);
+    expect(accessTokens).toBeDefined();
   });
 });

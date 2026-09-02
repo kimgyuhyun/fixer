@@ -16,8 +16,9 @@ function controllerWith(impl: Partial<LoginService>): LoginController {
 
 /** `@Res({ passthrough: true })`가 넘겨주는 것 중 우리가 쓰는 것만 흉내낸다 */
 function fakeResponse() {
-  return { cookie: vi.fn() } as unknown as Response & {
+  return { cookie: vi.fn(), clearCookie: vi.fn() } as unknown as Response & {
     cookie: ReturnType<typeof vi.fn>;
+    clearCookie: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -153,5 +154,62 @@ describe('GET /auth/me', () => {
 
     expect(statusOf(error)).toBe(HttpStatus.UNAUTHORIZED);
     expect(bodyOf(error).errorCode).toBe(LOGIN_ERRORS.UNAUTHENTICATED);
+  });
+});
+
+describe('POST /auth/logout', () => {
+  it('should return 204 and clear both auth cookies', async () => {
+    const logout = vi.fn().mockResolvedValue(undefined);
+    const controller = controllerWith({ logout });
+    const res = fakeResponse();
+
+    await controller.logout(
+      fakeRequest(`${AUTH_COOKIES.refresh}=refresh-token-value`),
+      res,
+    );
+
+    // 심을 때와 같은 속성으로 지워야 브라우저가 같은 쿠키로 알아본다
+    expect(res.clearCookie).toHaveBeenCalledWith(
+      AUTH_COOKIES.access,
+      expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
+    );
+    expect(res.clearCookie).toHaveBeenCalledWith(
+      AUTH_COOKIES.refresh,
+      expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
+    );
+    expect(logout).toHaveBeenCalledWith('refresh-token-value');
+  });
+
+  it('should return 204 even when the request carries no cookies', async () => {
+    // 로그아웃은 멱등하다. 이미 로그아웃된 사람이 다시 눌러도 에러를 보지 않는다.
+    const logout = vi.fn().mockResolvedValue(undefined);
+    const controller = controllerWith({ logout });
+    const res = fakeResponse();
+
+    await expect(
+      controller.logout(fakeRequest(), res),
+    ).resolves.toBeUndefined();
+
+    expect(logout).toHaveBeenCalledWith(undefined);
+  });
+
+  it('should return 401 from GET /auth/me when the refresh token was deleted by a logout', async () => {
+    // AC4를 HTTP 경계에서 확인한다
+    const authenticate = vi
+      .fn()
+      .mockRejectedValue(new LoginError(LOGIN_ERRORS.UNAUTHENTICATED));
+    const controller = controllerWith({ authenticate });
+
+    const error = await rejectionOf(
+      controller.me(
+        fakeRequest(`${AUTH_COOKIES.refresh}=deleted-token`),
+        fakeResponse(),
+      ),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.UNAUTHORIZED);
+    expect(bodyOf(error)).toMatchObject({
+      code: LOGIN_ERRORS.UNAUTHENTICATED,
+    });
   });
 });

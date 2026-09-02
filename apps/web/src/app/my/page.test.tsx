@@ -1,6 +1,13 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import MyPage from './page';
+
+/** 로그아웃 뒤에 어디로 보냈는지만 본다. 실제 라우팅은 Next의 몫이다 */
+const replace = vi.hoisted(() => vi.fn());
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace, push: replace, refresh: vi.fn() }),
+}));
 
 const EMAIL = 'worker@example.com';
 const NAME = '김구직';
@@ -28,6 +35,7 @@ function profile() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.clearAllMocks();
 });
 
 describe('MyPage', () => {
@@ -47,5 +55,46 @@ describe('MyPage', () => {
     expect(
       await screen.findByText('아직 등록하지 않았습니다'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('MyPage 로그아웃', () => {
+  it('should call the logout endpoint and move to /login when 로그아웃 is pressed', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(profile()),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<MyPage />);
+    await screen.findByText(EMAIL);
+
+    await userEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/logout',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(replace).toHaveBeenCalledWith('/login');
+  });
+
+  it('should still move to /login when the logout request fails', async () => {
+    // 서버가 실패해도 이 브라우저는 로그인 화면으로 보낸다. 남아 있으면
+    // 로그아웃한 줄 알았는데 보호 페이지가 그대로 보인다.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(profile()),
+      })
+      .mockRejectedValueOnce(new Error('network down'));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<MyPage />);
+    await screen.findByText(EMAIL);
+
+    await userEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+
+    expect(replace).toHaveBeenCalledWith('/login');
   });
 });
