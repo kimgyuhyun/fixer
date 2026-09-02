@@ -84,10 +84,16 @@ export class LoginController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(
-    @Req() _req: Request,
-    @Res({ passthrough: true }) _res: Response,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    throw new Error('not implemented');
+    const cookies = parseCookies(req.headers.cookie);
+    await this.service.logout(cookies[AUTH_COOKIES.refresh]);
+
+    // 심을 때와 같은 속성으로 지워야 브라우저가 같은 쿠키로 알아본다.
+    // 속성이 하나라도 다르면 지워지지 않고 남는다.
+    res.clearCookie(AUTH_COOKIES.access, AUTH_COOKIE_OPTIONS);
+    res.clearCookie(AUTH_COOKIES.refresh, AUTH_COOKIE_OPTIONS);
   }
 }
 

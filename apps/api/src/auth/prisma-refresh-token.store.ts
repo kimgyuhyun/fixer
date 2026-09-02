@@ -25,4 +25,9 @@ export class PrismaRefreshTokenStore implements RefreshTokenStore {
   async findByTokenHash(tokenHash: string): Promise<RefreshTokenRecord | null> {
     return this.prisma.refreshToken.findUnique({ where: { tokenHash } });
   }
+
+  async deleteByTokenHash(tokenHash: string): Promise<void> {
+    // 없는 행을 지워도 성공이다. 로그아웃은 멱등하다.
+    await this.prisma.refreshToken.deleteMany({ where: { tokenHash } });
+  }
 }

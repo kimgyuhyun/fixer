@@ -18,8 +18,18 @@ function controllerWith(impl: Partial<LoginService>): LoginController {
 function fakeResponse() {
   return { cookie: vi.fn(), clearCookie: vi.fn() } as unknown as Response & {
     cookie: ReturnType<typeof vi.fn>;
-    clearCookie: ReturnType<typeof vi.fn>;
   };
+}
+
+/**
+ * 지운 쿠키를 확인할 때 쓴다.
+ *
+ * `res.clearCookie`를 그대로 넘기면 express 타입의 메서드 선언 때문에
+ * `unbound-method`에 걸린다. 목만 꺼내 주는 창구를 따로 둔다.
+ */
+function clearCookieMock(res: Response): ReturnType<typeof vi.fn> {
+  return (res as unknown as { clearCookie: ReturnType<typeof vi.fn> })
+    .clearCookie;
 }
 
 /** 쿠키 헤더만 들고 있는 요청 */
@@ -162,6 +172,7 @@ describe('POST /auth/logout', () => {
     const logout = vi.fn().mockResolvedValue(undefined);
     const controller = controllerWith({ logout });
     const res = fakeResponse();
+    const clearCookie = clearCookieMock(res);
 
     await controller.logout(
       fakeRequest(`${AUTH_COOKIES.refresh}=refresh-token-value`),
@@ -169,11 +180,11 @@ describe('POST /auth/logout', () => {
     );
 
     // 심을 때와 같은 속성으로 지워야 브라우저가 같은 쿠키로 알아본다
-    expect(res.clearCookie).toHaveBeenCalledWith(
+    expect(clearCookie).toHaveBeenCalledWith(
       AUTH_COOKIES.access,
       expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
     );
-    expect(res.clearCookie).toHaveBeenCalledWith(
+    expect(clearCookie).toHaveBeenCalledWith(
       AUTH_COOKIES.refresh,
       expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
     );
@@ -209,7 +220,7 @@ describe('POST /auth/logout', () => {
 
     expect(statusOf(error)).toBe(HttpStatus.UNAUTHORIZED);
     expect(bodyOf(error)).toMatchObject({
-      code: LOGIN_ERRORS.UNAUTHENTICATED,
+      errorCode: LOGIN_ERRORS.UNAUTHENTICATED,
     });
   });
 });

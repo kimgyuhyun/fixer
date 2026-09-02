@@ -217,8 +217,11 @@ export class LoginService {
    * 토큰이 없거나 이미 지워졌어도 성공으로 본다 — 로그아웃은 멱등해야 한다.
    * "이미 로그아웃된 상태"는 사용자가 고칠 수 있는 잘못이 아니다.
    */
-  async logout(_refreshToken: string | undefined): Promise<void> {
-    throw new Error('not implemented');
+  async logout(refreshToken: string | undefined): Promise<void> {
+    if (refreshToken === undefined) {
+      return;
+    }
+    await this.refreshTokens.deleteByTokenHash(hashToken(refreshToken));
   }
 }
 

@@ -61,6 +61,9 @@ describe('middleware', () => {
   it('should not set no-store on a public page response', () => {
     const response = middleware(requestFor('/signup/account'));
 
-    expect(response.headers.get('cache-control')).not.toContain('no-store');
+    // 공개 페이지는 손대지 않는다. 헤더 자체가 붙지 않는 것이 정답이다.
+    expect(response.headers.get('cache-control') ?? '').not.toContain(
+      'no-store',
+    );
   });
 });

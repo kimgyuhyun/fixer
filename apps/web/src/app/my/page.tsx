@@ -2,6 +2,7 @@
 
 import { myProfileSchema, type MyProfile } from '@fixer/shared';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './page.module.css';
 
@@ -11,8 +12,24 @@ import styles from './page.module.css';
  * 주소는 #3(주소 등록)이 채운다. 그전까지는 "아직 등록하지 않았습니다"로 둔다.
  */
 export default function MyPage() {
+  const router = useRouter();
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * 로그아웃. 서버가 쿠키와 Refresh 행을 지운다.
+   *
+   * 서버가 실패해도 로그인 화면으로 보낸다 — 여기 남아 있으면 로그아웃한 줄
+   * 알았는데 보호 페이지가 그대로 보인다. 사용자가 보기에 그게 더 나쁘다.
+   */
+  async function logout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // 무시하고 아래로 간다
+    }
+    router.replace('/login');
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +105,10 @@ export default function MyPage() {
       </dl>
 
       <p className={styles.note}>주소 등록은 이슈 #3에서 만듭니다.</p>
+
+      <button className={styles.secondary} type="button" onClick={logout}>
+        로그아웃
+      </button>
     </main>
   );
 }

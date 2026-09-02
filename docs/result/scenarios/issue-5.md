@@ -77,37 +77,37 @@ export const config = { matcher: [...] }
 
 ### 로그아웃 — 서버 (AC1)
 
-- [ ] [정상] `logout` — should delete the refresh token row that matches the given token
-- [ ] [정상] `logout` — should leave the refresh tokens of other sessions untouched
-- [ ] [경계] `logout` — should succeed when no refresh token was given
-- [ ] [경계] `logout` — should succeed when the refresh token is already gone
+- [x] [정상] `logout` — should delete the refresh token row that matches the given token
+- [x] [정상] `logout` — should leave the refresh tokens of other sessions untouched
+- [x] [경계] `logout` — should succeed when no refresh token was given
+- [x] [경계] `logout` — should succeed when the refresh token is already gone
 
 ### 로그아웃 — HTTP (AC1)
 
-- [ ] [정상] `POST /auth/logout` — should return 204 and clear both auth cookies
-- [ ] [경계] `POST /auth/logout` — should return 204 even when the request carries no cookies
+- [x] [정상] `POST /auth/logout` — should return 204 and clear both auth cookies
+- [x] [경계] `POST /auth/logout` — should return 204 even when the request carries no cookies
 
 ### 지워진 토큰은 거절 (AC4)
 
-- [ ] [예외] `authenticate` — should reject with AUTH_SESSION_EXPIRED when the refresh token row was deleted
-- [ ] [예외] `GET /auth/me` — should return 401 when the refresh token was deleted by a logout
+- [x] [예외] `authenticate` — should reject with AUTH_SESSION_EXPIRED when the refresh token row was deleted
+- [x] [예외] `GET /auth/me` — should return 401 when the refresh token was deleted by a logout
 
 ### 보호 페이지 접근 (AC2)
 
-- [ ] [정상] `middleware` — should let the request through when the access cookie is present
-- [ ] [정상] `middleware` — should redirect to /login when no auth cookie is present
-- [ ] [경계] `middleware` — should not touch public paths such as /signup/account
-- [ ] [경계] `middleware` — should redirect to /login when only the access cookie was cleared but refresh remains
+- [x] [정상] `middleware` — should let the request through when the access cookie is present
+- [x] [정상] `middleware` — should redirect to /login when no auth cookie is present
+- [x] [경계] `middleware` — should not touch public paths such as /signup/account
+- [x] [경계] `middleware` — should redirect to /login when only the access cookie was cleared but refresh remains
 
 ### 캐시 헤더 (AC3)
 
-- [ ] [정상] `middleware` — should set Cache-Control no-store on a protected page response
-- [ ] [경계] `middleware` — should not set no-store on a public page response
+- [x] [정상] `middleware` — should set Cache-Control no-store on a protected page response
+- [x] [경계] `middleware` — should not set no-store on a public page response
 
 ### 화면 (AC1·AC2)
 
-- [ ] [화면] `MyPage` — should call the logout endpoint and move to /login when 로그아웃 is pressed
-- [ ] [화면] `MyPage` — should still move to /login when the logout request fails
+- [x] [화면] `MyPage` — should call the logout endpoint and move to /login when 로그아웃 is pressed
+- [x] [화면] `MyPage` — should still move to /login when the logout request fails
 
 **총 16개** (정상 7 / 경계 6 / 예외 2 / 화면 2 — 일부 중복 집계 없음)
 
