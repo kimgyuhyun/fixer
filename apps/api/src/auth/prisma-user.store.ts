@@ -31,4 +31,14 @@ export class PrismaUserStore implements UserStore, AuthUserStore {
   }): Promise<UserRecord> {
     return this.prisma.user.create({ data: input });
   }
+
+  async updatePasswordHash(
+    userId: string,
+    passwordHash: string,
+  ): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+  }
 }

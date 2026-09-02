@@ -9,6 +9,9 @@ import { PrismaRefreshTokenStore } from './prisma-refresh-token.store';
 import { EmailVerificationController } from './email-verification.controller';
 import { EmailVerificationService } from './email-verification.service';
 import { PrismaEmailVerificationStore } from './prisma-email-verification.store';
+import { PasswordResetController } from './password-reset.controller';
+import { PasswordResetService } from './password-reset.service';
+import { PrismaPasswordResetStore } from './prisma-password-reset.store';
 import { PrismaUserStore } from './prisma-user.store';
 import { SignupController } from './signup.controller';
 import { SignupService } from './signup.service';
@@ -19,11 +22,17 @@ import { SignupService } from './signup.service';
  */
 @Module({
   imports: [PrismaModule],
-  controllers: [EmailVerificationController, SignupController, LoginController],
+  controllers: [
+    EmailVerificationController,
+    SignupController,
+    LoginController,
+    PasswordResetController,
+  ],
   providers: [
     PrismaEmailVerificationStore,
     PrismaUserStore,
     PrismaRefreshTokenStore,
+    PrismaPasswordResetStore,
     ConsoleMailProvider,
     {
       // 서명 비밀키는 코드에 두지 않는다. 없으면 켜지지 않게 한다 —
@@ -50,6 +59,21 @@ import { SignupService } from './signup.service';
       inject: [PrismaUserStore, PrismaRefreshTokenStore, AccessTokenSigner],
     },
     {
+      provide: PasswordResetService,
+      useFactory: (
+        users: PrismaUserStore,
+        resets: PrismaPasswordResetStore,
+        refreshTokens: PrismaRefreshTokenStore,
+        mail: ConsoleMailProvider,
+      ) => new PasswordResetService(users, resets, refreshTokens, mail),
+      inject: [
+        PrismaUserStore,
+        PrismaPasswordResetStore,
+        PrismaRefreshTokenStore,
+        ConsoleMailProvider,
+      ],
+    },
+    {
       provide: EmailVerificationService,
       useFactory: (
         store: PrismaEmailVerificationStore,
@@ -67,6 +91,11 @@ import { SignupService } from './signup.service';
       inject: [PrismaUserStore, PrismaEmailVerificationStore],
     },
   ],
-  exports: [EmailVerificationService, SignupService, LoginService],
+  exports: [
+    EmailVerificationService,
+    SignupService,
+    LoginService,
+    PasswordResetService,
+  ],
 })
 export class AuthModule {}

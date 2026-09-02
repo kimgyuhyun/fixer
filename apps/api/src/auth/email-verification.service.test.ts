@@ -69,6 +69,8 @@ function createMail() {
     async sendVerificationCode(email, code) {
       sent.push({ email, code });
     },
+    // 이 서비스는 재설정 링크를 보내지 않는다. 포트를 채우기 위한 자리다.
+    sendPasswordResetLink: () => Promise.resolve(),
   };
   return { mail, sent };
 }

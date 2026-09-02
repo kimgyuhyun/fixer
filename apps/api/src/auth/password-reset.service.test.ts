@@ -10,8 +10,7 @@ import {
   type PasswordResetRecord,
   type PasswordResetStore,
 } from './password-reset.service';
-import type { AuthUserStore, RefreshTokenStore } from './login.service';
-import type { MailProvider } from './email-verification.service';
+import type { RefreshTokenRecord, RefreshTokenStore } from './login.service';
 import type { UserRecord } from './signup.service';
 
 const EMAIL = 'worker@example.com';
@@ -54,11 +53,26 @@ class FakeUserStore {
   }
 }
 
-class FakeRefreshTokenStore {
+/**
+ * 이 서비스가 쓰는 것은 `deleteAllForUser` 하나뿐이다. 나머지는 포트를
+ * 채우기 위한 자리이고, 불려서는 안 되므로 불리면 터뜨린다.
+ */
+class FakeRefreshTokenStore implements RefreshTokenStore {
   readonly deletedFor: string[] = [];
+
   deleteAllForUser(userId: string): Promise<void> {
     this.deletedFor.push(userId);
     return Promise.resolve();
+  }
+
+  create(): Promise<RefreshTokenRecord> {
+    throw new Error('재설정은 Refresh를 발급하지 않는다');
+  }
+  findByTokenHash(): Promise<RefreshTokenRecord | null> {
+    throw new Error('재설정은 Refresh를 조회하지 않는다');
+  }
+  deleteByTokenHash(): Promise<void> {
+    throw new Error('재설정은 세션 하나만 지우지 않는다. 전부 지운다');
   }
 }
 
@@ -105,12 +119,7 @@ function setup(members: UserRecord[] = [member()]) {
   const resets = new FakeResetStore();
   const refreshTokens = new FakeRefreshTokenStore();
   const mail = new FakeMailProvider();
-  const service = new PasswordResetService(
-    users as unknown as AuthUserStore,
-    resets,
-    refreshTokens as unknown as RefreshTokenStore,
-    mail as unknown as MailProvider,
-  );
+  const service = new PasswordResetService(users, resets, refreshTokens, mail);
   return { service, users, resets, refreshTokens, mail };
 }
 

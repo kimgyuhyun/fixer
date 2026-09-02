@@ -115,6 +115,11 @@ export default function LoginPage() {
         </button>
       </form>
 
+      {/* spec-fixed §2.4 — 비밀번호 변경은 마이페이지에 없고 여기서만 연다 */}
+      <Link className={styles.secondary} href="/password-reset">
+        비밀번호를 잊으셨나요?
+      </Link>
+
       <Link className={styles.secondary} href="/signup/verify-email">
         아직 회원이 아니신가요? 가입하기
       </Link>

@@ -30,4 +30,9 @@ export class PrismaRefreshTokenStore implements RefreshTokenStore {
     // 없는 행을 지워도 성공이다. 로그아웃은 멱등하다.
     await this.prisma.refreshToken.deleteMany({ where: { tokenHash } });
   }
+
+  async deleteAllForUser(userId: string): Promise<void> {
+    // 비밀번호 재설정이 그 회원의 세션을 전부 끊는다 (spec-fixed §2.4)
+    await this.prisma.refreshToken.deleteMany({ where: { userId } });
+  }
 }

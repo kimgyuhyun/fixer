@@ -101,33 +101,33 @@ POST /auth/password-reset/confirm  →  204   (재설정)
 
 ### 재설정 요청 (AC1)
 
-- [ ] [정상] `requestReset` — should store a hashed token that expires in 30 minutes
-- [ ] [정상] `requestReset` — should send the reset link to the member email
-- [ ] [경계] `requestReset` — should resolve without sending anything when no member has that email
-- [ ] [경계] `requestReset` — should find the member case-insensitively
-- [ ] [정상] `POST /auth/password-reset` — should return 204
-- [ ] [경계] `POST /auth/password-reset` — should return 204 even when the email belongs to nobody
+- [x] [정상] `requestReset` — should store a hashed token that expires in 30 minutes
+- [x] [정상] `requestReset` — should send the reset link to the member email
+- [x] [경계] `requestReset` — should resolve without sending anything when no member has that email
+- [x] [경계] `requestReset` — should find the member case-insensitively
+- [x] [정상] `POST /auth/password-reset` — should return 204
+- [x] [경계] `POST /auth/password-reset` — should return 204 even when the email belongs to nobody
 
 ### 재설정 실행 (AC2)
 
-- [ ] [정상] `resetPassword` — should replace the password hash with a bcrypt hash of the new password
-- [ ] [정상] `resetPassword` — should delete every refresh token of that member
-- [ ] [정상] `resetPassword` — should mark the token consumed
-- [ ] [경계] `resetPassword` — should reject a new password shorter than 8 characters and change nothing
-- [ ] [정상] `POST /auth/password-reset/confirm` — should return 204
+- [x] [정상] `resetPassword` — should replace the password hash with a bcrypt hash of the new password
+- [x] [정상] `resetPassword` — should delete every refresh token of that member
+- [x] [정상] `resetPassword` — should mark the token consumed
+- [x] [경계] `resetPassword` — should reject a new password shorter than 8 characters and change nothing
+- [x] [정상] `POST /auth/password-reset/confirm` — should return 204
 
 ### 토큰 재사용·만료 (AC3)
 
-- [ ] [예외] `resetPassword` — should reject with AUTH_RESET_TOKEN_INVALID when the token was already consumed
-- [ ] [예외] `resetPassword` — should reject when the token has expired
-- [ ] [예외] `resetPassword` — should reject when the token does not exist
-- [ ] [경계] `resetPassword` — should reject exactly at the expiry instant
-- [ ] [예외] `POST /auth/password-reset/confirm` — should return 400 with AUTH_RESET_TOKEN_INVALID for a used token
+- [x] [예외] `resetPassword` — should reject with AUTH_RESET_TOKEN_INVALID when the token was already consumed
+- [x] [예외] `resetPassword` — should reject when the token has expired
+- [x] [예외] `resetPassword` — should reject when the token does not exist
+- [x] [경계] `resetPassword` — should reject exactly at the expiry instant
+- [x] [예외] `POST /auth/password-reset/confirm` — should return 400 with AUTH_RESET_TOKEN_INVALID for a used token
 
 ### 마이페이지에 변경 메뉴가 없다 (AC4)
 
-- [ ] [화면] `MyPage` — should not offer a 비밀번호 변경 menu **(회귀 방지 — Red에서 이미 통과한다)**
-- [ ] [화면] `PasswordResetPage` — should show a sent notice after requesting a reset mail
+- [x] [화면] `MyPage` — should not offer a 비밀번호 변경 menu **(회귀 방지 — Red에서 이미 통과한다)**
+- [x] [화면] `PasswordResetPage` — should show a sent notice after requesting a reset mail
 
 **총 18개** (정상 8 / 경계 5 / 예외 3 / 화면 2)
 

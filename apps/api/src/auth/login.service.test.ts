@@ -72,6 +72,12 @@ class FakeUserStore implements AuthUserStore {
   findById(id: string): Promise<UserRecord | null> {
     return Promise.resolve(this.members.find((m) => m.id === id) ?? null);
   }
+
+  updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
+    const found = this.members.find((m) => m.id === userId);
+    if (found) found.passwordHash = passwordHash;
+    return Promise.resolve();
+  }
 }
 
 class FakeRefreshTokenStore implements RefreshTokenStore {
@@ -101,6 +107,13 @@ class FakeRefreshTokenStore implements RefreshTokenStore {
     const at = this.rows.findIndex((row) => row.tokenHash === tokenHash);
     if (at !== -1) {
       this.rows.splice(at, 1);
+    }
+    return Promise.resolve();
+  }
+
+  deleteAllForUser(userId: string): Promise<void> {
+    for (let i = this.rows.length - 1; i >= 0; i -= 1) {
+      if (this.rows[i].userId === userId) this.rows.splice(i, 1);
     }
     return Promise.resolve();
   }
