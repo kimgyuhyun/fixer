@@ -30,6 +30,7 @@ model User {
   name         String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  agreements   Agreement[]
 }
 
 /// 이메일 인증 코드 발급 이력. (이슈 #1, ADR-AUTH-4)
@@ -51,4 +52,34 @@ model EmailVerification {
 
   // 쿨다운(최근 1건)과 시간당 발송 수(최근 1시간) 판정에 함께 쓰인다.
   @@index([email, createdAt])
+}
+
+/// 동의서 템플릿. 파일은 git으로, 메타데이터는 여기로 (ADR-AGR-4).
+model AgreementTemplate {
+  version      Int      @id
+  fileKey      String
+  sha256       String
+  /// 서명이 들어갈 사각형(PDF 좌표). 여기서 좌표를 통제한다 (ADR-AGR-1).
+  signatureBox Json
+  isActive     Boolean  @default(false)
+  activatedAt  DateTime @default(now())
+
+  @@index([isActive])
+}
+
+/// 서명이 병합된 최종 PDF와 그 메타데이터 (spec-fixed §2.3).
+model Agreement {
+  id              String   @id @default(cuid())
+  userId          String
+  templateVersion Int
+  /// 상대경로만 저장한다. 절대경로 금지 (§2.3).
+  filePath        String
+  /// 파기 후에도 남길 값 (§9).
+  sha256          String
+  agreedAt        DateTime @default(now())
+  ip              String
+  userAgent       String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, agreedAt])
 }
