@@ -1,5 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { type AgreementErrorCode, type SignatureBox } from '@fixer/shared';
+import {
+  AGREEMENT_ERRORS,
+  AGREEMENT_RULES,
+  type AgreementErrorCode,
+  type SignatureBox,
+} from '@fixer/shared';
 
 /** 활성 템플릿 한 줄 */
 export interface AgreementTemplateRecord {
@@ -85,16 +91,73 @@ export class AgreementService {
 
   /** 활성 템플릿 PDF를 그대로 돌려준다. 화면이 표시한다 */
   async getActiveTemplatePdf(): Promise<{ version: number; bytes: Buffer }> {
-    throw new Error('not implemented');
+    const template = await this.activeTemplate();
+    return {
+      version: template.version,
+      bytes: await this.files.get(template.fileKey),
+    };
   }
 
   /** 서명 PNG를 받아 병합하고 저장한다 */
-  async sign(_input: {
+  async sign(input: {
     userId: string;
     signaturePng: Buffer;
     ip: string;
     userAgent: string;
   }): Promise<AgreementRecord> {
-    throw new Error('not implemented');
+    assertLooksLikeSignature(input.signaturePng);
+
+    const template = await this.activeTemplate();
+    const templatePdf = await this.files.get(template.fileKey);
+
+    // 병합이 실패하면 여기서 끝난다. 아직 아무것도 저장하지 않았다.
+    const merged = await this.merger.merge(
+      templatePdf,
+      input.signaturePng,
+      template.signatureBox,
+    );
+
+    // 상대경로만 만든다. 절대경로는 DB에 넣지 않는다 (§2.3).
+    const filePath = `agreements/${randomUUID()}.pdf`;
+    const { sha256 } = await this.files.put(filePath, merged);
+
+    // 원본 PNG는 여기서 그냥 버려진다. 어디에도 쓰지 않았다 (AC5).
+    return this.agreements.create({
+      userId: input.userId,
+      templateVersion: template.version,
+      filePath,
+      sha256,
+      ip: input.ip,
+      userAgent: input.userAgent,
+    });
+  }
+
+  private async activeTemplate(): Promise<AgreementTemplateRecord> {
+    const template = await this.templates.findActive();
+    if (!template) {
+      throw new AgreementError(AGREEMENT_ERRORS.TEMPLATE_MISSING);
+    }
+    return template;
+  }
+}
+
+/** PNG 시그니처(매직 넘버). 이걸로 시작하지 않으면 PNG가 아니다 */
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/**
+ * 서명처럼 생겼는지 본다.
+ *
+ * 픽셀을 뜯어보지는 않는다 — 빈 캔버스와 그린 캔버스를 구분하는 것은 화면의
+ * 몫이고(AC4의 버튼 비활성화), 서버는 **모양과 크기**만 본다. 상한이 특히
+ * 중요하다. 병합이 메모리에서 일어나므로 거대한 이미지가 서버를 밀 수 있다.
+ */
+function assertLooksLikeSignature(png: Buffer): void {
+  const ok =
+    png.length > PNG_MAGIC.length &&
+    png.length < AGREEMENT_RULES.signatureMaxBytes &&
+    png.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC);
+
+  if (!ok) {
+    throw new AgreementError(AGREEMENT_ERRORS.SIGNATURE_REQUIRED);
   }
 }

@@ -111,47 +111,56 @@ jsdom에 canvas 2D 컨텍스트가 없다. 픽셀이 실제로 그려지는지�
 
 ### 템플릿 조회 (AC1)
 
-- [ ] [정상] `getActiveTemplatePdf` — should return the active template bytes and its version
-- [ ] [예외] `getActiveTemplatePdf` — should reject with AGREEMENT_TEMPLATE_MISSING when no template is active
-- [ ] [정상] `GET /agreements/template` — should return 200 with application/pdf
-- [ ] [예외] `GET /agreements/template` — should return 503 when no template is active
+- [x] [정상] `getActiveTemplatePdf` — should return the active template bytes and its version
+- [x] [예외] `getActiveTemplatePdf` — should reject with AGREEMENT_TEMPLATE_MISSING when no template is active
+- [x] [정상] `GET /agreements/template` — should return 200 with application/pdf
+- [x] [예외] `GET /agreements/template` — should return 503 when no template is active
 
 ### 병합과 저장 (AC3)
 
-- [ ] [정상] `sign` — should store the merged pdf and record sha256, templateVersion and agreedAt
-- [ ] [정상] `sign` — should record the ip and userAgent the server observed
-- [ ] [정상] `sign` — should pass the template signatureBox to the merger
-- [ ] [경계] `sign` — should keep the filePath relative, never absolute
-- [ ] [예외] `sign` — should reject when the merger throws and store nothing
-- [ ] [정상] `POST /agreements` — should return 201 with id, agreedAt and templateVersion
-- [ ] [정상] `POST /agreements` — should read ip and userAgent from the request, not the body
+- [x] [정상] `sign` — should store the merged pdf and record sha256, templateVersion and agreedAt
+- [x] [정상] `sign` — should record the ip and userAgent the server observed
+- [x] [정상] `sign` — should pass the template signatureBox to the merger
+- [x] [경계] `sign` — should keep the filePath relative, never absolute
+- [x] [예외] `sign` — should reject when the merger throws and store nothing
+- [x] [정상] `POST /agreements` — should return 201 with id, agreedAt and templateVersion
+- [x] [정상] `POST /agreements` — should read ip and userAgent from the request, not the body
 
 ### 서명 없이 동의 금지 (AC4)
 
-- [ ] [예외] `sign` — should reject with AGREEMENT_SIGNATURE_REQUIRED when the png is empty
-- [ ] [경계] `sign` — should reject a png that is not a png
-- [ ] [경계] `sign` — should reject a png larger than the allowed size
-- [ ] [예외] `POST /agreements` — should return 400 with AGREEMENT_SIGNATURE_REQUIRED for an empty signature
+- [x] [예외] `sign` — should reject with AGREEMENT_SIGNATURE_REQUIRED when the png is empty
+- [x] [경계] `sign` — should reject a png that is not a png
+- [x] [경계] `sign` — should reject a png larger than the allowed size
+- [x] [예외] `POST /agreements` — should return 400 with AGREEMENT_SIGNATURE_REQUIRED for an empty signature
 
 ### 원본 PNG를 남기지 않는다 (AC5)
 
-- [ ] [정상] `sign` — should never put the signature png into the file store
-- [ ] [정상] `sign` — should put exactly one file, the merged pdf
+- [x] [정상] `sign` — should never put the signature png into the file store
+- [x] [정상] `sign` — should put exactly one file, the merged pdf
+
+### 실제 PDF 병합 (AC3 — 진짜 템플릿으로)
+
+가짜 PDF로는 `pdf-lib`이 읽히는지 알 수 없다. 저장소의 실제 템플릿을 쓴다.
+
+- [x] [정상] `PdfLibMerger` — should produce a pdf that pdf-lib can load back
+- [x] [정상] `PdfLibMerger` — should keep the template page size
+- [x] [정상] `PdfLibMerger` — should grow the document because something was drawn into it
+- [x] [예외] `PdfLibMerger` — should reject when the signatureBox points at a page that does not exist
 
 ### 서명 캔버스 (AC2)
 
-- [ ] [화면] `SignaturePad` — should mark itself signed after a pointer stroke
-- [ ] [화면] `SignaturePad` — should clear the signed state when 지우기 is pressed
-- [ ] [화면] `SignaturePad` — should report the drawn image to its parent on stroke end
+- [x] [화면] `SignaturePad` — should mark itself signed after a pointer stroke
+- [x] [화면] `SignaturePad` — should clear the signed state when 지우기 is pressed
+- [x] [화면] `SignaturePad` — should report the drawn image to its parent on stroke end
 
 ### 동의서 화면 (AC1·AC2·AC4)
 
-- [ ] [화면] `AgreementPage` — should show the template pdf
-- [ ] [화면] `AgreementPage` — should keep the 동의 button disabled until something is drawn
-- [ ] [화면] `AgreementPage` — should send the signature and move on when 동의 is pressed
-- [ ] [화면] `AgreementPage` — should show the server message when the server rejects
+- [x] [화면] `AgreementPage` — should show the template pdf
+- [x] [화면] `AgreementPage` — should keep the 동의 button disabled until something is drawn
+- [x] [화면] `AgreementPage` — should send the signature and move on when 동의 is pressed
+- [x] [화면] `AgreementPage` — should show the server message when the server rejects
 
-**총 24개** (정상 10 / 경계 4 / 예외 5 / 화면 5 — 일부 중복 집계 없음)
+**총 28개** (정상 13 / 경계 4 / 예외 6 / 화면 5 — 일부 중복 집계 없음)
 
 ---
 
@@ -165,7 +174,7 @@ jsdom에 canvas 2D 컨텍스트가 없다. 픽셀이 실제로 그려지는지�
 | 4   | 서명하지 않고 동의하면 막히고 안내가 뜬다                                 | `sign` 3건 · `POST /agreements — 400` · `AgreementPage — should keep the 동의 button disabled` · `— should show the server message` |
 | 5   | 저장소에 원본 서명 PNG가 남아 있지 않다                                   | `sign — should never put the signature png into the file store` · `— should put exactly one file, the merged pdf`                   |
 
-**커버리지: AC 5개 전부 커버 / 시나리오 24개 / 미커버 0개**
+**커버리지: AC 5개 전부 커버 / 시나리오 28개 / 미커버 0개**
 
 ---
 
