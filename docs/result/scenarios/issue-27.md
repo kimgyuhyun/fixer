@@ -109,41 +109,49 @@ balanceOf(userId: string): Promise<number>
 
 ### 잔액 계산 (AC1·AC6)
 
-- [ ] [정상] `record` — should make the balance 10000 after CHARGE 10000
-- [ ] [정상] `balanceOf` — should return zero for a member with no ledger rows
-- [ ] [정상] `record` — should keep the cached balance equal to the ledger sum
-- [ ] [경계] `balanceOf` — should sum many rows of mixed types correctly
+- [x] [정상] `record` — should make the balance 10000 after CHARGE 10000
+- [x] [정상] `balanceOf` — should return zero for a member with no ledger rows
+- [x] [정상] `record` — should keep the cached balance equal to the ledger sum
+- [x] [경계] `balanceOf` — should sum many rows of mixed types correctly
 
 ### 잔액 부족 (AC2)
 
-- [ ] [예외] `record` — should reject HOLD 12000 with POINT_INSUFFICIENT_BALANCE when the balance is 10000
-- [ ] [예외] `record` — should leave nothing in the ledger when it rejected
-- [ ] [경계] `record` — should allow spending exactly the whole balance
-- [ ] [경계] `record` — should reject spending one point more than the balance
+- [x] [예외] `record` — should reject HOLD 12000 with POINT_INSUFFICIENT_BALANCE when the balance is 10000
+- [x] [예외] `record` — should leave nothing in the ledger when it rejected
+- [x] [경계] `record` — should allow spending exactly the whole balance
+- [x] [경계] `record` — should reject spending one point more than the balance
+
+### 입력 검증
+
+- [x] [경계] `record` — should reject a zero amount
+- [x] [경계] `record` — should reject a fractional amount
 
 ### 잠금과 반환 (AC3)
 
-- [ ] [정상] `record` — should bring the balance back after HOLD 6000 then RELEASE 6000
-- [ ] [정상] `record` — should allow a second HOLD after the first was released
+- [x] [정상] `record` — should bring the balance back after HOLD 6000 then RELEASE 6000
+- [x] [정상] `record` — should allow a second HOLD after the first was released
 
 ### 멱등 (AC4)
 
-- [ ] [정상] `record` — should write only one row for the same idempotencyKey
-- [ ] [정상] `record` — should return the existing row when the key was already used
-- [ ] [경계] `record` — should not change the balance on the duplicate write
+- [x] [정상] `record` — should write only one row for the same idempotencyKey
+- [x] [정상] `record` — should return the existing row when the key was already used
+- [x] [경계] `record` — should not change the balance on the duplicate write
 
 ### 동시성 (AC5) — 통합 테스트
 
-- [ ] [통합] `record` — should never let the balance go negative when CHARGE and HOLD race
-- [ ] [통합] `record` — should let exactly one of two concurrent HOLDs succeed when only one fits
-- [ ] [통합] `record` — should keep the cached balance equal to the ledger sum after a race
+- [x] [통합] `record` — should never let the balance go negative when CHARGE and HOLD race
+- [x] [통합] `record` — should let exactly one of two concurrent HOLDs succeed when only one fits
+- [x] [통합] `record` — should keep the cached balance equal to the ledger sum after a race
 
 ### 실제 DB (AC4·AC6) — 통합 테스트
 
-- [ ] [통합] `append` — should reject a duplicate idempotencyKey at the database level
-- [ ] [통합] `sumBalance` — should match the cached balance after many writes
+- [x] [통합] `append` — should reject a duplicate idempotencyKey at the database level
+- [x] [통합] `sumBalance` — should match the cached balance after many writes
+- [x] [통합] `append` — should not change the balance when a duplicate is rejected
+- [x] [통합] `append` — should leave nothing in the ledger when the balance is short
+- [x] [통합] `append` — should allow spending exactly the whole balance
 
-**총 18개** (정상 8 / 경계 4 / 예외 2 / 통합 5 — 일부 중복 집계 없음)
+**총 22개** (정상 8 / 경계 6 / 예외 2 / 통합 7 — 일부 중복 집계 없음)
 
 ---
 
@@ -158,7 +166,7 @@ balanceOf(userId: string): Promise<number>
 | 5   | 동시 `CHARGE`·`HOLD` → 잔액이 음수가 되지 않음 | `[통합]` 3건                                                                                                  |
 | 6   | 캐시 잔액과 원장 합계가 일치                   | `record — cached equals ledger sum` · `[통합] sumBalance — match after many writes` · `[통합] — after a race` |
 
-**커버리지: AC 6개 전부 커버 / 시나리오 18개 / 미커버 0개**
+**커버리지: AC 6개 전부 커버 / 시나리오 22개 / 미커버 0개**
 
 ---
 
