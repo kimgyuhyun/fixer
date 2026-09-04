@@ -9,6 +9,9 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
+    // 이걸 등록하지 않으면 `prisma db seed`가 seed.ts를 찾지 못하고
+    // "No seed command configured"로 조용히 끝난다.
+    seed: 'tsx prisma/seed.ts',
   },
   datasource: {
     url: process.env['DATABASE_URL'],
