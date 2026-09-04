@@ -6,3 +6,4 @@ export * from './agreement.js';
 export * from './retention.js';
 export * from './payment.js';
 export * from './category.js';
+export * from './job-post.js';

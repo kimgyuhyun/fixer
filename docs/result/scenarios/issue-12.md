@@ -112,50 +112,93 @@ GET  /job-posts        →  200  { items, total }
 
 ### 등록하면 OPEN으로 저장된다 (AC1)
 
-- [ ] [정상] `create` — should save the job post as OPEN
-- [ ] [정상] `create` — should start version at 1
-- [ ] [정상] `create` — should write the v1 snapshot so a contract can be restored
-- [ ] [경계] `transition` — should refuse a transition that is not in the table
+- [x] [정상] `create` — should save the job post as OPEN
+- [x] [정상] `create` — should start version at 1
+- [x] [정상] `create` — should write the v1 snapshot so a contract can be restored
+- [x] [경계] `transition` — should refuse a transition that is not in the table
+- [x] [경계] `transition` — should refuse to move out of a final state
+- [x] [정상] `transition` — should allow every transition the table lists
+- [x] [경계] `transition` — should refuse every transition the table does not list (36개 조합 전부)
 
 ### 인원 × 보상금만큼 잠긴다 (AC2)
 
-- [ ] [정상] `create` — should hold headcount times rewardPerPerson
-- [ ] [정상] `create` — should point the HOLD row at the job post
-- [ ] [경계] `create` — should hold nothing more when the same request is retried
+- [x] [정상] `create` — should hold headcount times rewardPerPerson
+- [x] [정상] `create` — should point the HOLD row at the job post
+- [x] [정상] `create` — should report the budget on the created post
 
 ### 잔액이 부족하면 막힌다 (AC3)
 
-- [ ] [예외] `create` — should reject with POINT_INSUFFICIENT_BALANCE
-- [ ] [정상] `create` — should say how much more is needed
-- [ ] [정상] `create` — should not save the job post when the balance is short
-- [ ] [경계] `create` — should allow a budget that spends the balance exactly
+- [x] [예외] `create` — should reject with POINT_INSUFFICIENT_BALANCE
+- [x] [정상] `create` — should say how much more is needed
+- [x] [정상] `create` — should not save the job post when the balance is short
+- [x] [경계] `create` — should allow a budget that spends the balance exactly
 
 ### 필수항목이 비면 저장되지 않는다 (AC4)
 
-- [ ] [예외] `create` — should reject an empty required field with a field error
-- [ ] [정상] `create` — should not touch the ledger when validation fails
-- [ ] [경계] `create` — should reject a headcount below one
-- [ ] [경계] `create` — should reject a reward that is not a positive multiple of 1000
-- [ ] [경계] `create` — should reject a work period that ends before it starts
+- [x] [예외] `create` — should reject an empty required field with a field error
+- [x] [정상] `create` — should not touch the ledger when validation fails
+- [x] [경계] `create` — should reject a headcount below one
+- [x] [경계] `create` — should reject a reward that is not a positive multiple of 1000
+- [x] [경계] `create` — should reject a work period that ends before it starts
+- [x] [경계] `create` — should reject a work period of zero length
 
 ### 목록에 뜬다 (AC5)
 
-- [ ] [정상] `list` — should include the job post that was just created
-- [ ] [경계] `list` — should not include a job post that is still DRAFT
-- [ ] [정상] `list` — should report the total count
+- [x] [정상] `list` — should include the job post that was just created
+- [x] [경계] `list` — should not include a job post that is still DRAFT
+- [x] [정상] `list` — should report the total count
 
 ### 근무 주소 기본값 (AC6)
 
-- [ ] [정상] `create` — should fill the work address from the member address when it is blank
-- [ ] [정상] `create` — should keep the given work address when one is provided
-- [ ] [예외] `create` — should reject when the address is blank and the member has none
+- [x] [정상] `create` — should fill the work address from the member address when it is blank
+- [x] [정상] `create` — should keep the given work address when one is provided
+- [x] [경계] `create` — should treat a whitespace-only address as blank
+- [x] [예외] `create` — should reject when the address is blank and the member has none
 
 ### 진짜 Postgres에서
 
-- [ ] [경계] `통합` — should leave neither the post nor the HOLD when the ledger rejects
-- [ ] [정상] `통합` — should reduce the balance by the whole budget
+- [x] [경계] `통합` — should leave neither the post nor the HOLD when the balance is short
+- [x] [정상] `통합` — should reduce the balance by the whole budget
+- [x] [정상] `통합` — should write the v1 snapshot in the same transaction
+- [x] [경계] `통합` — should not let two concurrent posts overspend the balance
+- [x] [정상] `통합` — should fill the work address from the member address
+- [x] [정상] `통합` — should list the created post with its total
 
-**총 23개** (정상 11 / 경계 8 / 예외 4)
+### 컨트롤러
+
+- [x] [정상] `POST /job-posts` — should return 201 with the created post
+- [x] [경계] `POST /job-posts` — should return 400 when employerId is missing
+- [x] [예외] `POST /job-posts` — should return 400 with a per-field error for an empty title
+- [x] [예외] `POST /job-posts` — should return 409 with the shortfall when the balance is short
+- [x] [예외] `POST /job-posts` — should return 400 when the member has no address to fall back on
+- [x] [경계] `POST /job-posts` — should let an unknown error through so it becomes 500
+- [x] [정상] `GET /job-posts` — should return the items and the total
+- [x] [경계] `GET /job-posts` — should return an empty list without failing
+
+### 화면
+
+- [x] [정상] `작성 화면` — should send the form and show that the budget was held
+- [x] [정상] `작성 화면` — should leave the work address out so the server fills it in
+- [x] [경계] `작성 화면` — should not send the request when a required field is empty
+- [x] [예외] `작성 화면` — should show how much is missing when the balance is short
+- [x] [예외] `작성 화면` — should put a server field error under that field
+- [x] [정상] `목록 화면` — should show a job post that was created
+- [x] [정상] `목록 화면` — should show the reward per person
+- [x] [정상] `목록 화면` — should report the total count
+- [x] [경계] `목록 화면` — should say the list is empty when nothing is open
+- [x] [경계] `목록 화면` — should show an error instead of an empty list when the request fails
+
+**총 45개** (단위 26 + 통합 6 + 컨트롤러 8 + 화면 10, 겹치는 항목 제외)
+
+### 서버를 띄워 확인한 것
+
+| 무엇              | 결과                                                      |
+| ----------------- | --------------------------------------------------------- |
+| 잔액 0에서 등록   | `409`, "포인트가 150,000원 부족합니다" + shortfall 150000 |
+| 20만 충전 후 등록 | `201 OPEN version 1`, 근무 주소가 가입 주소로 채워짐      |
+| 그 뒤 잔액        | 50,000 (20만 − 15만). 원장에 `HOLD -150000`               |
+| 목록              | 그 공고 한 건                                             |
+| 필수항목 빈 폼    | `400`, 칸 4개에 각각 문구                                 |
 
 ---
 

@@ -59,6 +59,12 @@ const READY: Feature[] = [
     href: '/points',
   },
   {
+    issue: 12,
+    title: '공고 등록·목록',
+    summary: '공고를 올리면 예산이 잠기고 목록에 뜬다.',
+    href: '/job-posts',
+  },
+  {
     issue: 11,
     title: '공고 카테고리 안내',
     summary: '카테고리를 고르면 그 업종에서 적어야 할 것이 안내된다.',
@@ -70,7 +76,6 @@ const READY: Feature[] = [
 const PLANNED: Feature[] = [
   { issue: 4, title: '로그인', summary: '로그인하고 내 정보를 본다.' },
   { issue: 6, title: '비밀번호 재설정', summary: '비밀번호를 다시 정한다.' },
-  { issue: 12, title: '공고 등록', summary: '공고를 올리면 목록에 뜬다.' },
 ];
 
 export default function Home() {
