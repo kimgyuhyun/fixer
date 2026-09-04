@@ -8,10 +8,12 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../generated/prisma/client';
 import {
   ChargeService,
+  PaymentError,
   type GatewayPayment,
   type PaymentGateway,
   type WebhookVerifier,
 } from './charge.service';
+import { PAYMENT_ERRORS } from '@fixer/shared';
 import { PointLedgerService } from './point-ledger.service';
 import { PrismaPaymentStore } from './prisma-payment.store';
 import { PrismaPointLedgerStore } from './prisma-point-ledger.store';
@@ -152,9 +154,17 @@ describe('충전 — 진짜 Postgres에서', () => {
     // 포트원은 1,000원만 결제됐다고 말한다. 우리는 50,000원을 박아 두었다.
     gatewayAmountOverride = 1_000;
 
-    await expect(
-      service.confirm({ paymentId: started.paymentId, userId }),
-    ).rejects.toThrow();
+    // 인자 없는 toThrow()는 아무 에러로도 통과한다. 코드까지 본다.
+    const error: unknown = await service
+      .confirm({ paymentId: started.paymentId, userId })
+      .then(
+        () => {
+          throw new Error('거절되어야 한다');
+        },
+        (e: unknown) => e,
+      );
+    expect(error).toBeInstanceOf(PaymentError);
+    expect((error as PaymentError).code).toBe(PAYMENT_ERRORS.AMOUNT_MISMATCH);
 
     expect(await prisma.pointTransaction.count({ where: { userId } })).toBe(0);
     const row = await prisma.payment.findUniqueOrThrow({

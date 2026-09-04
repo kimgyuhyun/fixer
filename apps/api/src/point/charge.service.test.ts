@@ -208,6 +208,23 @@ describe('start — 결제 시작 (AC1)', () => {
     expect(payments.rows).toHaveLength(0);
   });
 
+  it('should accept an amount exactly at the per-charge limit', async () => {
+    // 경계는 허용이다. 100만원을 막으면 안내 문구와 동작이 어긋난다.
+    const { service } = setup({ noPaymentRow: true });
+
+    const started = await service.start(USER, { amount: 1_000_000 });
+
+    expect(started.amount).toBe(1_000_000);
+  });
+
+  it('should reject one charge unit over the limit', async () => {
+    const { service } = setup({ noPaymentRow: true });
+
+    const error = await rejectionOf(service.start(USER, { amount: 1_001_000 }));
+
+    expect(codeOf(error)).toBe(PAYMENT_ERRORS.INVALID_AMOUNT);
+  });
+
   it('should reject an amount over the per-charge limit', async () => {
     const { service } = setup({ noPaymentRow: true });
 

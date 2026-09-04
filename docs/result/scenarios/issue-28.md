@@ -165,7 +165,49 @@ GET  /points/me          →  200  { balance, transactions[] }
 - [x] [정상] `포인트 화면` — should start and confirm the payment the server created
 - [x] [예외] `포인트 화면` — should show the server message when the amount did not match
 
-**총 40개** (단위 25 + 통합 5 + 화면 6 + 상수·서명 4)
+**총 58개** (단위 27 + 컨트롤러 16 + 통합 5 + 화면 6 + 서명 4). 미충족 1개는 위에 남겼다.
+
+### ac-verifier가 잡은 것
+
+세 가지였다.
+
+1. **컨트롤러 테스트가 통째로 없었다.** 401·403·400 매핑을 손으로만 확인했으니,
+   다음에 컨트롤러를 고치면서 깨져도 CI가 못 잡는다. 16개를 채웠다.
+2. **통합 테스트의 `.rejects.toThrow()`에 인자가 없었다.** 아무 에러로도
+   통과하므로 "금액이 다르면 거절된다"를 실제로 검증하지 않았다. 코드까지 본다.
+3. **한도 경계가 없었다.** 100만원(허용)과 100만 1천원(거절)을 더했다.
+
+- [x] [정상] `POST /payments` — should return the started charge
+- [x] [경계] `POST /payments` — should return 400 when userId is missing
+- [x] [예외] `POST /payments` — should return 400 with PAYMENT_INVALID_AMOUNT for a bad amount
+- [x] [정상] `POST /payments/confirm` — should return 200 with the charge result
+- [x] [보안] `POST /payments/confirm` — should pass the logged-in member so another member cannot confirm
+- [x] [예외] `POST /payments/confirm` — should return 403 when the payment belongs to another member
+- [x] [예외] `POST /payments/confirm` — should return 409 when the amount did not match
+- [x] [예외] `POST /payments/confirm` — should return 409 when the payment is not paid yet
+- [x] [예외] `POST /payments/confirm` — should return 404 when no such payment exists
+- [x] [경계] `POST /payments/confirm` — should return 400 when paymentId is missing
+- [x] [보안] `POST /payments/webhook` — should hand the raw body to the service so the signature can be checked
+- [x] [예외] `POST /payments/webhook` — should return 401 when the signature does not verify
+- [x] [경계] `POST /payments/webhook` — should still answer 200 when the payment is unknown
+- [x] [경계] `POST /payments/webhook` — should let an unexpected error through so it becomes 500
+- [x] [정상] `GET /points/me` — should return the balance and transactions
+- [x] [경계] `GET /points/me` — should return 400 when no member is given
+- [x] [경계] `start` — should accept an amount exactly at the per-charge limit
+- [x] [경계] `start` — should reject one charge unit over the limit
+
+### AC1은 절반만 충족이다 — 결제창은 아직 안 뜬다
+
+`ac-verifier`가 정확히 짚었다. AC1은 "포트원 결제창이 뜬다"인데 **뜨지 않는다.**
+채널키가 없어 브라우저 SDK를 붙일 수 없기 때문이다. 서버가 결제 건을 만들고
+곧바로 확정하는 개발 흐름으로 대신했다.
+
+**이걸 충족이라고 부르지 않는다.** 실채널키가 생기는 시점에 다음을 해야 한다.
+
+- [ ] [정상] `포인트 화면` — should call the PortOne checkout SDK with the paymentId the server issued
+
+서버 쪽 검증(금액 대조·멱등·서명)은 결제창과 무관하게 지금 전부 동작한다.
+결제창은 그 앞에 한 단계가 더 붙는 것이다.
 
 ### 서버를 띄워 확인한 것
 
