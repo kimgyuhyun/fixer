@@ -228,3 +228,17 @@ enum PaymentStatus {
   /// 전액 취소됐다
   CANCELLED
 }
+
+/// 공고 카테고리. 관리자 화면 없이 seed로만 관리한다 (spec-fixed §3.1).
+model Category {
+  id              String  @id @default(cuid())
+  name            String
+  slug            String  @unique
+  sortOrder       Int
+  /// 상세 내용 입력란에 뜨는 안내 문구. 문구 수정에 재배포가 필요 없다.
+  placeholderText String
+  isActive        Boolean @default(true)
+
+  // 목록은 "활성만 정렬순"으로만 읽는다. 그 한 가지 접근을 위한 인덱스다.
+  @@index([isActive, sortOrder])
+}

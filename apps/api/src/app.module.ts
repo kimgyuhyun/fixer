@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AgreementModule } from './agreement/agreement.module';
 import { AuthModule } from './auth/auth.module';
 import { PointModule } from './point/point.module';
+import { JobPostModule } from './job-post/job-post.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RetentionModule } from './retention/retention.module';
@@ -21,6 +22,7 @@ import { RetentionModule } from './retention/retention.module';
     PointModule,
     AgreementModule,
     RetentionModule,
+    JobPostModule,
   ],
 })
 export class AppModule {}

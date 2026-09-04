@@ -1,0 +1,94 @@
+/*
+ * 이슈 #11 · 공고 작성 화면 (카테고리 선택과 안내 문구까지).
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만,
+ * 터치 목표 최소 44px, 입력 글자는 1rem 이상(iOS 확대 방지).
+ * #2의 가입 화면과 같은 폼 규격을 쓴다.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  /* 모바일에서는 화면을 채우고, 넓어지면 읽기 좋은 폭에서 멈춘다. */
+  width: 100%;
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.note {
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input {
+  /* 44px는 터치 목표 최소 크기. 1rem 미만이면 iOS가 포커스 시 화면을 확대한다. */
+  min-height: 2.75rem;
+  width: 100%;
+  padding: var(--space-2);
+  font-size: 1rem;
+
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+/*
+ * 안내 문구가 이 칸의 존재 이유다. 여러 줄이 들어오므로 넉넉히 두고,
+ * 사용자가 늘릴 수는 있되 가로로는 못 늘리게 한다 (레이아웃이 깨진다).
+ */
+.textarea {
+  width: 100%;
+  padding: var(--space-2);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.6;
+  resize: vertical;
+
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.input:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.error {
+  padding: var(--space-2);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius);
+  color: var(--color-danger);
+  font-size: 0.875rem;
+}
