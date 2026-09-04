@@ -90,6 +90,16 @@ AC3이 요구하는 것이고, 저장 후 파일이 바뀌었는지를 잡는 �
 
 **총 16개** (정상 6 / 경계 5 / 예외 5)
 
+> **AC 검증에서 남은 리스크 하나가 기록됐다.** `GET /agreements/mine?userId=...`는
+> `userId`를 아는 제3자가 남의 **서명 여부·서명일·템플릿 버전**을 조회할 수 있다.
+> 이름·서명이 든 PDF 자체는 `GET /agreements/:id`가 소유자를 비교해 막지만,
+> 요약은 그 앞에서 새어나간다. AC2의 문언("동의서 **ID**로 접근") 밖이고 토큰이
+> 없는 한시적 전제 때문이므로 이번 이슈의 미충족은 아니다.
+>
+> **#4가 머지되면 이 경로도 토큰의 주체로 바꾸고 아래를 켠다:**
+>
+> - [ ] [경계] `GET /agreements/mine` — should only return the requester's own summary, taking the user from the token
+
 ---
 
 ## AC 대조
