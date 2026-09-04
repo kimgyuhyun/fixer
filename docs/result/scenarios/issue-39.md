@@ -93,42 +93,59 @@ DB는 파기됐는데 파일이 남는 편이 낫다 — 후자는 다시 돌리
 
 ### 4개월 지난 계정을 파기한다 (AC1)
 
-- [ ] [정상] `purge` — should mask the name of a member deactivated longer than the retention period
-- [ ] [정상] `purge` — should replace the email with deleted_{userId}@invalid
-- [ ] [정상] `purge` — should delete every address row of that member
-- [ ] [정상] `purge` — should delete the agreement PDF file
-- [ ] [정상] `purge` — should keep the agreement sha256 after deleting the file
-- [ ] [정상] `purge` — should stamp purgedAt
+- [x] [정상] `purge` — should mask the name of a member deactivated longer than the retention period
+- [x] [정상] `purge` — should replace the email with a deleted address that can never receive mail
+- [x] [정상] `purge` — should delete every address row of the purged member (통합 테스트)
+- [x] [정상] `purge` — should delete the agreement PDF file
+- [x] [정상] `purge` — should keep the agreement sha256 after deleting the file
+- [x] [정상] `purge` — should stamp purgedAt
 
 ### 아직 이른 계정은 건드리지 않는다 (AC3)
 
-- [ ] [예외] `purge` — should not purge a member deactivated for only one month
-- [ ] [경계] `purge` — should not purge a member deactivated exactly at the retention boundary
-- [ ] [경계] `purge` — should purge one millisecond past the boundary
-- [ ] [예외] `purge` — should never purge an active member
+- [x] [예외] `purge` — should not purge a member deactivated for only one month
+- [x] [경계] `purge` — should not purge a member deactivated exactly at the retention boundary
+- [x] [경계] `purge` — should purge one millisecond past the boundary
+- [x] [예외] `purge` — should never purge an active member
 
 ### 기록은 그대로 남는다 (AC2)
 
-- [ ] [정상] `purge` — should keep the member row instead of deleting it
-- [ ] [정상] `purge` — should keep the point ledger rows of the purged member
-- [ ] [정상] `purge` — should keep the agreement row of the purged member
+- [x] [정상] `purge` — should keep the member row instead of deleting it
+- [x] [정상] `purge` — should keep the point ledger rows of the purged member
+- [x] [정상] `purge` — should keep the agreement row of the purged member
 
 ### 파기된 계정은 신규 가입이 된다 (AC4)
 
-- [ ] [정상] `signup` — should treat a purged account's original email as a new signup
-- [ ] [예외] `reactivate` — should not revive a purged account
+- [x] [정상] `purge` — should let the purged email be used for a brand new signup (통합 테스트)
+- [x] [예외] `reactivate` — 파기된 계정은 이메일이 바뀌어 `findByEmail`이 못 찾는다. 위 통합 테스트가 같은 것을 증명한다
 
 ### 보관 기간을 주입할 수 있다 (AC5)
 
-- [ ] [정상] `purge` — should purge after one minute when the retention period is one minute
-- [ ] [경계] `purge` — should be idempotent: a second run purges nothing
+- [x] [정상] `purge` — should purge after one minute when the retention period is one minute
+- [x] [경계] `purge` — should be idempotent so a second run purges nothing
 
 ### 중복 실행 방어 (spec-fixed §8.2)
 
-- [ ] [경계] `purge` — should return skippedByLock without touching anything when the advisory lock is held
-- [ ] [정상] `purge` — should release the advisory lock when it finishes
+- [x] [경계] `purge` — should return skippedByLock without touching anything when the advisory lock is held
+- [x] [경계] `advisory lock` — should refuse a second holder while the first holds the lock (통합 테스트, 다른 연결에서)
+- [x] [경계] `purge` — should skip the run without touching anything when the lock is held elsewhere (통합 테스트)
+- [x] [정상] `purge` — should release the advisory lock when it finishes
+- [x] [경계] `purge` — should release the advisory lock even when the store throws
 
-**총 19개** (정상 11 / 경계 5 / 예외 3)
+- [x] [정상] `purge` — should report what it purged
+- [x] [경계] `purge` — should not purge before the injected minute has passed
+- [x] [정상] `purge` — should mask the member without deleting the row or its records (통합 테스트)
+- [x] [경계] `purge` — should leave a member deactivated for only one month untouched (통합 테스트)
+
+**총 26개** (단위 18 + 통합 8). 상수 파일에 3개가 더 있다.
+
+### 진짜 Postgres에서 확인한 것
+
+가짜 저장소로는 증명할 수 없는 것이 둘이라 Testcontainers로 따로 봤다.
+
+| 무엇                         | 왜 실물이어야 하나                                      |
+| ---------------------------- | ------------------------------------------------------- |
+| 행을 안 지우고 컬럼만 바꾼다 | FK가 걸린 원장·동의서가 살아남는지는 진짜 DB에서만 난다 |
+| advisory lock                | **다른 연결**이 정말 못 잡는지. 같은 세션은 재진입 허용 |
 
 ---
 

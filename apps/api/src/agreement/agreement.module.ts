@@ -43,6 +43,8 @@ import {
       ],
     },
   ],
-  exports: [AgreementService],
+  // 파기 배치(#39)가 같은 저장소로 동의서 PDF를 지운다. 저장 위치를
+  // 두 곳에 적지 않기 위해 여기서 내보낸다.
+  exports: [AgreementService, LocalFileStore],
 })
 export class AgreementModule {}
