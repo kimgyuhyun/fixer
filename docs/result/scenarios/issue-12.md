@@ -138,7 +138,8 @@ GET  /job-posts        →  200  { items, total }
 - [x] [예외] `create` — should reject an empty required field with a field error
 - [x] [정상] `create` — should not touch the ledger when validation fails
 - [x] [경계] `create` — should reject a headcount below one
-- [x] [경계] `create` — should reject a reward that is not a positive multiple of 1000
+- [x] [경계] `create` — should reject a reward that is not a multiple of 1000
+- [x] [경계] `create` — should reject a reward that is zero or negative
 - [x] [경계] `create` — should reject a work period that ends before it starts
 - [x] [경계] `create` — should reject a work period of zero length
 
@@ -188,7 +189,7 @@ GET  /job-posts        →  200  { items, total }
 - [x] [경계] `목록 화면` — should say the list is empty when nothing is open
 - [x] [경계] `목록 화면` — should show an error instead of an empty list when the request fails
 
-**총 45개** (단위 26 + 통합 6 + 컨트롤러 8 + 화면 10, 겹치는 항목 제외)
+**총 46개** (단위 27 + 통합 6 + 컨트롤러 8 + 화면 10, 겹치는 항목 제외)
 
 ### 서버를 띄워 확인한 것
 

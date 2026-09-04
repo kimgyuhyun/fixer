@@ -296,7 +296,7 @@ describe('create — 필수항목이 비면 저장되지 않는다 (AC4)', () =>
     );
   });
 
-  it('should not touch the store when validation fails', async () => {
+  it('should not touch the ledger when validation fails', async () => {
     const { service, store } = setup();
 
     await rejectionOf(service.create(EMPLOYER, { ...VALID, title: '' }));
@@ -328,6 +328,28 @@ describe('create — 필수항목이 비면 저장되지 않는다 (AC4)', () =>
     expect(fieldErrorOf(error, 'rewardPerPerson')).toBe(
       '보상금은 1,000원 단위로 정해 주세요.',
     );
+  });
+
+  it('should reject a reward that is zero or negative', async () => {
+    // 1,000 배수 검사만 있으면 0은 통과한다 — 0 % 1000 === 0이기 때문이다.
+    const { service } = setup();
+
+    expect(
+      fieldErrorOf(
+        await rejectionOf(
+          service.create(EMPLOYER, { ...VALID, rewardPerPerson: 0 }),
+        ),
+        'rewardPerPerson',
+      ),
+    ).toBe('보상금을 입력해 주세요.');
+    expect(
+      fieldErrorOf(
+        await rejectionOf(
+          service.create(EMPLOYER, { ...VALID, rewardPerPerson: -1_000 }),
+        ),
+        'rewardPerPerson',
+      ),
+    ).toBe('보상금을 입력해 주세요.');
   });
 
   it('should reject a work period that ends before it starts', async () => {
