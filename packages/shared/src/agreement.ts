@@ -17,6 +17,10 @@ export const AGREEMENT_ERRORS = {
   TEMPLATE_MISSING: 'AGREEMENT_TEMPLATE_MISSING',
   /** 서명을 그리지 않았거나 모양이 서명이 아니다 */
   SIGNATURE_REQUIRED: 'AGREEMENT_SIGNATURE_REQUIRED',
+  /** 남의 동의서다. 이름·서명이 들어 있어 남이 보면 개인정보 유출이다 */
+  FORBIDDEN: 'AGREEMENT_FORBIDDEN',
+  /** 그런 동의서가 없다 */
+  NOT_FOUND: 'AGREEMENT_NOT_FOUND',
 } as const;
 
 export type AgreementErrorCode =
@@ -50,3 +54,11 @@ export const signedAgreementSchema = z.object({
   agreedAt: z.string(),
 });
 export type SignedAgreement = z.infer<typeof signedAgreementSchema>;
+
+/** 마이페이지가 읽는 요약. 파일 경로와 해시는 싣지 않는다 */
+export const agreementSummarySchema = z.object({
+  id: z.string().min(1),
+  templateVersion: z.number().int(),
+  agreedAt: z.string(),
+});
+export type AgreementSummary = z.infer<typeof agreementSummarySchema>;

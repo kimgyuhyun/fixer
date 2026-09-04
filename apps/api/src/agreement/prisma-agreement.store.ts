@@ -40,4 +40,15 @@ export class PrismaAgreementStore implements AgreementStore {
   }): Promise<AgreementRecord> {
     return this.prisma.agreement.create({ data: input });
   }
+
+  async findById(id: string): Promise<AgreementRecord | null> {
+    return this.prisma.agreement.findUnique({ where: { id } });
+  }
+
+  async findLatestByUser(userId: string): Promise<AgreementRecord | null> {
+    return this.prisma.agreement.findFirst({
+      where: { userId },
+      orderBy: { agreedAt: 'desc' },
+    });
+  }
 }

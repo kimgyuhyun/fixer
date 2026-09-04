@@ -62,32 +62,33 @@ AC3이 요구하는 것이고, 저장 후 파일이 바뀌었는지를 잡는 �
 
 ### 내 동의서 조회 (AC1)
 
-- [ ] [정상] `findMyLatest` — should return the latest agreement summary of that member
-- [ ] [경계] `findMyLatest` — should return null when the member never signed
-- [ ] [정상] `getMyAgreementPdf` — should return the stored pdf bytes
-- [ ] [정상] `GET /agreements/mine` — should return 200 with the summary
-- [ ] [경계] `GET /agreements/mine` — should return 204 when the member never signed
-- [ ] [정상] `GET /agreements/:id` — should return 200 with application/pdf
+- [x] [정상] `findMyLatest` — should return the latest agreement summary of that member
+- [x] [경계] `findMyLatest` — should return null when the member never signed
+- [x] [정상] `getMyAgreementPdf` — should return the stored pdf bytes
+- [x] [정상] `GET /agreements/mine` — should return 200 with the summary
+- [x] [경계] `GET /agreements/mine` — should return 204 when the member never signed
+- [x] [정상] `GET /agreements/:id` — should return 200 with application/pdf
 
 ### 남의 것은 못 본다 (AC2)
 
-- [ ] [예외] `getMyAgreementPdf` — should reject with AGREEMENT_FORBIDDEN when the requester is not the owner
-- [ ] [예외] `getMyAgreementPdf` — should reject with AGREEMENT_NOT_FOUND when the id does not exist
-- [ ] [예외] `GET /agreements/:id` — should return 403 for another member's agreement
-- [ ] [예외] `GET /agreements/:id` — should return 404 for an unknown id
+- [x] [예외] `getMyAgreementPdf` — should reject with AGREEMENT_FORBIDDEN when the requester is not the owner
+- [x] [예외] `getMyAgreementPdf` — should reject with AGREEMENT_NOT_FOUND when the id does not exist
+- [x] [예외] `GET /agreements/:id` — should return 403 for another member's agreement
+- [x] [예외] `GET /agreements/:id` — should return 404 for an unknown id
+- [x] [경계] `GET /agreements/:id` — should still send the pdf when the hash does not match
 
 ### 해시 대조 (AC3)
 
-- [ ] [정상] `getMyAgreementPdf` — should report the hash matches when the file is untouched
-- [ ] [예외] `getMyAgreementPdf` — should report a mismatch when the stored file changed
-- [ ] [경계] `getMyAgreementPdf` — should still return the pdf when the hash does not match
+- [x] [정상] `getMyAgreementPdf` — should report the hash matches when the file is untouched
+- [x] [예외] `getMyAgreementPdf` — should report a mismatch when the stored file changed
+- [x] [경계] `getMyAgreementPdf` — should still return the pdf when the hash does not match
 
 ### 화면 (AC1)
 
-- [ ] [화면] `MyAgreement` — should link to the signed pdf when one exists
-- [ ] [화면] `MyAgreement` — should say nothing is signed yet when there is none
+- [x] [화면] `MyAgreement` — should link to the signed pdf when one exists
+- [x] [화면] `MyAgreement` — should say nothing is signed yet when there is none
 
-**총 15개** (정상 6 / 경계 4 / 예외 5)
+**총 16개** (정상 6 / 경계 5 / 예외 5)
 
 ---
 
@@ -99,7 +100,7 @@ AC3이 요구하는 것이고, 저장 후 파일이 바뀌었는지를 잡는 �
 | 2   | 다른 회원의 동의서 ID로 접근하면 `FORBIDDEN`으로 막힘 | `getMyAgreementPdf — FORBIDDEN` · `— NOT_FOUND` · `GET /agreements/:id — 403` · `— 404`                                             |
 | 3   | 저장된 PDF의 해시가 기록된 `sha256`과 일치            | `getMyAgreementPdf — hash matches` · `— mismatch` · `— still return the pdf`                                                        |
 
-**커버리지: AC 3개 전부 커버 / 시나리오 15개 / 미커버 0개**
+**커버리지: AC 3개 전부 커버 / 시나리오 16개 / 미커버 0개**
 
 ---
 

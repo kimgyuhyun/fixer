@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
   AGREEMENT_ERRORS,
@@ -64,6 +64,9 @@ export interface AgreementStore {
     ip: string;
     userAgent: string;
   }): Promise<AgreementRecord>;
+  /** #8 — 조회에 쓴다 */
+  findById(id: string): Promise<AgreementRecord | null>;
+  findLatestByUser(userId: string): Promise<AgreementRecord | null>;
 }
 
 /** 동의서가 던지는 도메인 에러 */
@@ -130,6 +133,40 @@ export class AgreementService {
       ip: input.ip,
       userAgent: input.userAgent,
     });
+  }
+
+  /** 마이페이지가 "내 동의서가 있는가"를 묻는다 (#8) */
+  async findMyLatest(userId: string): Promise<AgreementRecord | null> {
+    return this.agreements.findLatestByUser(userId);
+  }
+
+  /**
+   * 저장된 동의서 PDF를 돌려준다. (#8)
+   *
+   * **요청자와 소유자가 다르면 거절한다.** 동의서에는 이름과 서명이 들어 있어
+   * 남이 보면 개인정보 유출이다.
+   */
+  async getMyAgreementPdf(input: {
+    agreementId: string;
+    requesterId: string;
+  }): Promise<{ bytes: Buffer; sha256Matches: boolean }> {
+    const found = await this.agreements.findById(input.agreementId);
+    if (!found) {
+      throw new AgreementError(AGREEMENT_ERRORS.NOT_FOUND);
+    }
+    if (found.userId !== input.requesterId) {
+      throw new AgreementError(AGREEMENT_ERRORS.FORBIDDEN);
+    }
+
+    const bytes = await this.files.get(found.filePath);
+
+    // 저장 후 파일이 바뀌었는지 본다 (AC3). 어긋나도 막지 않는다 —
+    // 사용자에게는 자기 동의서를 보여주는 편이 낫고, 어긋났다는 사실은
+    // 운영이 알아야 한다.
+    const sha256Matches =
+      createHash('sha256').update(bytes).digest('hex') === found.sha256;
+
+    return { bytes, sha256Matches };
   }
 
   private async activeTemplate(): Promise<AgreementTemplateRecord> {

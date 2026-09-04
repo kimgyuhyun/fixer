@@ -28,6 +28,18 @@ const READY: Feature[] = [
     summary: '이메일로 6자리 코드를 받아 10분 안에 검증한다.',
     href: '/signup/verify-email',
   },
+  {
+    issue: 7,
+    title: '동의서 서명',
+    summary: '동의서를 읽고 서명하면 서명이 병합된 PDF가 저장된다.',
+    href: '/signup/agreement',
+  },
+  {
+    issue: 8,
+    title: '내 동의서 보기',
+    summary: '서명한 동의서를 다시 열어 본다. 남의 것은 못 본다.',
+    href: '/my/agreement',
+  },
 ];
 
 /** 아직 만들지 않은 것. 이 화면이 "무엇이 없는지"까지 말하게 한다. */

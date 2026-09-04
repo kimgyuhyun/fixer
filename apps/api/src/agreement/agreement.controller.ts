@@ -2,7 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
+  NotFoundException,
+  Param,
+  Query,
   HttpCode,
   HttpStatus,
   Post,
@@ -12,8 +16,10 @@ import {
 } from '@nestjs/common';
 import {
   AGREEMENT_ERRORS,
+  agreementSummarySchema,
   signAgreementRequestSchema,
   signedAgreementSchema,
+  type AgreementSummary,
   type SignedAgreement,
 } from '@fixer/shared';
 import type { Request, Response } from 'express';
@@ -69,6 +75,47 @@ export class AgreementController {
       throw toHttpError(error);
     }
   }
+
+  /** 마이페이지가 "내 동의서가 있는가"를 묻는다 (#8) */
+  @Get('mine')
+  async mine(
+    @Query('userId') userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AgreementSummary | undefined> {
+    const found = await this.service.findMyLatest(userId ?? '');
+    if (!found) {
+      // 없는 것은 오류가 아니다. 아직 서명하지 않았을 뿐이다.
+      res.status(HttpStatus.NO_CONTENT);
+      return undefined;
+    }
+    return agreementSummarySchema.parse({
+      id: found.id,
+      templateVersion: found.templateVersion,
+      agreedAt: found.agreedAt.toISOString(),
+    });
+  }
+
+  /** 서명한 동의서 PDF. **남의 것은 못 본다** (#8 AC2) */
+  @Get(':id')
+  async one(
+    @Param('id') id: string,
+    @Query('userId') userId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const { bytes, sha256Matches } = await this.service.getMyAgreementPdf({
+        agreementId: id,
+        requesterId: userId ?? '',
+      });
+
+      // 어긋나도 막지 않는다. 헤더로 알리고 운영이 판단한다.
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('X-Agreement-Hash-Matches', String(sha256Matches));
+      res.send(bytes);
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
 }
 
 /**
@@ -93,6 +140,18 @@ function toHttpError(error: unknown): unknown {
       return new ServiceUnavailableException({
         errorCode: error.code,
         message: '동의서를 준비 중입니다. 잠시 후 다시 시도해 주세요.',
+      });
+    }
+    if (error.code === AGREEMENT_ERRORS.FORBIDDEN) {
+      return new ForbiddenException({
+        errorCode: error.code,
+        message: '다른 회원의 동의서는 볼 수 없습니다.',
+      });
+    }
+    if (error.code === AGREEMENT_ERRORS.NOT_FOUND) {
+      return new NotFoundException({
+        errorCode: error.code,
+        message: '동의서를 찾을 수 없습니다.',
       });
     }
     return new BadRequestException({

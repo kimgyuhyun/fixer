@@ -61,6 +61,14 @@ class FakeAgreementStore implements AgreementStore {
     this.rows.push(row);
     return Promise.resolve(row);
   }
+
+  // #8이 포트를 넓혔다. 이 테스트는 서명만 보므로 불리면 터뜨린다.
+  findById(): Promise<AgreementRecord | null> {
+    throw new Error('이 테스트는 서명만 본다');
+  }
+  findLatestByUser(): Promise<AgreementRecord | null> {
+    throw new Error('이 테스트는 서명만 본다');
+  }
 }
 
 /**

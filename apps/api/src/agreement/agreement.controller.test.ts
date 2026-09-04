@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { AgreementController } from './agreement.controller';
 import { AgreementError, type AgreementService } from './agreement.service';
 
+const AGREEMENT_PDF = Buffer.from('%PDF-1.7 signed');
+
 /**
  * 컨트롤러는 HTTP 경계다. 서비스 테스트로는 증명할 수 없는 것을 본다 —
  * **본문에 실려온 `ip`·`userAgent`를 무시하고 서버가 본 값을 쓰는가**가 특히 그렇다.
@@ -22,6 +24,7 @@ function fakeResponse() {
   return {
     setHeader: vi.fn(),
     send: vi.fn(),
+    status: vi.fn(),
   } as unknown as Response;
 }
 
@@ -194,5 +197,99 @@ describe('POST /agreements', () => {
     );
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
+  });
+});
+
+describe('GET /agreements/mine', () => {
+  it('should return 200 with the summary', async () => {
+    const controller = controllerWith({
+      findMyLatest: vi.fn().mockResolvedValue(SAVED),
+    });
+
+    const body = await controller.mine('usr_1', fakeResponse());
+
+    expect(body).toEqual({
+      id: 'agr_1',
+      templateVersion: 3,
+      agreedAt: NOW.toISOString(),
+    });
+  });
+
+  it('should return 204 when the member never signed', async () => {
+    // 없는 것은 오류가 아니다. 아직 서명하지 않았을 뿐이다.
+    const controller = controllerWith({
+      findMyLatest: vi.fn().mockResolvedValue(null),
+    });
+    const res = fakeResponse();
+
+    await expect(controller.mine('usr_1', res)).resolves.toBeUndefined();
+
+    expect(
+      (res as unknown as { status: { mock: { calls: number[][] } } }).status
+        .mock.calls[0]?.[0],
+    ).toBe(HttpStatus.NO_CONTENT);
+  });
+});
+
+describe('GET /agreements/:id', () => {
+  it('should return 200 with application/pdf', async () => {
+    const controller = controllerWith({
+      getMyAgreementPdf: vi
+        .fn()
+        .mockResolvedValue({ bytes: AGREEMENT_PDF, sha256Matches: true }),
+    });
+    const res = fakeResponse();
+
+    await controller.one('agr_1', 'usr_1', res);
+
+    expect(headersOf(res).get('Content-Type')).toBe('application/pdf');
+    expect(headersOf(res).get('X-Agreement-Hash-Matches')).toBe('true');
+    expect(sentBody(res)).toEqual(AGREEMENT_PDF);
+  });
+
+  it('should return 403 for another members agreement', async () => {
+    const controller = controllerWith({
+      getMyAgreementPdf: vi
+        .fn()
+        .mockRejectedValue(new AgreementError(AGREEMENT_ERRORS.FORBIDDEN)),
+    });
+
+    const error = await rejectionOf(
+      controller.one('agr_1', 'usr_stranger', fakeResponse()),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
+    expect(bodyOf(error)).toMatchObject({
+      errorCode: AGREEMENT_ERRORS.FORBIDDEN,
+    });
+  });
+
+  it('should return 404 for an unknown id', async () => {
+    const controller = controllerWith({
+      getMyAgreementPdf: vi
+        .fn()
+        .mockRejectedValue(new AgreementError(AGREEMENT_ERRORS.NOT_FOUND)),
+    });
+
+    const error = await rejectionOf(
+      controller.one('agr_missing', 'usr_1', fakeResponse()),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
+  });
+
+  it('should still send the pdf when the hash does not match', async () => {
+    // 막지 않고 헤더로 알린다. 운영이 판단할 몫이다.
+    const controller = controllerWith({
+      getMyAgreementPdf: vi
+        .fn()
+        .mockResolvedValue({ bytes: AGREEMENT_PDF, sha256Matches: false }),
+    });
+    const res = fakeResponse();
+
+    await controller.one('agr_1', 'usr_1', res);
+
+    expect(headersOf(res).get('X-Agreement-Hash-Matches')).toBe('false');
+    expect(sentBody(res)).toEqual(AGREEMENT_PDF);
   });
 });
