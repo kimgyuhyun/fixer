@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { JobPostFilter } from '@fixer/shared';
+import type { JobPostFilter, JobPostVersionSnapshot } from '@fixer/shared';
 import {
   holdKeyFor,
   transition,
@@ -160,6 +160,111 @@ export class PrismaJobPostStore implements JobPostStore {
     if (row === null) return null;
 
     return { ...toRecord(row), categoryName: row.category.name };
+  }
+
+  /**
+   * 수정. **버전 증가·스냅샷·잠금 조정이 한 트랜잭션이다** (#15).
+   *
+   * 셋이 나뉘면 각각 사고가 다르다. 버전만 오르면 그 계약을 복원할 수 없고,
+   * 스냅샷만 남으면 번호가 겹치고, 잠금을 안 고치면 **약속한 돈보다 적게
+   * 잠긴 공고**가 된다.
+   */
+  async applyUpdate(input: {
+    jobPostId: string;
+    patch: Partial<JobPostRecord>;
+    nextVersion: number;
+    writeSnapshot: boolean;
+    budgetDelta: number;
+  }): Promise<(JobPostRecord & { categoryName: string }) | 'INSUFFICIENT'> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.jobPost.update({
+          where: { id: input.jobPostId },
+          data: { ...input.patch, version: input.nextVersion },
+          include: { category: { select: { name: true } } },
+        });
+
+        // 스냅샷은 **바뀐 뒤** 값이다. `version = 2`를 조회하면 v2 시점의
+        // 조건이 나와야 하고, 등록 시점의 v1이 그 규칙을 이미 정했다.
+        if (input.writeSnapshot) {
+          await tx.jobPostVersion.create({
+            data: {
+              jobPostId: updated.id,
+              version: updated.version,
+              workAddress: updated.workAddress,
+              workStartAt: updated.workStartAt,
+              workEndAt: updated.workEndAt,
+              headcount: updated.headcount,
+              rewardPerPerson: updated.rewardPerPerson,
+              requiredDescription: updated.requiredDescription,
+            },
+          });
+        }
+
+        if (input.budgetDelta > 0) {
+          // 더 잠근다. 조건부 UPDATE 한 문장이라 잔액이 모자라면 0건이다.
+          const affected = await tx.$executeRaw`
+            UPDATE "User"
+            SET "cachedBalance" = "cachedBalance" - ${input.budgetDelta}
+            WHERE id = ${updated.employerId}
+              AND "cachedBalance" - ${input.budgetDelta} >= 0
+          `;
+          if (affected === 0) throw new InsufficientBalance();
+
+          await tx.pointTransaction.create({
+            data: {
+              userId: updated.employerId,
+              type: 'HOLD',
+              amount: -input.budgetDelta,
+              idempotencyKey: holdKeyFor(updated.id, updated.version),
+              referenceId: updated.id,
+            },
+          });
+        } else if (input.budgetDelta < 0) {
+          // 예산이 줄었으니 차액을 되돌린다. 안 되돌리면 쓸 수 없는 돈이 남는다.
+          const released = -input.budgetDelta;
+          await tx.$executeRaw`
+            UPDATE "User"
+            SET "cachedBalance" = "cachedBalance" + ${released}
+            WHERE id = ${updated.employerId}
+          `;
+          await tx.pointTransaction.create({
+            data: {
+              userId: updated.employerId,
+              type: 'RELEASE',
+              amount: released,
+              idempotencyKey: `release:${updated.id}:${updated.version}`,
+              referenceId: updated.id,
+            },
+          });
+        }
+
+        return { ...toRecord(updated), categoryName: updated.category.name };
+      });
+    } catch (error) {
+      if (error instanceof InsufficientBalance) return 'INSUFFICIENT';
+      throw error;
+    }
+  }
+
+  async findVersion(
+    jobPostId: string,
+    version: number,
+  ): Promise<JobPostVersionSnapshot | null> {
+    const row = await this.prisma.jobPostVersion.findUnique({
+      where: { jobPostId_version: { jobPostId, version } },
+    });
+    if (row === null) return null;
+
+    return {
+      version: row.version,
+      workAddress: row.workAddress,
+      workStartAt: row.workStartAt.toISOString(),
+      workEndAt: row.workEndAt.toISOString(),
+      headcount: row.headcount,
+      rewardPerPerson: row.rewardPerPerson,
+      requiredDescription: row.requiredDescription,
+    };
   }
 }
 

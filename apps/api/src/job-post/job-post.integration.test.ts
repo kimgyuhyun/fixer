@@ -335,3 +335,135 @@ describe('공고 등록 — 진짜 Postgres에서', () => {
     expect(list.items[0].status).toBe('OPEN');
   });
 });
+describe('공고 수정 — 진짜 Postgres에서 (#15)', () => {
+  it('should leave the version and the snapshot in step after several edits', async () => {
+    // version만 오르고 스냅샷이 없으면 그 계약을 영영 복원할 수 없다.
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(5_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    await service.update({
+      employerId,
+      jobPostId: created.id,
+      patch: { rewardPerPerson: 60_000 },
+    });
+    await service.update({
+      employerId,
+      jobPostId: created.id,
+      patch: { requiredDescription: '창고를 정리합니다.' },
+    });
+
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: created.id },
+    });
+    const snapshots = await prisma.jobPostVersion.findMany({
+      where: { jobPostId: created.id },
+      orderBy: { version: 'asc' },
+    });
+
+    expect(post.version).toBe(3);
+    expect(snapshots.map((s) => s.version)).toEqual([1, 2, 3]);
+    // 스냅샷은 그 버전 시점의 값이다. v2는 보상금만 바뀐 상태.
+    expect(snapshots[0].rewardPerPerson).toBe(REWARD);
+    expect(snapshots[1].rewardPerPerson).toBe(60_000);
+    expect(snapshots[2].requiredDescription).toBe('창고를 정리합니다.');
+  });
+
+  it('should not raise the version when only the title changes', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(5_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    await service.update({
+      employerId,
+      jobPostId: created.id,
+      patch: { title: '사무실 대청소' },
+    });
+
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: created.id },
+    });
+    expect(post.version).toBe(1);
+    expect(post.title).toBe('사무실 대청소');
+    expect(await prisma.jobPostVersion.count()).toBe(1);
+  });
+
+  it('should keep the locked amount equal to the budget after an edit', async () => {
+    // 인원을 올렸는데 잠금이 그대로면 약속한 돈보다 적게 잠긴 공고가 된다.
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(5_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    const updated = await service.update({
+      employerId,
+      jobPostId: created.id,
+      patch: { headcount: 10 },
+    });
+
+    const locked = await prisma.pointTransaction.aggregate({
+      where: { referenceId: created.id },
+      _sum: { amount: true },
+    });
+    expect(updated.budget).toBe(REWARD * 10);
+    expect(locked._sum.amount).toBe(-updated.budget);
+    expect(await balanceOf(employerId)).toBe(5_000_000 - updated.budget);
+  });
+
+  it('should release the difference when the budget goes down', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(5_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    const updated = await service.update({
+      employerId,
+      jobPostId: created.id,
+      patch: { rewardPerPerson: 10_000 },
+    });
+
+    const released = await prisma.pointTransaction.findFirstOrThrow({
+      where: { referenceId: created.id, type: 'RELEASE' },
+    });
+    expect(released.amount).toBe(BUDGET - updated.budget);
+    expect(await balanceOf(employerId)).toBe(5_000_000 - updated.budget);
+  });
+
+  it('should restore the contract of an older version', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(5_000_000);
+    const created = await service.create(employerId, request(categoryId));
+    await service.update({
+      employerId,
+      jobPostId: created.id,
+      patch: { headcount: 9 },
+    });
+
+    const v1 = await service.findVersion(created.id, 1);
+    const v2 = await service.findVersion(created.id, 2);
+
+    // 계약 복원이 한 줄이다 (ADR-JOB-1).
+    expect(v1.headcount).toBe(HEADCOUNT);
+    expect(v2.headcount).toBe(9);
+  });
+
+  it('should leave neither the version nor the hold when the balance is short', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(BUDGET);
+    const created = await service.create(employerId, request(categoryId));
+
+    await expect(
+      service.update({
+        employerId,
+        jobPostId: created.id,
+        patch: { headcount: 50 },
+      }),
+    ).rejects.toMatchObject({ code: JOB_POST_ERRORS.INSUFFICIENT_BALANCE });
+
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: created.id },
+    });
+    expect(post.version).toBe(1);
+    expect(post.headcount).toBe(HEADCOUNT);
+    expect(await prisma.jobPostVersion.count()).toBe(1);
+    expect(await balanceOf(employerId)).toBe(0);
+  });
+});

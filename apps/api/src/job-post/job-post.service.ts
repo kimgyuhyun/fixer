@@ -4,8 +4,10 @@ import {
   JOB_POST_PAGE_SIZE,
   budgetOf,
   canTransition,
+  changedRequiredFields,
   createJobPostRequestSchema,
   holdIdempotencyKey,
+  updateJobPostRequestSchema,
   type CreateJobPostRequest,
   type JobPostErrorCode,
   type JobPostDetail,
@@ -13,6 +15,8 @@ import {
   type JobPostList,
   type JobPostStatus,
   type JobPostSummary,
+  type JobPostVersionSnapshot,
+  type UpdateJobPostRequest,
 } from '@fixer/shared';
 
 /** 공고가 던지는 도메인 에러 */
@@ -96,6 +100,31 @@ export interface JobPostStore {
   findById(
     jobPostId: string,
   ): Promise<(JobPostRecord & { categoryName: string }) | null>;
+
+  /**
+   * 공고를 고친다. **버전 증가·스냅샷 저장·잠금 조정이 한 트랜잭션이다.**
+   *
+   * `version`만 오르고 스냅샷이 없으면 그 버전의 계약을 영영 복원할 수
+   * 없다 (ADR-JOB-1). 예산이 늘었는데 잠금이 그대로면 돈이 샌다.
+   *
+   * 잔액이 모자라면 `'INSUFFICIENT'`다 — 호출부가 부족 금액을 안내한다.
+   */
+  applyUpdate(input: {
+    jobPostId: string;
+    patch: Partial<JobPostRecord>;
+    /** 오르면 새 번호, 아니면 지금 번호 그대로 */
+    nextVersion: number;
+    /** 버전이 올랐을 때만 스냅샷을 남긴다 */
+    writeSnapshot: boolean;
+    /** 잠금 차액. 양수면 더 잠그고 음수면 되돌린다. 0이면 안 건드린다 */
+    budgetDelta: number;
+  }): Promise<(JobPostRecord & { categoryName: string }) | 'INSUFFICIENT'>;
+
+  /** 그 버전의 스냅샷. 계약 복원이 이 한 줄이다 (ADR-JOB-1) */
+  findVersion(
+    jobPostId: string,
+    version: number,
+  ): Promise<JobPostVersionSnapshot | null>;
 }
 
 /**
@@ -197,6 +226,91 @@ export class JobPostService {
     };
   }
 
+  /**
+   * 공고를 고친다.
+   *
+   * 필수항목 6개 중 **값이 실제로 바뀐 것**이 있을 때만 `version`이 오른다
+   * (ADR-JOB-2). 되돌린 수정은 아무것도 안 바뀐 것과 같다.
+   */
+  async update(input: {
+    employerId: string;
+    jobPostId: string;
+    patch: UpdateJobPostRequest;
+  }): Promise<JobPostDetail> {
+    const patch = updateJobPostRequestSchema.parse(input.patch);
+
+    const current = await this.store.findById(input.jobPostId);
+    if (current === null) {
+      throw new JobPostError(JOB_POST_ERRORS.NOT_FOUND);
+    }
+    if (current.employerId !== input.employerId) {
+      throw new JobPostError(JOB_POST_ERRORS.NOT_OWNED);
+    }
+    // CLOSED는 정원이 찼거나 시작 시각이 지난 상태다. 그 뒤에 조건을 바꾸면
+    // 수락자가 동의한 적 없는 일을 하게 된다 (AC6).
+    if (current.status !== 'OPEN') {
+      throw new JobPostError(JOB_POST_ERRORS.NOT_EDITABLE, {
+        status: current.status,
+      });
+    }
+
+    const changed = changedRequiredFields(
+      {
+        workAddress: current.workAddress,
+        workStartAt: current.workStartAt.toISOString(),
+        workEndAt: current.workEndAt.toISOString(),
+        headcount: current.headcount,
+        rewardPerPerson: current.rewardPerPerson,
+        requiredDescription: current.requiredDescription,
+      },
+      patch,
+    );
+
+    const nextVersion =
+      changed.length > 0 ? current.version + 1 : current.version;
+    const nextBudget = budgetOf({
+      headcount: patch.headcount ?? current.headcount,
+      rewardPerPerson: patch.rewardPerPerson ?? current.rewardPerPerson,
+    });
+    const budgetDelta = nextBudget - budgetOf(current);
+
+    const updated = await this.store.applyUpdate({
+      jobPostId: current.id,
+      patch: toRecordPatch(patch),
+      nextVersion,
+      writeSnapshot: changed.length > 0,
+      budgetDelta,
+    });
+
+    if (updated === 'INSUFFICIENT') {
+      const balance = await this.balances.balanceOf(input.employerId);
+      throw new JobPostError(JOB_POST_ERRORS.INSUFFICIENT_BALANCE, {
+        required: budgetDelta,
+        balance,
+        shortfall: budgetDelta - balance,
+      });
+    }
+
+    return {
+      ...toSummary(updated),
+      categoryName: updated.categoryName,
+      requiredDescription: updated.requiredDescription,
+      acceptedCount: await this.accepted.countAccepted(current.id),
+    };
+  }
+
+  /** 그 버전의 필수항목 6개. 분쟁 시 근거가 되는 계약 내용이다 */
+  async findVersion(
+    jobPostId: string,
+    version: number,
+  ): Promise<JobPostVersionSnapshot> {
+    const snapshot = await this.store.findVersion(jobPostId, version);
+    if (snapshot === null) {
+      throw new JobPostError(JOB_POST_ERRORS.VERSION_NOT_FOUND);
+    }
+    return snapshot;
+  }
+
   async list(filter: JobPostFilter): Promise<JobPostList> {
     const { items, total } = await this.store.listOpen(
       filter,
@@ -282,4 +396,25 @@ function toSummary(row: JobPostRecord): JobPostSummary {
     budget: budgetOf(row),
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/** 요청의 ISO 문자열을 저장소가 쓰는 모양으로. 안 보낸 칸은 안 건드린다 */
+function toRecordPatch(patch: UpdateJobPostRequest): Partial<JobPostRecord> {
+  const next: Partial<JobPostRecord> = {};
+  if (patch.title !== undefined) next.title = patch.title;
+  if (patch.workAddress !== undefined) next.workAddress = patch.workAddress;
+  if (patch.workSido !== undefined) next.workSido = patch.workSido;
+  if (patch.workSigungu !== undefined) next.workSigungu = patch.workSigungu;
+  if (patch.workStartAt !== undefined) {
+    next.workStartAt = new Date(patch.workStartAt);
+  }
+  if (patch.workEndAt !== undefined) next.workEndAt = new Date(patch.workEndAt);
+  if (patch.headcount !== undefined) next.headcount = patch.headcount;
+  if (patch.rewardPerPerson !== undefined) {
+    next.rewardPerPerson = patch.rewardPerPerson;
+  }
+  if (patch.requiredDescription !== undefined) {
+    next.requiredDescription = patch.requiredDescription;
+  }
+  return next;
 }

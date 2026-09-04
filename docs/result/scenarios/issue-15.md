@@ -79,56 +79,80 @@ GET /job-posts/:id/versions/:version  →  200  그 시점의 필수항목 6개
 
 ### 필수항목을 고치면 오른다 (AC1)
 
-- [ ] [정상] `update` — should raise the version to two when the reward changes
-- [ ] [정상] `update` — should keep the previous value in the version history
-- [ ] [정상] `update` — should write the snapshot in the same transaction as the version bump
-- [ ] [정상] `update` — should return the updated post
+- [x] [정상] `update` — should raise the version to two when the reward changes
+- [x] [정상] `통합` — should leave the version and the snapshot in step after several edits (v1·v2·v3 값까지 대조)
+- [x] [정상] `update` — should write the snapshot in the same step as the version bump
+- [x] [정상] `update` — should return the updated post
 
 ### 계약을 복원할 수 있다 (AC2)
 
-- [ ] [정상] `findVersion` — should return all six required fields as they were at that version
-- [ ] [경계] `findVersion` — should return the version-one snapshot written at creation
-- [ ] [예외] `findVersion` — should reject a version that was never written
+- [x] [정상] `통합` — should restore the contract of an older version
+- [x] [경계] `findVersion` — should return the version-one snapshot written at creation
+- [x] [예외] `findVersion` — should reject a version that was never written
 
 ### 부가항목만 고치면 그대로다 (AC3)
 
-- [ ] [정상] `update` — should keep the version at one when only the title changes
-- [ ] [정상] `update` — should not write a snapshot when only the title changes
-- [ ] [정상] `update` — should still save the new title
+- [x] [정상] `update` — should keep the version at one when only the title changes
+- [x] [정상] `update` — should not write a snapshot when only the title changes
+- [x] [정상] `통합` — should not raise the version when only the title changes
 
 ### 필수항목 6개 각각 (AC4)
 
-- [ ] [정상] `changedRequiredFields` — should detect a change in each of the six fields, one at a time
-- [ ] [경계] `changedRequiredFields` — should report nothing changed for an empty patch
-- [ ] [경계] `changedRequiredFields` — should compare dates as instants, not strings
+- [x] [정상] `changedRequiredFields` — should detect a change in each of the six fields, one at a time
+- [x] [경계] `changedRequiredFields` — should report nothing when every field is sent unchanged
+- [x] [경계] `changedRequiredFields` — should still detect a real date change
+- [x] [경계] `changedRequiredFields` — should ignore fields that do not raise the version
+- [x] [정상] `changedRequiredFields` — should list every field that changed at once
+- [x] [경계] `changedRequiredFields` — should report nothing changed for an empty patch
+- [x] [경계] `changedRequiredFields` — should compare dates as instants, not strings
 
 ### 되돌리면 안 오른다 (AC5)
 
-- [ ] [경계] `update` — should keep the version when the value is set back to what it was
-- [ ] [경계] `update` — should keep the version when every field is sent unchanged
+- [x] [경계] `update` — should keep the version when the value is set back to what it was
+- [x] [경계] `update` — should keep the version when every field is sent unchanged
 
 ### OPEN이 아니면 못 고친다 (AC6)
 
-- [ ] [예외] `update` — should reject a CLOSED post with JOB_POST_NOT_EDITABLE
-- [ ] [예외] `update` — should reject a CANCELLED post
-- [ ] [예외] `update` — should reject someone else's post
-- [ ] [예외] `update` — should reject a post that cannot be found
-- [ ] [정상] `update` — should change nothing when it was rejected
+- [x] [예외] `update` — should reject a CLOSED post with JOB_POST_NOT_EDITABLE
+- [x] [예외] `update` — should reject a CANCELLED post
+- [x] [예외] `update` — should reject a post owned by another member
+- [x] [예외] `update` — should reject a post that cannot be found
+- [x] [정상] `update` — should change nothing when it was rejected
 
 ### 예산이 바뀌면 잠금도 바뀐다 (AC 밖, 돈 구멍)
 
-- [ ] [정상] `update` — should lock more when the headcount goes up
-- [ ] [정상] `update` — should release the difference when the reward goes down
-- [ ] [예외] `update` — should reject the edit when the balance cannot cover the bigger budget
-- [ ] [정상] `update` — should change neither the post nor the ledger when the balance is short
+- [x] [정상] `update` — should lock more when the headcount goes up
+- [x] [정상] `update` — should release the difference when the reward goes down
+- [x] [예외] `update` — should reject the edit when the balance cannot cover the bigger budget
+- [x] [정상] `update` — should not change the post when the balance is short
+- [x] [경계] `통합` — should leave neither the version nor the hold when the balance is short
+- [x] [정상] `통합` — should release the difference when the budget goes down
 
 ### 진짜 Postgres에서
 
-- [ ] [경계] `통합` — should leave the version and the snapshot in step after several edits
-- [ ] [경계] `통합` — should not write a second snapshot for the same version
-- [ ] [정상] `통합` — should keep the locked amount equal to the budget after an edit
+- [x] [경계] `통합` — should leave the version and the snapshot in step after several edits
+- [x] [정상] `PATCH /job-posts/:id` — should return the updated post
+- [x] [보안] `PATCH /job-posts/:id` — should not pass employerId through as a field to change
+- [x] [경계] `PATCH /job-posts/:id` — should return 400 when employerId is missing
+- [x] [예외] `PATCH /job-posts/:id` — should return 403 for a post owned by another member
+- [x] [예외] `PATCH /job-posts/:id` — should return 409 when the post is not open
+- [x] [예외] `PATCH /job-posts/:id` — should return 404 for a post that cannot be found
+- [x] [정상] `GET /job-posts/:id/versions/:version` — should return the six required fields of that version
+- [x] [예외] `GET /job-posts/:id/versions/:version` — should return 404 for a version that was never written
+- [x] [정상] `통합` — should keep the locked amount equal to the budget after an edit
 
-**총 28개** (정상 12 / 경계 8 / 예외 6 · 예산 조정 4개 포함)
+**총 41개** (순수 함수 7 + 서비스 18 + 통합 6 + 컨트롤러 8 · 예산 조정 4개 포함)
+
+### 서버를 띄워 확인한 것
+
+| 무엇             | 결과                                     |
+| ---------------- | ---------------------------------------- |
+| 제목만 수정      | `version 1` 그대로, 제목만 바뀜          |
+| 보상금 5만 → 6만 | `version 2`, 예산 15만 → 18만, 잔액 −3만 |
+| 같은 값으로 다시 | `version 2` 그대로 — 안 오른다           |
+| `v1` 계약 복원   | 보상금 50,000                            |
+| `v2` 계약 복원   | 보상금 60,000                            |
+| 남의 공고 수정   | `403`                                    |
 
 ---
 

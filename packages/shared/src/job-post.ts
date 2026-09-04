@@ -71,6 +71,10 @@ export const JOB_POST_ERRORS = {
   NOT_OWNED: 'JOB_POST_NOT_OWNED',
   /** 표에 없는 상태 전이다 (ADR-JOB-3) */
   INVALID_TRANSITION: 'JOB_POST_INVALID_TRANSITION',
+  /** `OPEN`이 아니라 못 고친다 (#15) */
+  NOT_EDITABLE: 'JOB_POST_NOT_EDITABLE',
+  /** 그 버전의 스냅샷이 없다 (#15) */
+  VERSION_NOT_FOUND: 'JOB_POST_VERSION_NOT_FOUND',
 } as const;
 
 export type JobPostErrorCode =
@@ -232,4 +236,85 @@ export function budgetOf(input: {
 /** 공고 예산 잠금의 멱등 키. 같은 공고는 한 번만 잠근다 */
 export function holdIdempotencyKey(jobPostId: string, version: number): string {
   return `hold:${jobPostId}:${version}`;
+}
+
+/**
+ * 수정 요청. 보내는 칸만 바뀐다.
+ *
+ * 필수항목 6개와 부가항목(제목)을 한 요청에 섞어 보낼 수 있다. 어느 것이
+ * 버전을 올리는지는 **서버가 판정한다** — 화면이 정하면 그 판정이 두 벌이 된다.
+ */
+export const updateJobPostRequestSchema = z.object({
+  title: z.string().trim().min(1).max(80).optional(),
+  workAddress: z.string().trim().min(1).optional(),
+  workSido: z.string().trim().optional(),
+  workSigungu: z.string().trim().optional(),
+  workStartAt: z.iso.datetime().optional(),
+  workEndAt: z.iso.datetime().optional(),
+  headcount: z.number().int().min(1).max(JOB_POST_MAX_HEADCOUNT).optional(),
+  rewardPerPerson: z
+    .number()
+    .int()
+    .positive()
+    .refine((v) => v % CHARGE_UNIT === 0, {
+      error: '보상금은 1,000원 단위로 정해 주세요.',
+    })
+    .optional(),
+  requiredDescription: z.string().trim().min(1).optional(),
+});
+export type UpdateJobPostRequest = z.infer<typeof updateJobPostRequestSchema>;
+
+/** 한 버전의 필수항목 6개. 계약 복원이 이 모양이다 (ADR-JOB-1) */
+export const jobPostVersionSchema = z.object({
+  version: z.number().int(),
+  workAddress: z.string(),
+  workStartAt: z.iso.datetime(),
+  workEndAt: z.iso.datetime(),
+  headcount: z.number().int(),
+  rewardPerPerson: z.number().int(),
+  requiredDescription: z.string(),
+});
+export type JobPostVersionSnapshot = z.infer<typeof jobPostVersionSchema>;
+
+/** 버전을 올리는 필드들의 값 묶음 */
+export interface RequiredFieldValues {
+  workAddress: string;
+  workStartAt: string;
+  workEndAt: string;
+  headcount: number;
+  rewardPerPerson: number;
+  requiredDescription: string;
+}
+
+/**
+ * 바뀐 필수항목 이름들. **순수 함수라 DB 없이 테스트한다** (ADR-JOB-2).
+ *
+ * 판정을 여기 한 곳에 모으는 이유는, 흩어지면 한 곳만 틀려도 신청자가
+ * 모르는 사이 조건이 바뀌기 때문이다. 반대로 과하게 잡으면 오탈자 하나에
+ * 지원자 전원이 재동의 대기가 된다.
+ *
+ * **날짜는 문자열이 아니라 시각으로 비교한다.** `09:00:00.000Z`와 `09:00:00Z`는
+ * 문자열로는 다르지만 같은 순간이라, 문자열로 보면 안 바뀐 것이 바뀐 것이 된다.
+ */
+export function changedRequiredFields(
+  before: RequiredFieldValues,
+  patch: Partial<RequiredFieldValues>,
+): string[] {
+  const changed: string[] = [];
+
+  for (const field of JOB_POST_REQUIRED_FIELDS) {
+    const next = patch[field];
+    if (next === undefined) continue;
+
+    if (field === 'workStartAt' || field === 'workEndAt') {
+      const a = new Date(before[field]).getTime();
+      const b = new Date(next as string).getTime();
+      if (a !== b) changed.push(field);
+      continue;
+    }
+
+    if (before[field] !== next) changed.push(field);
+  }
+
+  return changed;
 }

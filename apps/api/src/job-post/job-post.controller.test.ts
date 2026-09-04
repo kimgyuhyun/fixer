@@ -230,3 +230,130 @@ describe('GET /job-posts/:id', () => {
     expect(bodyOf(error).errorCode).toBe(JOB_POST_ERRORS.NOT_FOUND);
   });
 });
+describe('PATCH /job-posts/:id', () => {
+  const UPDATED = {
+    ...CREATED,
+    version: 2,
+    rewardPerPerson: 60_000,
+    categoryName: '청소',
+    requiredDescription: '30평 사무실을 닦습니다.',
+    acceptedCount: 0,
+  };
+
+  it('should return the updated post', async () => {
+    const controller = controllerWith({
+      update: vi.fn().mockResolvedValue(UPDATED),
+    });
+
+    await expect(
+      controller.update('job_1', {
+        employerId: 'usr_1',
+        rewardPerPerson: 60_000,
+      }),
+    ).resolves.toEqual(UPDATED);
+  });
+
+  it('should not pass employerId through as a field to change', async () => {
+    // 회원 id는 수정 대상이 아니다. 그대로 넘기면 스키마가 모르는 칸이 섞인다.
+    const update = vi.fn().mockResolvedValue(UPDATED);
+    const controller = controllerWith({ update });
+
+    await controller.update('job_1', {
+      employerId: 'usr_1',
+      rewardPerPerson: 60_000,
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      employerId: 'usr_1',
+      jobPostId: 'job_1',
+      patch: { rewardPerPerson: 60_000 },
+    });
+  });
+
+  it('should return 400 when employerId is missing', async () => {
+    const update = vi.fn();
+    const controller = controllerWith({ update });
+
+    const error = await rejectionOf(
+      controller.update('job_1', { rewardPerPerson: 60_000 }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('should return 403 for a post owned by another member', async () => {
+    const controller = controllerWith({
+      update: vi
+        .fn()
+        .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_OWNED)),
+    });
+
+    const error = await rejectionOf(
+      controller.update('job_1', { employerId: 'usr_1' }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
+  });
+
+  it('should return 409 when the post is not open', async () => {
+    const controller = controllerWith({
+      update: vi
+        .fn()
+        .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_EDITABLE)),
+    });
+
+    const error = await rejectionOf(
+      controller.update('job_1', { employerId: 'usr_1' }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
+    expect(bodyOf(error).errorCode).toBe(JOB_POST_ERRORS.NOT_EDITABLE);
+  });
+
+  it('should return 404 for a post that cannot be found', async () => {
+    const controller = controllerWith({
+      update: vi
+        .fn()
+        .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_FOUND)),
+    });
+
+    const error = await rejectionOf(
+      controller.update('job_gone', { employerId: 'usr_1' }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
+  });
+});
+
+describe('GET /job-posts/:id/versions/:version', () => {
+  const SNAPSHOT = {
+    version: 2,
+    workAddress: '서울 강남구 테헤란로 1',
+    workStartAt: '2026-10-01T09:00:00.000Z',
+    workEndAt: '2026-10-01T18:00:00.000Z',
+    headcount: 3,
+    rewardPerPerson: 60_000,
+    requiredDescription: '30평 사무실을 닦습니다.',
+  };
+
+  it('should return the six required fields of that version', async () => {
+    const findVersion = vi.fn().mockResolvedValue(SNAPSHOT);
+    const controller = controllerWith({ findVersion });
+
+    await expect(controller.version('job_1', '2')).resolves.toEqual(SNAPSHOT);
+    expect(findVersion).toHaveBeenCalledWith('job_1', 2);
+  });
+
+  it('should return 404 for a version that was never written', async () => {
+    const controller = controllerWith({
+      findVersion: vi
+        .fn()
+        .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.VERSION_NOT_FOUND)),
+    });
+
+    const error = await rejectionOf(controller.version('job_1', '9'));
+
+    expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
+  });
+});

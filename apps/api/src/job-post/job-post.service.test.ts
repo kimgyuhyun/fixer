@@ -1,6 +1,7 @@
 import {
   JOB_POST_ERRORS,
   JOB_POST_TRANSITIONS,
+  type JobPostVersionSnapshot,
   canTransition,
   holdIdempotencyKey,
   type CreateJobPostRequest,
@@ -142,6 +143,63 @@ class FakeStore implements JobPostStore {
 
   /** 소프트 삭제된 공고. 진짜 저장소가 `deletedAt`으로 하는 일이다 */
   readonly deleted = new Set<string>();
+
+  applyUpdate(input: {
+    jobPostId: string;
+    patch: Partial<JobPostRecord>;
+    nextVersion: number;
+    writeSnapshot: boolean;
+    budgetDelta: number;
+  }): Promise<(JobPostRecord & { categoryName: string }) | 'INSUFFICIENT'> {
+    // 진짜 저장소가 한 트랜잭션으로 하는 일이라 가짜도 한 메서드로 둔다.
+    if (input.budgetDelta > this.balance) {
+      return Promise.resolve('INSUFFICIENT');
+    }
+
+    const row = this.posts.find((p) => p.id === input.jobPostId);
+    if (!row) throw new Error('없는 공고를 고치려 했다');
+
+    Object.assign(row, input.patch, { version: input.nextVersion });
+    if (input.writeSnapshot) {
+      this.snapshots.push({ jobPostId: row.id, version: row.version });
+    }
+
+    if (input.budgetDelta !== 0) {
+      this.balance -= input.budgetDelta;
+      this.holds.push({
+        key:
+          input.budgetDelta > 0
+            ? holdIdempotencyKey(row.id, row.version)
+            : `release:${row.id}:${row.version}`,
+        amount: -input.budgetDelta,
+        jobPostId: row.id,
+      });
+    }
+
+    return Promise.resolve({ ...row, categoryName: '청소' });
+  }
+
+  findVersion(
+    jobPostId: string,
+    version: number,
+  ): Promise<JobPostVersionSnapshot | null> {
+    const row = this.posts.find((p) => p.id === jobPostId);
+    const has = this.snapshots.some(
+      (snap) => snap.jobPostId === jobPostId && snap.version === version,
+    );
+    if (!row || !has) return Promise.resolve(null);
+
+    // 가짜는 최신 값만 들고 있다. 스냅샷 내용의 정확성은 통합 테스트가 본다.
+    return Promise.resolve({
+      version,
+      workAddress: row.workAddress,
+      workStartAt: row.workStartAt.toISOString(),
+      workEndAt: row.workEndAt.toISOString(),
+      headcount: row.headcount,
+      rewardPerPerson: row.rewardPerPerson,
+      requiredDescription: row.requiredDescription,
+    });
+  }
 
   /** 목록에 안 뜨는 것을 보려고 DRAFT 하나를 직접 넣는다 */
   seedDraft(): void {
@@ -830,5 +888,283 @@ describe('findById — 공고 상세 (#14)', () => {
     const detail = await service.findById(created.id);
 
     expect(detail.status).toBe('CANCELLED');
+  });
+});
+describe('update — 필수항목을 고치면 version이 오른다 (#15)', () => {
+  /** OPEN 공고 하나를 만들고 그 id를 준다 */
+  async function seedOpen(service: JobPostService): Promise<string> {
+    return (await service.create(EMPLOYER, VALID)).id;
+  }
+
+  it('should raise the version to two when the reward changes', async () => {
+    const { service } = setup();
+    const id = await seedOpen(service);
+
+    const updated = await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    expect(updated.version).toBe(2);
+  });
+
+  it('should write the snapshot in the same step as the version bump', async () => {
+    // version만 오르고 스냅샷이 없으면 그 계약을 영영 복원할 수 없다.
+    const { service, store } = setup();
+    const id = await seedOpen(service);
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    expect(store.snapshots).toEqual([
+      { jobPostId: id, version: 1 },
+      { jobPostId: id, version: 2 },
+    ]);
+  });
+
+  it('should return the updated post', async () => {
+    const { service } = setup();
+    const id = await seedOpen(service);
+
+    const updated = await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { requiredDescription: '창고를 정리합니다.' },
+    });
+
+    expect(updated.requiredDescription).toBe('창고를 정리합니다.');
+  });
+
+  it('should keep the version at one when only the title changes', async () => {
+    // 오탈자 하나에 지원자 전원이 재동의 대기가 되면 안 된다 (AC3).
+    const { service } = setup();
+    const id = await seedOpen(service);
+
+    const updated = await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { title: '사무실 대청소' },
+    });
+
+    expect(updated.version).toBe(1);
+    expect(updated.title).toBe('사무실 대청소');
+  });
+
+  it('should not write a snapshot when only the title changes', async () => {
+    const { service, store } = setup();
+    const id = await seedOpen(service);
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { title: '사무실 대청소' },
+    });
+
+    expect(store.snapshots).toHaveLength(1);
+  });
+
+  it('should keep the version when the value is set back to what it was', async () => {
+    // 고쳤다가 되돌린 것은 아무것도 안 바뀐 것과 같다 (AC5).
+    const { service } = setup();
+    const id = await seedOpen(service);
+
+    const updated = await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { rewardPerPerson: VALID.rewardPerPerson },
+    });
+
+    expect(updated.version).toBe(1);
+  });
+
+  it('should keep the version when every field is sent unchanged', async () => {
+    const { service } = setup();
+    const id = await seedOpen(service);
+
+    const updated = await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: {
+        workAddress: HOME.roadAddress,
+        workStartAt: VALID.workStartAt,
+        workEndAt: VALID.workEndAt,
+        headcount: VALID.headcount,
+        rewardPerPerson: VALID.rewardPerPerson,
+        requiredDescription: VALID.requiredDescription,
+      },
+    });
+
+    expect(updated.version).toBe(1);
+  });
+});
+
+describe('update — OPEN이 아니면 못 고친다 (#15 AC6)', () => {
+  it('should reject a CLOSED post with JOB_POST_NOT_EDITABLE', async () => {
+    // 정원이 찬 뒤 조건을 바꾸면 수락자가 동의한 적 없는 일을 하게 된다.
+    const { service, store } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    store.posts[0].status = 'CLOSED';
+
+    const error = await rejectionOf(
+      service.update({
+        employerId: EMPLOYER,
+        jobPostId: id,
+        patch: { rewardPerPerson: 60_000 },
+      }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.NOT_EDITABLE);
+  });
+
+  it('should reject a CANCELLED post', async () => {
+    const { service, store } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    store.posts[0].status = 'CANCELLED';
+
+    const error = await rejectionOf(
+      service.update({
+        employerId: EMPLOYER,
+        jobPostId: id,
+        patch: { title: '아무거나' },
+      }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.NOT_EDITABLE);
+  });
+
+  it('should reject a post owned by another member', async () => {
+    const { service } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const error = await rejectionOf(
+      service.update({
+        employerId: 'usr_stranger',
+        jobPostId: id,
+        patch: { title: '남의 공고' },
+      }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.NOT_OWNED);
+  });
+
+  it('should reject a post that cannot be found', async () => {
+    const { service } = setup();
+
+    const error = await rejectionOf(
+      service.update({
+        employerId: EMPLOYER,
+        jobPostId: 'job_missing',
+        patch: { title: '없는 공고' },
+      }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.NOT_FOUND);
+  });
+
+  it('should change nothing when it was rejected', async () => {
+    const { service, store } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    store.posts[0].status = 'CLOSED';
+    const before = { ...store.posts[0] };
+
+    await rejectionOf(
+      service.update({
+        employerId: EMPLOYER,
+        jobPostId: id,
+        patch: { rewardPerPerson: 60_000 },
+      }),
+    );
+
+    expect(store.posts[0]).toEqual(before);
+    expect(store.snapshots).toHaveLength(1);
+  });
+});
+
+describe('update — 예산이 바뀌면 잠금도 바뀐다 (#15, AC 밖)', () => {
+  it('should lock more when the headcount goes up', async () => {
+    // 3명 15만 → 5명 25만. 10만을 더 잠가야 한다.
+    const { service, store } = setup({ balance: 1_000_000 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { headcount: 5 },
+    });
+
+    expect(store.holds.at(-1)?.amount).toBe(-100_000);
+    expect(store.currentBalance()).toBe(1_000_000 - 250_000);
+  });
+
+  it('should release the difference when the reward goes down', async () => {
+    // 안 되돌리면 쓸 수 없는 돈이 남는다.
+    const { service, store } = setup({ balance: 1_000_000 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { rewardPerPerson: 10_000 },
+    });
+
+    expect(store.holds.at(-1)?.amount).toBe(120_000);
+    expect(store.currentBalance()).toBe(1_000_000 - 30_000);
+  });
+
+  it('should reject the edit when the balance cannot cover the bigger budget', async () => {
+    // 15만원만 잠근 채 50만원짜리 약속을 하게 두면 안 된다.
+    const { service } = setup({ balance: 150_000 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const error = await rejectionOf(
+      service.update({
+        employerId: EMPLOYER,
+        jobPostId: id,
+        patch: { headcount: 10 },
+      }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.INSUFFICIENT_BALANCE);
+  });
+
+  it('should not change the post when the balance is short', async () => {
+    const { service, store } = setup({ balance: 150_000 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    await rejectionOf(
+      service.update({
+        employerId: EMPLOYER,
+        jobPostId: id,
+        patch: { headcount: 10 },
+      }),
+    );
+
+    expect(store.posts[0].headcount).toBe(3);
+    expect(store.posts[0].version).toBe(1);
+  });
+});
+
+describe('findVersion — 계약을 복원한다 (#15 AC2)', () => {
+  it('should return the version-one snapshot written at creation', async () => {
+    const { service } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const v1 = await service.findVersion(id, 1);
+
+    expect(v1.version).toBe(1);
+    expect(v1.headcount).toBe(3);
+  });
+
+  it('should reject a version that was never written', async () => {
+    const { service } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const error = await rejectionOf(service.findVersion(id, 9));
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.VERSION_NOT_FOUND);
   });
 });

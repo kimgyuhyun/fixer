@@ -3,11 +3,13 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -18,9 +20,11 @@ import {
   jobPostFilterSchema,
   jobPostListSchema,
   jobPostSummarySchema,
+  jobPostVersionSchema,
   type JobPostDetail,
   type JobPostList,
   type JobPostSummary,
+  type JobPostVersionSnapshot,
 } from '@fixer/shared';
 import { ZodError } from 'zod';
 import { JobPostError, JobPostService } from './job-post.service';
@@ -61,6 +65,43 @@ export class JobPostController {
     return jobPostListSchema.parse(await this.service.list(filter));
   }
 
+  /** 필수항목을 고치면 version이 오른다 (#15) */
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  async update(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<JobPostDetail> {
+    const employerId = employerIdOf(body);
+    try {
+      return jobPostDetailSchema.parse(
+        await this.service.update({
+          employerId,
+          jobPostId: id,
+          // employerId는 본문에서 빼고 넘긴다. 수정 대상이 아니다.
+          patch: withoutEmployer(body),
+        }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
+  /** 그 버전의 필수항목 6개. 분쟁 시 근거가 되는 계약 내용이다 (ADR-JOB-1) */
+  @Get(':id/versions/:version')
+  async version(
+    @Param('id') id: string,
+    @Param('version') version: string,
+  ): Promise<JobPostVersionSnapshot> {
+    try {
+      return jobPostVersionSchema.parse(
+        await this.service.findVersion(id, Number(version)),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
   /** 공고 하나. 소프트 삭제된 것은 404다 — 있었다는 사실도 알려주지 않는다 */
   @Get(':id')
   async detail(@Param('id') id: string): Promise<JobPostDetail> {
@@ -70,6 +111,13 @@ export class JobPostController {
       throw toHttpError(error);
     }
   }
+}
+
+/** 수정 본문에서 회원 id를 뺀다. 그건 고칠 대상이 아니다 */
+function withoutEmployer(body: unknown): Record<string, unknown> {
+  const rest = { ...((body ?? {}) as Record<string, unknown>) };
+  delete rest.employerId;
+  return rest;
 }
 
 function employerIdOf(body: unknown): string {
@@ -94,10 +142,28 @@ function toHttpError(error: unknown): unknown {
   }
 
   if (error instanceof JobPostError) {
-    if (error.code === JOB_POST_ERRORS.NOT_FOUND) {
+    if (
+      error.code === JOB_POST_ERRORS.NOT_FOUND ||
+      error.code === JOB_POST_ERRORS.VERSION_NOT_FOUND
+    ) {
       return new NotFoundException({
         errorCode: error.code,
         message: '공고를 찾을 수 없습니다.',
+      });
+    }
+
+    if (error.code === JOB_POST_ERRORS.NOT_OWNED) {
+      // 없다고 하지 않는다. 본인 것이 아니라는 사실만 말한다.
+      return new ForbiddenException({
+        errorCode: error.code,
+        message: '본인의 공고가 아닙니다.',
+      });
+    }
+
+    if (error.code === JOB_POST_ERRORS.NOT_EDITABLE) {
+      return new ConflictException({
+        errorCode: error.code,
+        message: '모집 중인 공고만 고칠 수 있습니다.',
       });
     }
 
