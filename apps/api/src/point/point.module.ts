@@ -8,6 +8,8 @@ import { PointLedgerService } from './point-ledger.service';
 import { FakePaymentGateway, PortOneWebhookVerifier } from './portone.gateway';
 import { PrismaPaymentStore } from './prisma-payment.store';
 import { PrismaPointLedgerStore } from './prisma-point-ledger.store';
+import { PrismaRefundStore } from './prisma-refund.store';
+import { RefundService } from './refund.service';
 
 /**
  * 포인트 원장과 충전. (이슈 #27, #28)
@@ -24,6 +26,7 @@ import { PrismaPointLedgerStore } from './prisma-point-ledger.store';
   providers: [
     PrismaPointLedgerStore,
     PrismaPaymentStore,
+    PrismaRefundStore,
     {
       provide: PointLedgerService,
       useFactory: (store: PrismaPointLedgerStore) =>
@@ -62,7 +65,13 @@ import { PrismaPointLedgerStore } from './prisma-point-ledger.store';
         PortOneWebhookVerifier,
       ],
     },
+    {
+      provide: RefundService,
+      useFactory: (lots: PrismaRefundStore, ledger: PointLedgerService) =>
+        new RefundService(lots, ledger),
+      inject: [PrismaRefundStore, PointLedgerService],
+    },
   ],
-  exports: [PointLedgerService, ChargeService],
+  exports: [PointLedgerService, ChargeService, RefundService],
 })
 export class PointModule {}

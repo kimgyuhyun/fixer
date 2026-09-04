@@ -207,9 +207,12 @@ model Payment {
   userId         String
   /// 결제 시작 때 **서버가 정한** 금액. 확정 때 포트원이 준 값과 대조한다.
   amount         Int
-  /// 이 건에서 환불된 누계. 부분 환불이 여러 번 올 수 있다 (ADR-PAY-7).
-  refundedAmount Int           @default(0)
   status         PaymentStatus @default(PENDING)
+  /// 카드 취소 기한. **값은 지금 비워 둔다** — 실결제 전환 때 채운다.
+  ///
+  /// lot 잔여는 컬럼으로 두지 않는다. 원장에서 계산한다 (ADR-PAY-7) —
+  /// 숫자가 두 벌이면 어긋났을 때 어느 쪽이 맞는지 판단할 근거가 없다.
+  refundableUntil DateTime?
   createdAt      DateTime      @default(now())
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 

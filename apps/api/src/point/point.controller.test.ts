@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ChargeService, PaymentError } from './charge.service';
 import { PointController } from './point.controller';
 import type { PointHistoryService } from './point-history.service';
+import type { RefundService } from './refund.service';
 
 /**
  * 컨트롤러는 HTTP 경계다. 여기서 보는 것은 도메인 규칙이 아니라
@@ -17,10 +18,12 @@ import type { PointHistoryService } from './point-history.service';
 function controllerWith(
   charge: Partial<ChargeService>,
   history: Partial<PointHistoryService> = {},
+  refunds: Partial<RefundService> = {},
 ): PointController {
   return new PointController(
     charge as ChargeService,
     history as PointHistoryService,
+    refunds as RefundService,
   );
 }
 
@@ -270,5 +273,109 @@ describe('GET /points/me', () => {
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
     expect(read).not.toHaveBeenCalled();
+  });
+});
+
+const REFUNDED = {
+  refunded: 50_000,
+  balance: 0,
+  lots: [{ paymentId: 'pay_1', amount: 50_000 }],
+  applied: true,
+};
+
+describe('POST /payments/:id/cancel', () => {
+  it('should return 200 with what was refunded from which lot', async () => {
+    const controller = controllerWith(
+      {},
+      {},
+      { cancelPayment: vi.fn().mockResolvedValue(REFUNDED) },
+    );
+
+    await expect(
+      controller.cancel('pay_1', { userId: 'usr_1' }),
+    ).resolves.toEqual(REFUNDED);
+  });
+
+  it('should return 409 when the points were already spent', async () => {
+    const controller = controllerWith(
+      {},
+      {},
+      {
+        cancelPayment: vi
+          .fn()
+          .mockRejectedValue(
+            new PaymentError(PAYMENT_ERRORS.INSUFFICIENT_BALANCE),
+          ),
+      },
+    );
+
+    const error = await rejectionOf(
+      controller.cancel('pay_1', { userId: 'usr_1' }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
+    expect(bodyOf(error).message).toContain('이미 사용한 포인트');
+  });
+
+  it('should return 403 for another member payment', async () => {
+    const controller = controllerWith(
+      {},
+      {},
+      {
+        cancelPayment: vi
+          .fn()
+          .mockRejectedValue(new PaymentError(PAYMENT_ERRORS.NOT_OWNED)),
+      },
+    );
+
+    const error = await rejectionOf(
+      controller.cancel('pay_1', { userId: 'usr_1' }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
+  });
+});
+
+describe('POST /refunds', () => {
+  it('should pass the requested amount through', async () => {
+    const refund = vi.fn().mockResolvedValue(REFUNDED);
+    const controller = controllerWith({}, {}, { refund });
+
+    await controller.refund({ userId: 'usr_1', amount: 50_000 });
+
+    expect(refund).toHaveBeenCalledWith({ userId: 'usr_1', amount: 50_000 });
+  });
+
+  it('should return 400 for a zero amount', async () => {
+    const refund = vi.fn();
+    const controller = controllerWith({}, {}, { refund });
+
+    const error = await rejectionOf(
+      controller.refund({ userId: 'usr_1', amount: 0 }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
+    expect(refund).not.toHaveBeenCalled();
+  });
+
+  it('should return 409 when only expired lots are left', async () => {
+    const controller = controllerWith(
+      {},
+      {},
+      {
+        refund: vi
+          .fn()
+          .mockRejectedValue(
+            new PaymentError(PAYMENT_ERRORS.NO_REFUNDABLE_LOT),
+          ),
+      },
+    );
+
+    const error = await rejectionOf(
+      controller.refund({ userId: 'usr_1', amount: 50_000 }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
+    expect(bodyOf(error).errorCode).toBe(PAYMENT_ERRORS.NO_REFUNDABLE_LOT);
   });
 });

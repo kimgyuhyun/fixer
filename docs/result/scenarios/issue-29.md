@@ -101,45 +101,88 @@ lot 잔여가 아니라 **원장 합계**다. 포인트를 이미 썼으면 그 
 
 ### 쓰지 않은 포인트를 환불한다 (AC1)
 
-- [ ] [정상] `cancelPayment` — should record a REFUND for the whole payment
-- [ ] [정상] `cancelPayment` — should reduce the balance by the refunded amount
-- [ ] [정상] `cancelPayment` — should mark the payment CANCELLED
-- [ ] [정상] `cancelPayment` — should point the REFUND row at the payment it came from
+- [x] [정상] `cancelPayment` — should record a REFUND for the whole payment
+- [x] [정상] `cancelPayment` — should reduce the balance by the refunded amount
+- [x] [정상] `cancelPayment` — should mark the payment CANCELLED
+- [x] [정상] `cancelPayment` — should point the REFUND row at the payment it came from
 
 ### 잔액이 모자라면 막힌다 (AC2)
 
-- [ ] [예외] `cancelPayment` — should reject with PAYMENT_INSUFFICIENT_BALANCE when the points were already spent
-- [ ] [정상] `cancelPayment` — should record nothing when the balance is short
-- [ ] [경계] `cancelPayment` — should allow a refund that leaves the balance exactly zero
-- [ ] [예외] `cancelPayment` — should reject a payment that belongs to another member
-- [ ] [예외] `cancelPayment` — should reject a payment that was never paid
+- [x] [예외] `cancelPayment` — should reject with PAYMENT_INSUFFICIENT_BALANCE when the points were already spent
+- [x] [정상] `cancelPayment` — should record nothing when the balance is short
+- [x] [경계] `cancelPayment` — should allow a refund that leaves the balance exactly zero
+- [x] [예외] `cancelPayment` — should reject a payment that belongs to another member
+- [x] [예외] `cancelPayment` — should reject a payment that was never paid
+- [x] [예외] `cancelPayment` — should reject a payment nobody has
 
 ### 두 번 취소해도 한 번 (AC3)
 
-- [ ] [경계] `cancelPayment` — should record nothing more on the second cancel
-- [ ] [경계] `cancelPayment` — should report the same balance on the second cancel
-- [ ] [경계] `cancelPayment` — should say it was not applied on the second cancel
+- [x] [경계] `cancelPayment` — should record nothing more on the second cancel
+- [x] [경계] `cancelPayment` — should report the same balance on the second cancel
+- [x] [경계] `cancelPayment` — should say it was not applied on the second cancel
+- [x] [경계] `cancelPayment` — should build the same idempotency key both times
 
 ### 오래된 결제 건부터 소진한다 (ADR-PAY-7)
 
-- [ ] [정상] `refund` — should take from the oldest payment first
-- [ ] [정상] `refund` — should spread one refund across two lots when the first is not enough
-- [ ] [경계] `refund` — should take only what is left in a partly refunded lot
-- [ ] [경계] `refund` — should skip a lot whose refund deadline has passed
-- [ ] [예외] `refund` — should reject when the amount is larger than the balance
-- [ ] [경계] `refund` — should record one ledger row per lot so each card cancel is traceable
+- [x] [정상] `refund` — should take from the oldest payment first
+- [x] [정상] `refund` — should spread one refund across two lots when the first is not enough
+- [x] [경계] `refund` — should take only what is left in a partly refunded lot
+- [x] [경계] `refund` — should skip a lot whose refund deadline has passed
+- [x] [예외] `refund` — should reject when the amount is larger than the balance
+- [x] [예외] `refund` — should reject when only expired lots are left
+- [x] [예외] `refund` — should reject a zero or negative amount
+- [x] [경계] `refund` — should record one ledger row per lot so each card cancel is traceable
 
 ### lot 잔여는 원장에서 나온다 (ADR-PAY-7)
 
-- [ ] [정상] `lotRemaining` — should report the charge minus every refund of that payment
-- [ ] [경계] `lotRemaining` — should report zero for a fully refunded payment
+- [x] [정상] `lotRemaining` — should report the charge minus every refund of that payment
+- [x] [경계] `lotRemaining` — should report zero for a fully refunded payment
 
 ### 진짜 Postgres에서
 
-- [ ] [경계] `통합` — should refund only once when the same cancel arrives twice at once
-- [ ] [정상] `통합` — should leave the ledger sum matching the remaining lots
+- [x] [경계] `통합` — should refund only once when the same cancel arrives twice at once
+- [x] [정상] `통합` — should leave the ledger sum matching the remaining lots
+- [x] [정상] `통합` — should take from the oldest payment first
+- [x] [정상] `통합` — should spread one refund across two lots
+- [x] [정상] `통합` — should mark a fully consumed lot CANCELLED
+- [x] [예외] `통합` — should reject when the points were already spent
+- [x] [경계] `통합` — should skip a lot whose refund deadline has passed
 
-**총 23개** (정상 10 / 경계 9 / 예외 4)
+### 컨트롤러
+
+- [x] [정상] `POST /payments/:id/cancel` — should return 200 with what was refunded from which lot
+- [x] [예외] `POST /payments/:id/cancel` — should return 409 when the points were already spent
+- [x] [예외] `POST /payments/:id/cancel` — should return 403 for another member payment
+- [x] [정상] `POST /refunds` — should pass the requested amount through
+- [x] [경계] `POST /refunds` — should return 400 for a zero amount
+- [x] [예외] `POST /refunds` — should return 409 when only expired lots are left
+
+### 화면
+
+- [x] [정상] `포인트 화면` — should show which payment each refunded amount came from
+- [x] [예외] `포인트 화면` — should show the server message when the points were already spent
+
+**총 38개** (단위 22 + 통합 7 + 컨트롤러 6 + 화면 2, 그리고 `refund` 예외 1)
+
+### 진짜 Postgres에서 나온 것
+
+통합 테스트를 붙이자마자 6개가 한꺼번에 빨개졌다. 원인은 구현이 아니라
+**내가 테스트를 잘못 깐 것**이었는데, 그게 오히려 중요한 사실을 드러냈다.
+
+원장 행을 `pointTransaction.create`로 직접 넣고 `cachedBalance`를 안 올리면
+잔액 검증(조건부 UPDATE, `ADR-PAY-2`)이 0으로 보고 전부 막는다. **실제
+충전은 `append`를 거치며 둘을 함께 갱신한다.** 테스트도 같은 상태를
+만들어야 한다는 것을 여기서 배웠다 — 가짜 저장소만 썼으면 영영 몰랐다.
+
+### 서버를 띄워 확인한 것
+
+5만 + 15만을 충전하고 5.5만을 환불했다.
+
+| 무엇                      | 결과                                            |
+| ------------------------- | ----------------------------------------------- |
+| 5.5만 환불                | 오래된 건에서 5만, 다음 건에서 5천. 잔액 14.5만 |
+| 이미 다 빠진 건을 또 취소 | `refunded: 0`, `applied: false`, 잔액 그대로    |
+| 그걸 한 번 더             | 같은 응답. 잔액 그대로                          |
 
 ---
 

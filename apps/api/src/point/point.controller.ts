@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  Param,
   Post,
   Query,
   Req,
@@ -18,15 +19,19 @@ import {
   chargeResultSchema,
   confirmChargeRequestSchema,
   pointHistorySchema,
+  refundRequestSchema,
+  refundResultSchema,
   startedChargeSchema,
   type ChargeResult,
   type PointHistory,
+  type RefundResult,
   type StartedCharge,
 } from '@fixer/shared';
 import type { Request } from 'express';
 import { ZodError } from 'zod';
 import { ChargeService, PaymentError } from './charge.service';
 import { PointHistoryService } from './point-history.service';
+import { RefundService } from './refund.service';
 
 /**
  * 충전과 포인트 내역의 HTTP 경계. (이슈 #28)
@@ -39,6 +44,7 @@ export class PointController {
   constructor(
     private readonly charge: ChargeService,
     private readonly history: PointHistoryService,
+    private readonly refunds: RefundService,
   ) {}
 
   /** 결제창을 열기 전에 서버가 금액을 정한다 */
@@ -95,6 +101,38 @@ export class PointController {
       if (!(error instanceof PaymentError)) throw error;
     }
     return { received: true };
+  }
+
+  /** 결제 건 하나를 통째로 취소한다. 두 번 불러도 한 번만 반영된다 (#29) */
+  @Post('payments/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancel(
+    @Param('id') paymentId: string,
+    @Body() body: unknown,
+  ): Promise<RefundResult> {
+    const userId = userIdOf(body);
+    try {
+      return refundResultSchema.parse(
+        await this.refunds.cancelPayment({ userId, paymentId }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
+  /** 금액만큼 환불한다. 오래된 결제 건부터 소진한다 (ADR-PAY-7) */
+  @Post('refunds')
+  @HttpCode(HttpStatus.OK)
+  async refund(@Body() body: unknown): Promise<RefundResult> {
+    const userId = userIdOf(body);
+    try {
+      const input = refundRequestSchema.parse(body);
+      return refundResultSchema.parse(
+        await this.refunds.refund({ userId, amount: input.amount }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
   }
 
   /** 포인트 잔액과 내역 */
@@ -159,6 +197,12 @@ function toHttpError(error: unknown): unknown {
           errorCode: error.code,
           message: '본인의 결제 건이 아닙니다.',
         });
+      case PAYMENT_ERRORS.NO_REFUNDABLE_LOT:
+        // 잔액은 있는데 취소 기한이 지난 lot만 남았다. 상태 문제라 409다.
+        return new ConflictException({
+          errorCode: error.code,
+          message: '취소 기한이 지나 환불할 수 있는 결제 건이 없습니다.',
+        });
       case PAYMENT_ERRORS.INVALID_AMOUNT:
         return new BadRequestException({
           errorCode: error.code,
@@ -180,4 +224,6 @@ const MESSAGES: Record<string, string> = {
   [PAYMENT_ERRORS.AMOUNT_MISMATCH]:
     '결제 금액이 맞지 않아 충전하지 않았습니다.',
   [PAYMENT_ERRORS.NOT_PAID]: '아직 결제가 완료되지 않았습니다.',
+  [PAYMENT_ERRORS.INSUFFICIENT_BALANCE]:
+    '이미 사용한 포인트는 환불할 수 없습니다. 잔액을 확인해 주세요.',
 };

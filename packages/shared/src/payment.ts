@@ -25,6 +25,10 @@ export const PAYMENT_ERRORS = {
   WEBHOOK_SIGNATURE_INVALID: 'PAYMENT_WEBHOOK_SIGNATURE_INVALID',
   /** 금액이 단위에 맞지 않거나 한도를 넘었다 */
   INVALID_AMOUNT: 'PAYMENT_INVALID_AMOUNT',
+  /** 환불하려는 금액이 잔액보다 크다. 이미 쓴 돈은 카드로 못 돌려준다 (#29) */
+  INSUFFICIENT_BALANCE: 'PAYMENT_INSUFFICIENT_BALANCE',
+  /** 잔액은 있는데 소진할 lot이 없다. 기한이 지난 것만 남은 경우다 (#29) */
+  NO_REFUNDABLE_LOT: 'PAYMENT_NO_REFUNDABLE_LOT',
 } as const;
 
 export type PaymentErrorCode =
@@ -91,4 +95,46 @@ export type PointHistory = z.infer<typeof pointHistorySchema>;
 /** 멱등 키. **포트원이 준 식별자에서 만든다** (ADR-PAY-3) */
 export function chargeIdempotencyKey(paymentId: string): string {
   return `charge:${paymentId}`;
+}
+
+/** 한 lot에서 얼마를 뺐나. 환불 한 번이 lot 여러 개에 걸칠 수 있다 (ADR-PAY-7) */
+export const refundLotSchema = z.object({
+  paymentId: z.string(),
+  amount: z.number().int().positive(),
+});
+
+/** 환불 결과 */
+export const refundResultSchema = z.object({
+  /** 이번 요청이 환불한 총액 */
+  refunded: z.number().int(),
+  /** 환불 후 잔액. **원장 합계다** (ADR-PAY-1) */
+  balance: z.number().int(),
+  /**
+   * 어느 결제 건에서 얼마씩 뺐나.
+   *
+   * 카드 취소는 lot마다 따로 나가고 중간에 하나가 실패할 수 있으므로,
+   * 묶음이 아니라 개별로 보인다 (ADR-PAY-7).
+   */
+  lots: z.array(refundLotSchema),
+  /** 이번 호출이 실제로 원장을 줄였나. 두 번째 취소면 false */
+  applied: z.boolean(),
+});
+export type RefundResult = z.infer<typeof refundResultSchema>;
+
+/** 금액만큼 환불해 달라는 요청 */
+export const refundRequestSchema = z.object({
+  amount: z.number().int().positive({ error: '0원은 환불할 수 없습니다.' }),
+});
+
+/**
+ * 환불의 멱등 키. **lot과 소진 후 잔여로 만든다** (ADR-PAY-3와 같은 이유).
+ *
+ * 같은 취소를 두 번 하면 두 번째도 같은 키가 나와 유니크 위반으로 막힌다.
+ * 요청마다 새 키를 만들면 재시도가 두 번 빠져나간다.
+ */
+export function refundIdempotencyKey(
+  paymentId: string,
+  remainingAfter: number,
+): string {
+  return `refund:${paymentId}:${remainingAfter}`;
 }

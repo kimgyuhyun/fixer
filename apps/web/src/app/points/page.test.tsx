@@ -159,3 +159,58 @@ describe('포인트 화면 — 충전 (AC1)', () => {
     );
   });
 });
+
+describe('포인트 화면 — 환불 (#29)', () => {
+  it('should show which payment each refunded amount came from', async () => {
+    // 묶어서 총액만 보여주면 카드 명세서에 두 줄이 찍힌 이유를 알 수 없다.
+    mockRoutes({
+      '/api/points/me': { status: 200, body: historyBody(80_000) },
+      '/api/refunds': {
+        status: 200,
+        body: {
+          refunded: 55_000,
+          balance: 80_000,
+          lots: [
+            { paymentId: 'pay_old', amount: 50_000 },
+            { paymentId: 'pay_new', amount: 5_000 },
+          ],
+          applied: true,
+        },
+      },
+    });
+    render(<PointsPage />);
+    await typeUserId();
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: '50천원 환불' }));
+
+    expect(await screen.findByText('pay_old')).toBeInTheDocument();
+    expect(screen.getByText('pay_new')).toBeInTheDocument();
+    expect(screen.getByText('-50,000')).toBeInTheDocument();
+  });
+
+  it('should show the server message when the points were already spent', async () => {
+    mockRoutes({
+      '/api/points/me': { status: 200, body: historyBody(0) },
+      '/api/refunds': {
+        status: 409,
+        body: {
+          errorCode: 'PAYMENT_INSUFFICIENT_BALANCE',
+          message:
+            '이미 사용한 포인트는 환불할 수 없습니다. 잔액을 확인해 주세요.',
+        },
+      },
+    });
+    render(<PointsPage />);
+    await typeUserId();
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: '10천원 환불' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '이미 사용한 포인트는 환불할 수 없습니다',
+    );
+  });
+});

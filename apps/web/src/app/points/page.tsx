@@ -3,6 +3,7 @@
 import {
   CHARGE_UNIT,
   pointHistorySchema,
+  refundResultSchema,
   startedChargeSchema,
   type PointHistory,
 } from '@fixer/shared';
@@ -26,6 +27,10 @@ export default function PointsPage() {
   const [history, setHistory] = useState<PointHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /** 방금 환불이 어느 결제 건에서 얼마씩 빠졌나 */
+  const [refunded, setRefunded] = useState<
+    { paymentId: string; amount: number }[] | null
+  >(null);
 
   const load = useCallback(async (id: string) => {
     if (id === '') return;
@@ -55,6 +60,37 @@ export default function PointsPage() {
   function changeUserId(next: string) {
     setUserId(next);
     void load(next);
+  }
+
+  /**
+   * 금액만큼 환불한다. **오래된 결제 건부터 소진된다** (ADR-PAY-7).
+   *
+   * 어느 결제 건에서 얼마가 빠졌는지를 그대로 보여준다 — 카드 취소는
+   * 결제 건마다 따로 나가므로, 묶어서 "5.5만원 환불"이라고만 하면
+   * 명세서에 두 줄이 찍힌 이유를 알 수 없다.
+   */
+  async function refund(amount: number) {
+    setError(null);
+    setRefunded(null);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/refunds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, amount }),
+      });
+      const json: unknown = await res.json();
+      if (!res.ok) {
+        setError(messageOf(json));
+        return;
+      }
+      setRefunded(refundResultSchema.parse(json).lots);
+      await load(userId);
+    } catch {
+      setError('요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function charge(amount: number) {
@@ -131,6 +167,38 @@ export default function PointsPage() {
           </button>
         ))}
       </div>
+
+      <h2 className={styles.subtitle}>환불</h2>
+      <p className={styles.note}>
+        오래된 결제 건부터 취소됩니다. 카드 취소 기한이 그쪽부터 먼저 만료되기
+        때문입니다.
+      </p>
+      <div className={styles.presets}>
+        {PRESETS.map((amount) => (
+          <button
+            key={`refund-${amount}`}
+            className={styles.preset}
+            type="button"
+            disabled={loading || userId === ''}
+            onClick={() => void refund(amount)}
+          >
+            {(amount / CHARGE_UNIT).toLocaleString()}천원 환불
+          </button>
+        ))}
+      </div>
+
+      {refunded && (
+        <ul className={styles.list}>
+          {refunded.map((lot) => (
+            <li key={lot.paymentId} className={styles.row}>
+              <span className={styles.type}>{lot.paymentId}</span>
+              <span className={styles.amount}>
+                -{lot.amount.toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {error && (
         <p className={styles.error} role="alert">
