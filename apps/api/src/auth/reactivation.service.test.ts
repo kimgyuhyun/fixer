@@ -2,10 +2,12 @@ import { REACTIVATION_ERRORS, SIGNUP_ERRORS } from '@fixer/shared';
 import { compare } from 'bcrypt';
 import { describe, expect, it } from 'vitest';
 import {
+  REACTIVATION_VERIFICATION_WINDOW_MS,
   ReactivationService,
+  type FreshVerificationChecker,
   type ReactivationStore,
 } from './reactivation.service';
-import type { EmailVerificationChecker, UserRecord } from './signup.service';
+import type { UserRecord } from './signup.service';
 
 const CREATED_AT = new Date('2026-01-15T09:00:00.000Z');
 const WITHDRAWN_AT = new Date('2026-08-01T00:00:00.000Z');
@@ -50,21 +52,38 @@ class FakeStore implements ReactivationStore {
   }
 }
 
-function checker(verified: boolean): EmailVerificationChecker {
-  return { isVerified: () => Promise.resolve(verified) };
+const NOW = new Date('2026-09-04T12:00:00.000Z');
+
+/**
+ * 인증 이력을 **시각까지** 흉내 낸다.
+ *
+ * `boolean` 하나로 두면 "옛날에 인증했음"과 "방금 인증했음"이 구분되지
+ * 않아, 옛 인증으로 남의 계정을 되살릴 수 있는 구멍이 초록불에 가려진다.
+ */
+function checker(consumedAt: Date | null): FreshVerificationChecker {
+  return {
+    isVerifiedSince: (_email, since) =>
+      Promise.resolve(consumedAt !== null && consumedAt > since),
+  };
 }
 
-function setup(opts: { member?: UserRecord | null; verified?: boolean } = {}): {
+function setup(
+  opts: {
+    member?: UserRecord | null;
+    verified?: boolean;
+    /** 언제 인증을 마쳤나. 안 주면 방금 */
+    verifiedAt?: Date;
+  } = {},
+): {
   service: ReactivationService;
   store: FakeStore;
 } {
   const store = new FakeStore(
     opts.member === undefined ? { ...EXISTING } : opts.member,
   );
-  const service = new ReactivationService(
-    store,
-    checker(opts.verified ?? true),
-  );
+  const consumedAt =
+    opts.verified === false ? null : (opts.verifiedAt ?? new Date(NOW));
+  const service = new ReactivationService(store, checker(consumedAt));
   return { service, store };
 }
 
@@ -87,7 +106,7 @@ describe('reactivate — 되살린다 (AC2)', () => {
   it('should clear deactivatedAt', async () => {
     const { service, store } = setup();
 
-    await service.reactivate(REQUEST);
+    await service.reactivate(REQUEST, NOW);
 
     expect(store.member?.deactivatedAt).toBeNull();
   });
@@ -97,7 +116,7 @@ describe('reactivate — 되살린다 (AC2)', () => {
     // 바로 다음 로그인에서 틀린다.
     const { service, store } = setup();
 
-    await service.reactivate(REQUEST);
+    await service.reactivate(REQUEST, NOW);
 
     const stored = store.member?.passwordHash ?? '';
     expect(stored).not.toBe('old-hash');
@@ -107,7 +126,7 @@ describe('reactivate — 되살린다 (AC2)', () => {
   it('should reject with AUTH_EMAIL_NOT_VERIFIED when the email was not verified', async () => {
     const { service } = setup({ verified: false });
 
-    const error = await rejectionOf(service.reactivate(REQUEST));
+    const error = await rejectionOf(service.reactivate(REQUEST, NOW));
 
     expect(codeOf(error)).toBe(REACTIVATION_ERRORS.EMAIL_NOT_VERIFIED);
   });
@@ -115,9 +134,47 @@ describe('reactivate — 되살린다 (AC2)', () => {
   it('should not touch the member when the email was not verified', async () => {
     const { service, store } = setup({ verified: false });
 
-    await rejectionOf(service.reactivate(REQUEST));
+    await rejectionOf(service.reactivate(REQUEST, NOW));
 
     expect(store.reactivateCount).toBe(0);
+  });
+
+  it('should reject an email verified before the window instead of accepting an old record', async () => {
+    // 최초 가입 때 남은 인증 행 하나로 영구히 통과하면, 이메일 주소만 아는
+    // 사람이 남의 탈퇴 계정에 새 비밀번호를 심고 가져갈 수 있다.
+    const { service, store } = setup({
+      verifiedAt: new Date(
+        NOW.getTime() - REACTIVATION_VERIFICATION_WINDOW_MS - 1000,
+      ),
+    });
+
+    const error = await rejectionOf(service.reactivate(REQUEST, NOW));
+
+    expect(codeOf(error)).toBe(REACTIVATION_ERRORS.EMAIL_NOT_VERIFIED);
+    expect(store.reactivateCount).toBe(0);
+  });
+
+  it('should accept an email verified just inside the window', async () => {
+    const { service, store } = setup({
+      verifiedAt: new Date(
+        NOW.getTime() - REACTIVATION_VERIFICATION_WINDOW_MS + 1000,
+      ),
+    });
+
+    await service.reactivate(REQUEST, NOW);
+
+    expect(store.member?.deactivatedAt).toBeNull();
+  });
+
+  it('should not reveal that the account is deactivated to someone who did not verify', async () => {
+    // 인증 검사가 회원 조회보다 먼저여야 한다. 순서가 반대면 인증하지 않은
+    // 사람이 이메일만 넣어보고 "그 계정이 탈퇴 상태다"를 알아낸다.
+    const { service } = setup({ verified: false });
+
+    const error = await rejectionOf(service.reactivate(REQUEST, NOW));
+
+    expect(codeOf(error)).toBe(REACTIVATION_ERRORS.EMAIL_NOT_VERIFIED);
+    expect(codeOf(error)).not.toBe(REACTIVATION_ERRORS.NOT_DEACTIVATED);
   });
 
   it('should reject when the account is already active', async () => {
@@ -125,7 +182,7 @@ describe('reactivate — 되살린다 (AC2)', () => {
       member: { ...EXISTING, deactivatedAt: null },
     });
 
-    const error = await rejectionOf(service.reactivate(REQUEST));
+    const error = await rejectionOf(service.reactivate(REQUEST, NOW));
 
     expect(codeOf(error)).toBe(REACTIVATION_ERRORS.NOT_DEACTIVATED);
   });
@@ -133,7 +190,7 @@ describe('reactivate — 되살린다 (AC2)', () => {
   it('should reject when no member has that email', async () => {
     const { service } = setup({ member: null });
 
-    const error = await rejectionOf(service.reactivate(REQUEST));
+    const error = await rejectionOf(service.reactivate(REQUEST, NOW));
 
     expect(codeOf(error)).toBe(REACTIVATION_ERRORS.NOT_DEACTIVATED);
   });
@@ -142,7 +199,7 @@ describe('reactivate — 되살린다 (AC2)', () => {
     // 가입이 소문자로 저장하므로(#2) 되살리기도 같은 규칙을 써야 한다.
     const { service, store } = setup();
 
-    await service.reactivate({ ...REQUEST, email: 'Worker@Example.com' });
+    await service.reactivate({ ...REQUEST, email: 'Worker@Example.com' }, NOW);
 
     expect(store.member?.deactivatedAt).toBeNull();
   });
@@ -154,7 +211,7 @@ describe('reactivate — 이력이 그대로 남는다 (AC3)', () => {
     // 통째로 끊겨 세탁이 성공한다.
     const { service, store } = setup();
 
-    const revived = await service.reactivate(REQUEST);
+    const revived = await service.reactivate(REQUEST, NOW);
 
     expect(revived.id).toBe('usr_original');
     expect(store.reactivateCount).toBe(1);
@@ -163,7 +220,7 @@ describe('reactivate — 이력이 그대로 남는다 (AC3)', () => {
   it('should keep the original name and createdAt', async () => {
     const { service } = setup();
 
-    const revived = await service.reactivate(REQUEST);
+    const revived = await service.reactivate(REQUEST, NOW);
 
     expect(revived.name).toBe('김구직');
     expect(revived.createdAt).toBe(CREATED_AT.toISOString());

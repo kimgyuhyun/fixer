@@ -43,6 +43,18 @@ POST /auth/reactivate  →  200 SignedUp
 
 ## 판단이 갈렸던 지점
 
+**인증은 "언젠가"가 아니라 "지금"이어야 한다.**
+처음엔 가입이 쓰는 `isVerified`를 그대로 썼다. `ac-verifier`가 잡았다 — 그건
+"언젠가 인증한 적 있다"라서 **최초 가입 때 남은 행 하나로 영구히 참**이 된다.
+되살리기는 기존 계정에 새 비밀번호를 심는 작업이므로, 그 조건이면 **이메일
+주소만 아는 사람이 남의 탈퇴 계정을 가져간다.** 그래서 30분 안에 소비된
+인증만 인정하는 포트를 따로 뒀다. 30분은 비밀번호 재설정 토큰(#6)과 같은
+값이다 — 두 경로가 주는 권한이 같으므로 유효 시간도 같아야 하고, 한쪽만
+길면 공격자는 긴 쪽으로 온다.
+
+"탈퇴 시각 이후"로 잡을 수도 있었지만 그러려면 회원을 먼저 조회해야 하고,
+그러면 인증하지 않은 사람에게 **그 계정이 탈퇴 상태라는 것**이 새어나간다.
+
 **재활성화가 비밀번호를 새로 받는다.**
 처음엔 옛 비밀번호를 그대로 두려 했다. 그런데 사용자는 방금 가입 화면에서
 비밀번호를 입력했고 그게 자기 비밀번호가 될 거라고 생각한다. 옛것을 유지하면
@@ -88,6 +100,9 @@ POST /auth/reactivate  →  200 SignedUp
 - [x] [예외] `POST /auth/reactivate` — should return 404 when there is nothing to revive
 - [x] [경계] `POST /auth/reactivate` — should return 400 when the password does not meet the rules
 - [x] [예외] `reactivate` — should reject with AUTH_EMAIL_NOT_VERIFIED when the email was not verified
+- [x] [보안] `reactivate` — should reject an email verified before the window instead of accepting an old record
+- [x] [경계] `reactivate` — should accept an email verified just inside the window
+- [x] [보안] `reactivate` — should not reveal that the account is deactivated to someone who did not verify
 - [x] [경계] `reactivate` — should reject when the account is already active
 - [x] [경계] `reactivate` — should reject when no member has that email
 - [x] [경계] `reactivate` — should find the member case-insensitively when the email case differs
@@ -106,7 +121,7 @@ POST /auth/reactivate  →  200 SignedUp
 - [x] [경계] `가입 화면` — should still show a plain error for an active duplicate email
 - [x] [정상] `login` — should let an active account log in as before (#9이 쓴 테스트가 그대로 이 AC를 덮는다. `deactivatedAt`이 `null`이면 통과다)
 
-**총 24개** (정상 12 / 경계 8 / 예외 4) — 시나리오 14개 + 컨트롤러·화면에서 늘어난 10개
+**총 27개** (정상 12 / 경계 9 / 예외 4 / 보안 2) — 시나리오 14개 + 컨트롤러·화면에서 늘어난 10개
 
 ### 서버를 띄워 확인한 것
 

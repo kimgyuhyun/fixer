@@ -32,7 +32,9 @@ export class ReactivationController {
   async reactivate(@Body() body: unknown): Promise<SignedUp> {
     try {
       const input = reactivateRequestSchema.parse(body);
-      return signedUpSchema.parse(await this.service.reactivate(input));
+      return signedUpSchema.parse(
+        await this.service.reactivate(input, new Date()),
+      );
     } catch (error) {
       throw toHttpError(error);
     }

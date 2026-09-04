@@ -38,6 +38,28 @@ export class PrismaEmailVerificationStore
     return consumed !== null;
   }
 
+  /**
+   * 되살리기(#10)가 묻는 "**이번에** 인증을 마쳤는가".
+   *
+   * `isVerified`를 그대로 쓰면 안 된다. 그건 "언젠가 인증한 적 있다"라서,
+   * 최초 가입 때 남은 행 하나로 **영구히** 참이 된다. 되살리기는 기존
+   * 계정에 새 비밀번호를 심는 작업이므로, 그 조건이면 이메일 주소만 아는
+   * 사람이 남의 탈퇴 계정을 가져갈 수 있다.
+   *
+   * 그래서 **탈퇴 시각 이후에 소비된** 인증만 인정한다. 되살리려는 사람은
+   * 지금 메일함을 쥐고 있어야 한다.
+   */
+  async isVerifiedSince(email: string, since: Date): Promise<boolean> {
+    const consumed = await this.prisma.emailVerification.findFirst({
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        consumedAt: { gt: since },
+      },
+      select: { id: true },
+    });
+    return consumed !== null;
+  }
+
   async create(input: {
     email: string;
     codeHash: string;

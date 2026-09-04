@@ -119,8 +119,8 @@ import { SignupService } from './signup.service';
     },
     {
       provide: ReactivationService,
-      // 가입과 같은 두 저장소를 본다. 되살리기는 만들기를 모르고
-      // 만들기는 되살리기를 모른다 — 포트만 좁게 나눠 두었다.
+      // 인증 확인은 가입과 **다른 포트**를 쓴다. 가입의 isVerified는
+      // "언젠가 인증했다"라서 되살리기에는 너무 넓다 (reactivation.service.ts).
       useFactory: (
         users: PrismaUserStore,
         verification: PrismaEmailVerificationStore,
