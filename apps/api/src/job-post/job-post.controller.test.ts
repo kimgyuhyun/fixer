@@ -357,3 +357,86 @@ describe('GET /job-posts/:id/versions/:version', () => {
     expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
   });
 });
+describe('POST /job-posts/:id/cancel', () => {
+  const CANCELLED = {
+    id: 'job_1',
+    status: 'CANCELLED' as const,
+    released: 150_000,
+    penalized: false,
+  };
+
+  it('should return what was released', async () => {
+    const controller = controllerWith({
+      cancel: vi.fn().mockResolvedValue(CANCELLED),
+    });
+
+    await expect(
+      controller.cancel('job_1', { employerId: 'usr_1' }),
+    ).resolves.toEqual(CANCELLED);
+  });
+
+  it('should say whether a penalty was recorded', async () => {
+    const controller = controllerWith({
+      cancel: vi.fn().mockResolvedValue({ ...CANCELLED, penalized: true }),
+    });
+
+    const result = await controller.cancel('job_1', { employerId: 'usr_1' });
+
+    expect(result.penalized).toBe(true);
+  });
+
+  it('should return 400 when employerId is missing', async () => {
+    const cancel = vi.fn();
+    const controller = controllerWith({ cancel });
+
+    const error = await rejectionOf(controller.cancel('job_1', {}));
+
+    expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('should return 403 for a post owned by another member', async () => {
+    const controller = controllerWith({
+      cancel: vi
+        .fn()
+        .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_OWNED)),
+    });
+
+    const error = await rejectionOf(
+      controller.cancel('job_1', { employerId: 'usr_1' }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
+  });
+
+  it('should return 409 for a post that cannot move to CANCELLED', async () => {
+    const controller = controllerWith({
+      cancel: vi
+        .fn()
+        .mockRejectedValue(
+          new JobPostError(JOB_POST_ERRORS.INVALID_TRANSITION),
+        ),
+    });
+
+    const error = await rejectionOf(
+      controller.cancel('job_1', { employerId: 'usr_1' }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
+    expect(bodyOf(error).errorCode).toBe(JOB_POST_ERRORS.INVALID_TRANSITION);
+  });
+
+  it('should return 404 for a post that cannot be found', async () => {
+    const controller = controllerWith({
+      cancel: vi
+        .fn()
+        .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_FOUND)),
+    });
+
+    const error = await rejectionOf(
+      controller.cancel('job_gone', { employerId: 'usr_1' }),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
+  });
+});

@@ -53,6 +53,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  await prisma.penalty.deleteMany();
   await prisma.jobPostVersion.deleteMany();
   await prisma.jobPost.deleteMany();
   await prisma.pointTransaction.deleteMany();
@@ -465,5 +466,90 @@ describe('공고 수정 — 진짜 Postgres에서 (#15)', () => {
     expect(post.headcount).toBe(HEADCOUNT);
     expect(await prisma.jobPostVersion.count()).toBe(1);
     expect(await balanceOf(employerId)).toBe(0);
+  });
+});
+describe('공고 취소 — 진짜 Postgres에서 (#16)', () => {
+  it('should keep the row in the database after cancelling', async () => {
+    // 목록에서 사라지지만 DB에는 남는다 (AC3).
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    await service.cancel({ employerId, jobPostId: created.id });
+
+    const row = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: created.id },
+    });
+    expect(row.status).toBe('CANCELLED');
+    expect(row.deletedAt).toBeNull();
+    expect((await service.list({ page: 1 })).total).toBe(0);
+    // 상세로는 여전히 볼 수 있다 (#14).
+    expect((await service.findById(created.id)).status).toBe('CANCELLED');
+  });
+
+  it('should return the whole locked amount to the balance', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+    expect(await balanceOf(employerId)).toBe(1_000_000 - BUDGET);
+
+    const result = await service.cancel({ employerId, jobPostId: created.id });
+
+    expect(result.released).toBe(BUDGET);
+    expect(await balanceOf(employerId)).toBe(1_000_000);
+    // 그 공고에 잠긴 돈이 0이 된다.
+    const locked = await prisma.pointTransaction.aggregate({
+      where: { referenceId: created.id },
+      _sum: { amount: true },
+    });
+    expect(locked._sum.amount).toBe(0);
+  });
+
+  it('should release what is actually locked after an edit changed the budget', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(5_000_000);
+    const created = await service.create(employerId, request(categoryId));
+    await service.update({
+      employerId,
+      jobPostId: created.id,
+      patch: { headcount: 10 },
+    });
+
+    const result = await service.cancel({ employerId, jobPostId: created.id });
+
+    expect(result.released).toBe(REWARD * 10);
+    expect(await balanceOf(employerId)).toBe(5_000_000);
+  });
+
+  it('should release only once when two cancels arrive at the same time', async () => {
+    // 둘 다 OPEN을 읽는 창이 있다. 막는 것은 원장의 유니크 제약이다.
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    const results = await Promise.allSettled([
+      service.cancel({ employerId, jobPostId: created.id }),
+      service.cancel({ employerId, jobPostId: created.id }),
+    ]);
+
+    // 하나는 성공하고 하나는 전이표나 유니크 제약에 걸린다.
+    expect(results.some((r) => r.status === 'fulfilled')).toBe(true);
+    expect(
+      await prisma.pointTransaction.count({
+        where: { referenceId: created.id, type: 'RELEASE' },
+      }),
+    ).toBe(1);
+    // **잔액이 두 배로 돌아오면 안 된다.**
+    expect(await balanceOf(employerId)).toBe(1_000_000);
+  });
+
+  it('should record no penalty row when nobody was accepted', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    await service.cancel({ employerId, jobPostId: created.id });
+
+    expect(await prisma.penalty.count()).toBe(0);
   });
 });

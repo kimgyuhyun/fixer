@@ -18,6 +18,7 @@ import {
   createJobPostRequestSchema,
   jobPostDetailSchema,
   jobPostFilterSchema,
+  cancelJobPostResultSchema,
   jobPostListSchema,
   jobPostSummarySchema,
   jobPostVersionSchema,
@@ -25,6 +26,7 @@ import {
   type JobPostList,
   type JobPostSummary,
   type JobPostVersionSnapshot,
+  type CancelJobPostResult,
 } from '@fixer/shared';
 import { ZodError } from 'zod';
 import { JobPostError, JobPostService } from './job-post.service';
@@ -81,6 +83,23 @@ export class JobPostController {
           // employerId는 본문에서 빼고 넘긴다. 수정 대상이 아니다.
           patch: withoutEmployer(body),
         }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
+  /** 공고를 취소한다. 잠긴 돈은 전액 되돌아간다 (#16) */
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancel(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<CancelJobPostResult> {
+    const employerId = employerIdOf(body);
+    try {
+      return cancelJobPostResultSchema.parse(
+        await this.service.cancel({ employerId, jobPostId: id }),
       );
     } catch (error) {
       throw toHttpError(error);
@@ -164,6 +183,13 @@ function toHttpError(error: unknown): unknown {
       return new ConflictException({
         errorCode: error.code,
         message: '모집 중인 공고만 고칠 수 있습니다.',
+      });
+    }
+
+    if (error.code === JOB_POST_ERRORS.INVALID_TRANSITION) {
+      return new ConflictException({
+        errorCode: error.code,
+        message: '지금 상태에서는 취소할 수 없습니다.',
       });
     }
 

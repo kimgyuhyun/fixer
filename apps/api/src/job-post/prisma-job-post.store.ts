@@ -247,6 +247,74 @@ export class PrismaJobPostStore implements JobPostStore {
     }
   }
 
+  /**
+   * 취소하고 잠긴 돈을 되돌린다. **한 트랜잭션이다** (#16).
+   *
+   * 되돌리는 금액을 예산에서 다시 계산하지 않는다. **그 공고를 참조하는
+   * 원장 행들의 합**을 쓴다 — #15에서 예산을 고친 공고는 예산과 실제 잠금이
+   * 다를 수 있고, `ADR-PAY-7`이 lot 잔여에서 내린 것과 같은 판단이다.
+   */
+  async cancelAndRelease(input: {
+    jobPostId: string;
+    employerId: string;
+    penalize: boolean;
+    idempotencyKey: string;
+  }): Promise<{ released: number; alreadyReleased: boolean }> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // 실제로 잠긴 금액. HOLD는 음수, RELEASE는 양수라 합이 곧 잔여다.
+        const { _sum } = await tx.pointTransaction.aggregate({
+          where: { referenceId: input.jobPostId },
+          _sum: { amount: true },
+        });
+        const released = -(_sum.amount ?? 0);
+
+        await tx.jobPost.update({
+          where: { id: input.jobPostId },
+          data: { status: transition('OPEN', 'CANCELLED') },
+        });
+
+        if (released > 0) {
+          await tx.$executeRaw`
+            UPDATE "User"
+            SET "cachedBalance" = "cachedBalance" + ${released}
+            WHERE id = ${input.employerId}
+          `;
+          // 유니크 키가 최후 방어선이다. 두 요청이 동시에 와서 둘 다 OPEN을
+          // 읽어도 원장은 한 번만 늘어난다 (#29에서 겪은 것과 같다).
+          await tx.pointTransaction.create({
+            data: {
+              userId: input.employerId,
+              type: 'RELEASE',
+              amount: released,
+              idempotencyKey: input.idempotencyKey,
+              referenceId: input.jobPostId,
+            },
+          });
+        }
+
+        if (input.penalize) {
+          // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5).
+          await tx.penalty.create({
+            data: {
+              userId: input.employerId,
+              reason: 'POSTER_CANCEL',
+              jobPostId: input.jobPostId,
+            },
+          });
+        }
+
+        return { released, alreadyReleased: false };
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        // 다른 요청이 먼저 풀었다. 오류가 아니라 "이미 됨"이다.
+        return { released: 0, alreadyReleased: true };
+      }
+      throw error;
+    }
+  }
+
   async findVersion(
     jobPostId: string,
     version: number,

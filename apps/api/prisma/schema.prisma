@@ -48,6 +48,7 @@ model User {
   agreements        Agreement[]
   payments          Payment[]
   jobPosts          JobPost[]
+  penalties         Penalty[]
 
   /// 파기 배치가 "비활성화됐고 아직 파기 안 된" 행만 훑는다 (#39)
   @@index([deactivatedAt, purgedAt])
@@ -324,4 +325,33 @@ enum JobPostStatus {
   CANCELLED
   /// 미달 상태로 시작 시각 경과
   EXPIRED
+}
+
+/// 제재 기록 1건. (`spec-fixed.md` §5)
+///
+/// **레코드를 지우지 않는다** — 분쟁 대응 근거이기 때문이다. 제재 판정은
+/// 최근 180일 롤링 윈도우를 쿼리로 세는 것이고 별도 배치가 없다.
+model Penalty {
+  id         String        @id @default(cuid())
+  userId     String
+  reason     PenaltyReason
+  /// 어느 공고에서 생겼나. 공고와 무관한 제재도 있을 수 있어 nullable이다
+  jobPostId  String?
+  occurredAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// 180일 롤링 윈도우 집계가 이 순서로 훑는다 (§5)
+  @@index([userId, occurredAt])
+}
+
+enum PenaltyReason {
+  /// 무단 불참
+  NO_SHOW
+  /// 무상 취소 창(수락 +2시간)을 넘긴 취소
+  LATE_CANCEL
+  /// 근무 당일 취소
+  SAME_DAY_CANCEL
+  /// 구인자가 수락자가 있는 공고를 취소했다
+  POSTER_CANCEL
 }

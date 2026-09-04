@@ -318,3 +318,28 @@ export function changedRequiredFields(
 
   return changed;
 }
+
+/** 제재 사유. (`spec-fixed.md` §5) */
+export const PENALTY_REASONS = [
+  'NO_SHOW',
+  'LATE_CANCEL',
+  'SAME_DAY_CANCEL',
+  'POSTER_CANCEL',
+] as const;
+export type PenaltyReason = (typeof PENALTY_REASONS)[number];
+
+/** 취소 결과 */
+export const cancelJobPostResultSchema = z.object({
+  id: z.string(),
+  status: z.enum(JOB_POST_STATUSES),
+  /** 되돌린 금액. **원장에 실제로 잠겨 있던 만큼이다** */
+  released: z.number().int(),
+  /** 수락자가 있어 구인자에게 경고가 쌓였나 */
+  penalized: z.boolean(),
+});
+export type CancelJobPostResult = z.infer<typeof cancelJobPostResultSchema>;
+
+/** 취소 해제의 멱등 키. 같은 공고는 한 번만 풀린다 */
+export function cancelIdempotencyKey(jobPostId: string): string {
+  return `cancel:${jobPostId}`;
+}

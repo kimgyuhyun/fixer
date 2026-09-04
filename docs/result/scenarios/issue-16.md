@@ -72,44 +72,67 @@ lot 잔여를 원장에서 계산한 것과 같은 판단이다.
 
 ### 신청자 없는 공고 취소 (AC1)
 
-- [ ] [정상] `cancel` — should move the post to CANCELLED
-- [ ] [정상] `cancel` — should release the whole locked budget
-- [ ] [정상] `cancel` — should point the RELEASE row at the job post
-- [ ] [경계] `cancel` — should release what is actually locked, not the recomputed budget
-- [ ] [정상] `cancel` — should report what it released
+- [x] [정상] `cancel` — should move the post to CANCELLED
+- [x] [정상] `cancel` — should release the whole locked budget
+- [x] [정상] `통합` — should return the whole locked amount to the balance
+- [x] [경계] `cancel` — should release what is actually locked, not the recomputed budget
+- [x] [정상] `cancel` — should report what it released
 
 ### 수락자가 있으면 패널티 (AC2)
 
-- [ ] [정상] `cancel` — should record a POSTER_CANCEL penalty when someone was accepted
-- [ ] [경계] `cancel` — should record no penalty when nobody applied
-- [ ] [정상] `cancel` — should still cancel and release when a penalty is recorded
+- [x] [정상] `cancel` — should record a penalty when someone was accepted
+- [x] [경계] `cancel` — should record no penalty when nobody applied
+- [x] [정상] `cancel` — should still cancel and release when a penalty is recorded
 
 ### 목록에서 사라지고 DB에는 남는다 (AC3)
 
-- [ ] [정상] `list` — should not include a cancelled post
-- [ ] [정상] `findById` — should still return a cancelled post
-- [ ] [경계] `통합` — should keep the row in the database after cancelling
+- [x] [정상] `cancel` — should drop a cancelled post from the list
+- [x] [정상] `cancel` — should still return a cancelled post from the detail view
+- [x] [경계] `통합` — should keep the row in the database after cancelling
 
 ### 남의 공고는 못 취소한다 (AC4)
 
-- [ ] [예외] `cancel` — should reject a post owned by another member
-- [ ] [예외] `cancel` — should reject a post that cannot be found
-- [ ] [예외] `cancel` — should reject a post that is already cancelled
-- [ ] [예외] `cancel` — should reject a COMPLETED post
-- [ ] [정상] `cancel` — should change nothing when it was rejected
+- [x] [예외] `cancel` — should reject a post owned by another member
+- [x] [예외] `cancel` — should reject a post that cannot be found
+- [x] [예외] `cancel` — should reject a post that is already cancelled
+- [x] [예외] `cancel` — should reject a COMPLETED post
+- [x] [정상] `cancel` — should change nothing when it was rejected
 
 ### 두 번 취소 (멱등)
 
-- [ ] [경계] `통합` — should release only once when two cancels arrive at the same time
-- [ ] [경계] `통합` — should leave the balance right after a double cancel
+- [x] [경계] `통합` — should release only once when two cancels arrive at the same time
+- [x] [경계] `통합` — should release what is actually locked after an edit changed the budget
+- [x] [경계] `통합` — should record no penalty row when nobody was accepted
 
 ### 컨트롤러
 
-- [ ] [정상] `POST /job-posts/:id/cancel` — should return what was released
-- [ ] [예외] `POST /job-posts/:id/cancel` — should return 403 for another member
-- [ ] [예외] `POST /job-posts/:id/cancel` — should return 409 for a post that cannot move to CANCELLED
+- [x] [정상] `POST /job-posts/:id/cancel` — should return what was released
+- [x] [예외] `POST /job-posts/:id/cancel` — should return 403 for another member
+- [x] [예외] `POST /job-posts/:id/cancel` — should return 409 for a post that cannot move to CANCELLED
+- [x] [정상] `POST /job-posts/:id/cancel` — should say whether a penalty was recorded
+- [x] [경계] `POST /job-posts/:id/cancel` — should return 400 when employerId is missing
+- [x] [예외] `POST /job-posts/:id/cancel` — should return 404 for a post that cannot be found
 
-**총 21개** (정상 10 / 경계 5 / 예외 6)
+**총 26개** (서비스 14 + 통합 5 + 컨트롤러 6, 겹치는 항목 제외)
+
+### 서버를 띄워 확인한 것
+
+50만 충전 → 15만 예산 공고 등록 → 취소.
+
+| 무엇         | 결과                                       |
+| ------------ | ------------------------------------------ |
+| 등록 후 잔액 | 350,000                                    |
+| 취소         | `released 150000`, `penalized false`       |
+| 취소 후 잔액 | **500,000 — 전액 돌아왔다**                |
+| 목록         | 0건 (사라졌다)                             |
+| 상세         | `CANCELLED` — 여전히 볼 수 있다            |
+| 두 번째 취소 | `409`, 잔액 500,000 그대로 (두 배 안 된다) |
+
+### 지금은 경고가 실제로 안 쌓인다
+
+`Penalty` 테이블과 쌓는 코드는 만들었지만, 수락자 판정 포트가 아직 0을
+돌려주므로 `penalized`는 늘 `false`다. **#17이 어댑터를 채워야 AC2가
+실제로 동작한다** — #14의 확정 인원과 같은 자리다.
 
 ---
 

@@ -3,6 +3,7 @@ import {
   JOB_POST_ERRORS,
   JOB_POST_PAGE_SIZE,
   budgetOf,
+  cancelIdempotencyKey,
   canTransition,
   changedRequiredFields,
   createJobPostRequestSchema,
@@ -15,6 +16,7 @@ import {
   type JobPostList,
   type JobPostStatus,
   type JobPostSummary,
+  type CancelJobPostResult,
   type JobPostVersionSnapshot,
   type UpdateJobPostRequest,
 } from '@fixer/shared';
@@ -125,6 +127,23 @@ export interface JobPostStore {
     jobPostId: string,
     version: number,
   ): Promise<JobPostVersionSnapshot | null>;
+
+  /**
+   * 공고를 취소하고 잠긴 돈을 되돌린다. **한 트랜잭션이다.**
+   *
+   * 상태만 바뀌면 아무도 풀어줄 수 없는 돈이 되고, 돈만 풀리면 예산 없는
+   * 공고가 모집 중으로 남는다.
+   *
+   * 되돌리는 금액은 **원장에 실제로 잠겨 있는 만큼**이다 — 예산에서 다시
+   * 계산하면 #15에서 예산을 고친 공고의 숫자가 어긋난다.
+   */
+  cancelAndRelease(input: {
+    jobPostId: string;
+    employerId: string;
+    /** 수락자가 있어 경고를 쌓아야 하나 */
+    penalize: boolean;
+    idempotencyKey: string;
+  }): Promise<{ released: number; alreadyReleased: boolean }>;
 }
 
 /**
@@ -296,6 +315,45 @@ export class JobPostService {
       categoryName: updated.categoryName,
       requiredDescription: updated.requiredDescription,
       acceptedCount: await this.accepted.countAccepted(current.id),
+    };
+  }
+
+  /**
+   * 공고를 취소한다. 잠긴 돈은 전액 되돌아간다 (§4.3).
+   *
+   * 수락자가 있었으면 구인자에게 경고가 쌓인다 — 구직자에게 금전 보상은
+   * 없다. 보상이 있으면 양측이 짜고 취소를 반복해 포인트를 이전할 수 있다.
+   */
+  async cancel(input: {
+    employerId: string;
+    jobPostId: string;
+  }): Promise<CancelJobPostResult> {
+    const current = await this.store.findById(input.jobPostId);
+    if (current === null) {
+      throw new JobPostError(JOB_POST_ERRORS.NOT_FOUND);
+    }
+    if (current.employerId !== input.employerId) {
+      throw new JobPostError(JOB_POST_ERRORS.NOT_OWNED);
+    }
+
+    // 표에 없는 전이는 거부된다 (ADR-JOB-3). 이미 취소된 공고도 여기서 걸린다.
+    transition(current.status, 'CANCELLED');
+
+    // 아무도 지원하지 않았으면 피해자가 없다. 경고는 약속이 있었을 때만이다.
+    const penalize = (await this.accepted.countAccepted(current.id)) > 0;
+
+    const { released } = await this.store.cancelAndRelease({
+      jobPostId: current.id,
+      employerId: current.employerId,
+      penalize,
+      idempotencyKey: cancelIdempotencyKey(current.id),
+    });
+
+    return {
+      id: current.id,
+      status: 'CANCELLED',
+      released,
+      penalized: penalize,
     };
   }
 

@@ -179,6 +179,41 @@ class FakeStore implements JobPostStore {
     return Promise.resolve({ ...row, categoryName: '청소' });
   }
 
+  /** 쌓인 경고. 진짜 저장소가 `Penalty` 행으로 남기는 것이다 */
+  readonly penalties: { userId: string; jobPostId: string }[] = [];
+
+  cancelAndRelease(input: {
+    jobPostId: string;
+    employerId: string;
+    penalize: boolean;
+    idempotencyKey: string;
+  }): Promise<{ released: number; alreadyReleased: boolean }> {
+    const row = this.posts.find((p) => p.id === input.jobPostId);
+    if (!row) throw new Error('없는 공고를 취소하려 했다');
+
+    // 실제로 잠긴 금액. 예산에서 다시 계산하지 않는다.
+    const locked = -this.holds
+      .filter((h) => h.jobPostId === input.jobPostId)
+      .reduce((total, h) => total + h.amount, 0);
+
+    row.status = 'CANCELLED';
+    this.balance += locked;
+    this.holds.push({
+      key: input.idempotencyKey,
+      amount: locked,
+      jobPostId: row.id,
+    });
+
+    if (input.penalize) {
+      this.penalties.push({
+        userId: input.employerId,
+        jobPostId: input.jobPostId,
+      });
+    }
+
+    return Promise.resolve({ released: locked, alreadyReleased: false });
+  }
+
   findVersion(
     jobPostId: string,
     version: number,
@@ -1166,5 +1201,185 @@ describe('findVersion — 계약을 복원한다 (#15 AC2)', () => {
     const error = await rejectionOf(service.findVersion(id, 9));
 
     expect(codeOf(error)).toBe(JOB_POST_ERRORS.VERSION_NOT_FOUND);
+  });
+});
+describe('cancel — 공고를 취소한다 (#16)', () => {
+  it('should move the post to CANCELLED', async () => {
+    const { service, store } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const result = await service.cancel({
+      employerId: EMPLOYER,
+      jobPostId: id,
+    });
+
+    expect(result.status).toBe('CANCELLED');
+    expect(store.posts[0].status).toBe('CANCELLED');
+  });
+
+  it('should release the whole locked budget', async () => {
+    const { service, store } = setup({ balance: 1_000_000 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const result = await service.cancel({
+      employerId: EMPLOYER,
+      jobPostId: id,
+    });
+
+    expect(result.released).toBe(150_000);
+    expect(store.currentBalance()).toBe(1_000_000);
+  });
+
+  it('should release what is actually locked, not the recomputed budget', async () => {
+    // #15에서 예산을 고친 공고는 예산과 실제 잠금이 다를 수 있다.
+    const { service, store } = setup({ balance: 1_000_000 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { headcount: 5 },
+    });
+
+    const result = await service.cancel({
+      employerId: EMPLOYER,
+      jobPostId: id,
+    });
+
+    expect(result.released).toBe(250_000);
+    expect(store.currentBalance()).toBe(1_000_000);
+  });
+
+  it('should report what it released', async () => {
+    const { service } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const result = await service.cancel({
+      employerId: EMPLOYER,
+      jobPostId: id,
+    });
+
+    expect(result).toMatchObject({ id, released: 150_000, penalized: false });
+  });
+
+  it('should record no penalty when nobody applied', async () => {
+    // 아무도 지원하지 않았으면 피해자가 없다.
+    const { service } = setup({ accepted: 0 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const result = await service.cancel({
+      employerId: EMPLOYER,
+      jobPostId: id,
+    });
+
+    expect(result.penalized).toBe(false);
+  });
+
+  it('should record a penalty when someone was accepted', async () => {
+    const { service, store } = setup({ accepted: 1 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const result = await service.cancel({
+      employerId: EMPLOYER,
+      jobPostId: id,
+    });
+
+    expect(result.penalized).toBe(true);
+    expect(store.penalties).toEqual([{ userId: EMPLOYER, jobPostId: id }]);
+  });
+
+  it('should still cancel and release when a penalty is recorded', async () => {
+    // 경고가 쌓인다고 돈이 안 돌아오면 안 된다 (§4.3).
+    const { service, store } = setup({ accepted: 2, balance: 1_000_000 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const result = await service.cancel({
+      employerId: EMPLOYER,
+      jobPostId: id,
+    });
+
+    expect(result.status).toBe('CANCELLED');
+    expect(store.currentBalance()).toBe(1_000_000);
+  });
+
+  it('should drop a cancelled post from the list', async () => {
+    const { service } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    await service.cancel({ employerId: EMPLOYER, jobPostId: id });
+
+    const list = await service.list({ page: 1 });
+
+    expect(list.items).toHaveLength(0);
+    expect(list.total).toBe(0);
+  });
+
+  it('should still return a cancelled post from the detail view', async () => {
+    // 이미 지원한 사람이 다시 열 수 있어야 한다 (#14).
+    const { service } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    await service.cancel({ employerId: EMPLOYER, jobPostId: id });
+
+    const detail = await service.findById(id);
+
+    expect(detail.status).toBe('CANCELLED');
+  });
+
+  it('should reject a post owned by another member', async () => {
+    const { service } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+
+    const error = await rejectionOf(
+      service.cancel({ employerId: 'usr_stranger', jobPostId: id }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.NOT_OWNED);
+  });
+
+  it('should reject a post that cannot be found', async () => {
+    const { service } = setup();
+
+    const error = await rejectionOf(
+      service.cancel({ employerId: EMPLOYER, jobPostId: 'job_missing' }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.NOT_FOUND);
+  });
+
+  it('should reject a post that is already cancelled', async () => {
+    // 전이표에 CANCELLED → CANCELLED가 없다 (ADR-JOB-3).
+    const { service } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    await service.cancel({ employerId: EMPLOYER, jobPostId: id });
+
+    const error = await rejectionOf(
+      service.cancel({ employerId: EMPLOYER, jobPostId: id }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.INVALID_TRANSITION);
+  });
+
+  it('should reject a COMPLETED post', async () => {
+    const { service, store } = setup();
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    store.posts[0].status = 'COMPLETED';
+
+    const error = await rejectionOf(
+      service.cancel({ employerId: EMPLOYER, jobPostId: id }),
+    );
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.INVALID_TRANSITION);
+  });
+
+  it('should change nothing when it was rejected', async () => {
+    const { service, store } = setup({ balance: 1_000_000 });
+    const id = (await service.create(EMPLOYER, VALID)).id;
+    const balanceBefore = store.currentBalance();
+
+    await rejectionOf(
+      service.cancel({ employerId: 'usr_stranger', jobPostId: id }),
+    );
+
+    expect(store.posts[0].status).toBe('OPEN');
+    expect(store.currentBalance()).toBe(balanceBefore);
+    expect(store.penalties).toHaveLength(0);
   });
 });
