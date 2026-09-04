@@ -136,7 +136,34 @@ DB는 파기됐는데 파일이 남는 편이 낫다 — 후자는 다시 돌리
 - [x] [정상] `purge` — should mask the member without deleting the row or its records (통합 테스트)
 - [x] [경계] `purge` — should leave a member deactivated for only one month untouched (통합 테스트)
 
-**총 26개** (단위 18 + 통합 8). 상수 파일에 3개가 더 있다.
+### ac-verifier가 잡은 것 — 인증 이력에 이메일이 남았다
+
+`EmailVerification`은 `userId`가 없고 **이메일을 평문으로** 들고 있다.
+회원 행만 마스킹하면 파기된 사람의 원래 주소가 여기 영구히 남는다.
+`spec-fixed.md` §2.7의 파기 대상 표에는 없지만, 개인정보가 실제로 남는
+경로라 파기 대상에 넣었다.
+
+- [x] [보안] `purge` — should delete the email verification history that still holds the original address (통합 테스트)
+- [x] [경계] `purge` — should keep the email verification history of a member who is not purged yet (통합 테스트)
+
+**총 28개** (단위 18 + 통합 10). 상수 파일에 3개가 더 있다.
+
+---
+
+## 다음 이슈가 갚아야 할 것
+
+AC1은 **연락처·계좌**도 파기하라고 하는데 그 컬럼이 아직 없다. AC2는
+**공고·신청**이 남아 있는지 보라고 하는데 그 모델이 아직 없다. 지금은
+증명할 방법이 없어서 남긴다.
+
+| 언제         | 무엇                                                            |
+| ------------ | --------------------------------------------------------------- |
+| **#30** 뒤   | `purge`가 계좌 정보를 지운다 + 그 통합 테스트                   |
+| phone 생기면 | `purge`가 `phone`을 비운다                                      |
+| **#12** 뒤   | 파기된 회원의 과거 공고·신청이 그대로 남는지 통합 테스트로 확인 |
+
+**파기 대상 목록은 컬럼이 늘어날 때마다 함께 늘려야 한다.** 안 늘리면
+조용히 남는다 — 빨개지는 테스트가 없다.
 
 ### 진짜 Postgres에서 확인한 것
 

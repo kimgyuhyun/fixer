@@ -58,18 +58,26 @@ class FakeStore implements PurgeStore {
             r.deactivatedAt < deactivatedBefore &&
             r.purgedAt === null,
         )
-        .map((r) => ({ id: r.id, agreementFilePaths: r.agreementFilePaths })),
+        .map((r) => ({
+          id: r.id,
+          email: r.email,
+          agreementFilePaths: r.agreementFilePaths,
+        })),
     );
   }
 
   maskMember(input: {
     userId: string;
     email: string;
+    previousEmail: string;
     name: string;
     purgedAt: Date;
   }): Promise<void> {
     const target = this.rows.find((r) => r.id === input.userId);
     if (!target) throw new Error('없는 회원을 파기하려 했다');
+    if (input.previousEmail !== target.email) {
+      throw new Error('파기 전 주소가 실제 주소와 다르다');
+    }
     target.email = input.email;
     target.name = input.name;
     target.purgedAt = input.purgedAt;

@@ -57,6 +57,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  await prisma.emailVerification.deleteMany();
   await prisma.agreement.deleteMany();
   await prisma.agreementTemplate.deleteMany();
   await prisma.pointTransaction.deleteMany();
@@ -84,6 +85,17 @@ async function seedWithdrawnMember(deactivatedAt: Date): Promise<string> {
       jibunAddress: '서울 강남구 역삼동 1',
       sido: '서울',
       sigungu: '강남구',
+    },
+  });
+
+  // 인증 이력은 userId가 없고 이메일을 평문으로 들고 있다. 회원 행만
+  // 마스킹하면 원래 주소가 여기 영구히 남는다.
+  await prisma.emailVerification.create({
+    data: {
+      email: 'gone@example.com',
+      codeHash: 'hash',
+      expiresAt: new Date(),
+      consumedAt: new Date(),
     },
   });
 
@@ -153,6 +165,40 @@ describe('파기 배치 — 진짜 Postgres에서', () => {
     });
     expect(agreement.sha256).toBe('agreement-sha');
     expect(files.deleted).toEqual(['agreements/gone.pdf']);
+  });
+
+  it('should delete the email verification history that still holds the original address', async () => {
+    // 이름·이메일만 마스킹하면 여기 평문 주소가 영구히 남는다.
+    const now = new Date();
+    await seedWithdrawnMember(new Date(now.getTime() - FOUR_MONTHS - 1000));
+    expect(
+      await prisma.emailVerification.count({
+        where: { email: 'gone@example.com' },
+      }),
+    ).toBe(1);
+
+    await serviceWith(new RecordingFiles()).purge(now, FOUR_MONTHS, LOCK_KEY);
+
+    expect(
+      await prisma.emailVerification.count({
+        where: { email: 'gone@example.com' },
+      }),
+    ).toBe(0);
+  });
+
+  it('should keep the email verification history of a member who is not purged yet', async () => {
+    const now = new Date();
+    await seedWithdrawnMember(
+      new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+    );
+
+    await serviceWith(new RecordingFiles()).purge(now, FOUR_MONTHS, LOCK_KEY);
+
+    expect(
+      await prisma.emailVerification.count({
+        where: { email: 'gone@example.com' },
+      }),
+    ).toBe(1);
   });
 
   it('should delete every address row of the purged member', async () => {

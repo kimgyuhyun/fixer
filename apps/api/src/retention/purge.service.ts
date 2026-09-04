@@ -4,6 +4,8 @@ import { PURGED_NAME, purgedEmailFor } from '@fixer/shared';
 /** 파기 대상 회원 하나 */
 export interface PurgeCandidate {
   id: string;
+  /** 파기 전 이메일. 이 주소가 남은 곳까지 함께 지운다 */
+  email: string;
   /** 지워야 할 동의서 PDF들. 해시는 행에 남는다 */
   agreementFilePaths: string[];
 }
@@ -23,7 +25,10 @@ export interface PurgeStore {
    */
   maskMember(input: {
     userId: string;
+    /** 새로 넣을 비식별 주소 */
     email: string;
+    /** 파기 전 주소. 이 값이 남은 다른 행도 함께 지운다 */
+    previousEmail: string;
     name: string;
     purgedAt: Date;
   }): Promise<void>;
@@ -96,6 +101,7 @@ export class PurgeService {
         await this.store.maskMember({
           userId: candidate.id,
           email: purgedEmailFor(candidate.id),
+          previousEmail: candidate.email,
           name: PURGED_NAME,
           purgedAt: now,
         });
