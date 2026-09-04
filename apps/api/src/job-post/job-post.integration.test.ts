@@ -218,6 +218,90 @@ describe('공고 등록 — 진짜 Postgres에서', () => {
     expect(created.workAddress).toBe('서울 강남구 테헤란로 1');
   });
 
+  it('should filter by category, region and title against the real database', async () => {
+    // **가짜 저장소는 내가 쓴 필터 식을 그대로 되풀이한다.** 진짜 where절이
+    // 같은 값을 내는지는 Postgres만 안다 — ac-verifier가 이 갭을 짚었다.
+    const cleaning = await seedCategory();
+    const delivery = await prisma.category.create({
+      data: {
+        name: '배달',
+        slug: 'delivery',
+        sortOrder: 2,
+        placeholderText: '출발지와 도착지를 적어 주세요.',
+      },
+    });
+    const employerId = await seedEmployer(1_000_000);
+
+    await service.create(
+      employerId,
+      request(cleaning, { title: '강남 사무실 청소' }),
+    );
+    await service.create(
+      employerId,
+      request(cleaning, {
+        title: '마포 창고 정리',
+        workAddress: '서울 마포구 월드컵북로 1',
+        workSido: '서울',
+        workSigungu: '마포구',
+      }),
+    );
+    await service.create(
+      employerId,
+      request(delivery.id, {
+        title: '해운대 전단 배포',
+        workAddress: '부산 해운대구 해운대로 1',
+        workSido: '부산',
+        workSigungu: '해운대구',
+      }),
+    );
+
+    const byCategory = await service.list({ page: 1, category: delivery.id });
+    expect(byCategory.items.map((i) => i.title)).toEqual(['해운대 전단 배포']);
+
+    const bySido = await service.list({ page: 1, sido: '서울' });
+    expect(bySido.total).toBe(2);
+
+    // 시/도 없이 시/군/구만 골라도 걸린다.
+    const bySigunguOnly = await service.list({ page: 1, sigungu: '해운대구' });
+    expect(bySigunguOnly.items.map((i) => i.title)).toEqual([
+      '해운대 전단 배포',
+    ]);
+
+    // 제목 부분 일치. 대소문자를 가리지 않는다.
+    const byTitle = await service.list({ page: 1, q: '창고' });
+    expect(byTitle.items.map((i) => i.title)).toEqual(['마포 창고 정리']);
+
+    // AND로 겹친다.
+    const both = await service.list({
+      page: 1,
+      category: cleaning,
+      sigungu: '마포구',
+    });
+    expect(both.total).toBe(1);
+  });
+
+  it('should page through the real database and count only the matches', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(10_000_000);
+    for (let i = 1; i <= 21; i += 1) {
+      await service.create(
+        employerId,
+        request(categoryId, { title: `공고 ${i}` }),
+      );
+    }
+
+    const first = await service.list({ page: 1 });
+    const second = await service.list({ page: 2 });
+    const past = await service.list({ page: 9 });
+
+    expect(first.items).toHaveLength(20);
+    expect(second.items).toHaveLength(1);
+    expect(second.total).toBe(21);
+    // 범위를 넘어도 오류가 아니라 빈 목록이다.
+    expect(past.items).toHaveLength(0);
+    expect(past.total).toBe(21);
+  });
+
   it('should list the created post with its total', async () => {
     const categoryId = await seedCategory();
     const employerId = await seedEmployer(500_000);

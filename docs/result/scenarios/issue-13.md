@@ -136,7 +136,7 @@ GET /job-posts?category=&sido=&sigungu=&q=&page=
 - [x] [정상] `목록 화면` — should move to the next page without losing the filter
 - [x] [경계] `목록 화면` — should hide the pager when everything fits on one page
 
-**총 30개** (서버 21 + 컨트롤러 2 + 화면 9, 겹치는 항목 제외)
+**총 37개** (서버 21 + 통합 2 + 컨트롤러 2 + 화면 12, 겹치는 항목 제외)
 
 ### 서버를 띄워 확인한 것
 
@@ -150,6 +150,29 @@ GET /job-posts?category=&sido=&sigungu=&q=&page=
 | 검색 = 청소             | 1건 (제목 부분 일치)                    |
 | 카테고리 + 시/군/구     | 1건 (AND)                               |
 | `page=9` (범위 밖)      | `200`, 빈 목록에 `total: 3` — 안 깨진다 |
+
+### ac-verifier가 잡은 것 — AC8이 실제로는 안 됐다
+
+**`router.replace()`는 히스토리 엔트리를 쌓지 않는다.** 필터를 두 번 바꾼 뒤
+뒤로가기를 누르면 이전 필터가 아니라 목록 화면 자체를 벗어난다. `ADR-JOB-4`가
+`replace`라고 적어 두었지만 그게 AC8과 정면으로 충돌했다 — ADR 쪽을 정정했다.
+
+**기존 테스트로는 못 잡는 종류였다.** `replace`가 불렸는지만 기록하고
+"뒤로가기"는 테스트가 직접 URL을 되돌려 흉내 냈기 때문에, `push`든 `replace`든
+항상 통과했다. 히스토리 스택을 실제로 쌓고 빼는 대역으로 바꿨다.
+
+그러자 **타이핑 필터가 글자마다 엔트리를 쌓는 문제**가 드러났다. §11.2가
+요구하는 300ms 디바운스를 그래서 지금 넣었다.
+
+- [x] [경계] `목록 화면` — should return to the previous filter when back is pressed after two changes
+- [x] [경계] `목록 화면` — should hide the pager when the total is exactly one page
+- [x] [정상] `목록 화면` — should send one request instead of one per keystroke
+- [x] [정상] `통합` — should filter by category, region and title against the real database
+- [x] [경계] `통합` — should page through the real database and count only the matches
+
+`filterToQuery`가 죽은 코드였던 것도 함께 잡혔다 — 지금은 `apply()`가 쓴다.
+서버 테스트 `should keep the other conditions when one is removed`는 이름만
+그런 테스트였다(조건 하나만 걸고 있었다). 두 상태를 실제로 비교하도록 고쳤다.
 
 ### 빌드가 한 번 막혔다 — `Suspense`
 

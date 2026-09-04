@@ -11,12 +11,27 @@ import { JobPostList as JobPostListPage } from './JobPostList';
  * 몰래 상태를 들고 있으면 이 구조에서 화면이 안 바뀌어 테스트가 잡는다.
  */
 let currentQuery = '';
-const replace = vi.fn((href: string) => {
+
+/** 히스토리 스택. `push`는 쌓고 `replace`는 마지막 것을 덮어쓴다 */
+const history: string[] = [];
+
+function navigate(href: string, mode: 'push' | 'replace') {
   currentQuery = href.includes('?') ? href.slice(href.indexOf('?') + 1) : '';
-});
+  if (mode === 'push') history.push(currentQuery);
+  else history[Math.max(0, history.length - 1)] = currentQuery;
+}
+
+const push = vi.fn((href: string) => navigate(href, 'push'));
+const replace = vi.fn((href: string) => navigate(href, 'replace'));
+
+/** 뒤로가기. 히스토리에서 하나 빼고 그 앞의 것으로 돌아간다 */
+function goBack(): void {
+  history.pop();
+  currentQuery = history[history.length - 1] ?? '';
+}
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace }),
+  useRouter: () => ({ push, replace }),
   useSearchParams: () => new URLSearchParams(currentQuery),
 }));
 
@@ -84,7 +99,10 @@ function listBody(items: unknown[], total: number, page = 1) {
 
 beforeEach(() => {
   currentQuery = '';
+  history.length = 0;
+  history.push('');
   listUrls.length = 0;
+  push.mockClear();
   replace.mockClear();
 });
 
@@ -169,7 +187,7 @@ describe('공고 목록 — 필터는 URL이 진실이다 (#13)', () => {
       .setup()
       .selectOptions(screen.getByLabelText('카테고리'), 'cat_1');
 
-    expect(replace).toHaveBeenCalledWith('/job-posts?category=cat_1');
+    expect(push).toHaveBeenCalledWith('/job-posts?category=cat_1');
   });
 
   it('should reset to page one when a filter changes', async () => {
@@ -183,7 +201,7 @@ describe('공고 목록 — 필터는 URL이 진실이다 (#13)', () => {
       .setup()
       .selectOptions(screen.getByLabelText('카테고리'), 'cat_1');
 
-    expect(replace).toHaveBeenCalledWith('/job-posts?category=cat_1');
+    expect(push).toHaveBeenCalledWith('/job-posts?category=cat_1');
   });
 
   it('should show a chip for each applied filter', async () => {
@@ -206,7 +224,7 @@ describe('공고 목록 — 필터는 URL이 진실이다 (#13)', () => {
 
     await userEvent.setup().click(chip);
 
-    const href = String(replace.mock.calls.at(-1)?.[0]);
+    const href = String(push.mock.calls.at(-1)?.[0]);
     expect(href).not.toContain('category=');
     expect(href).toContain('sido=');
   });
@@ -226,6 +244,42 @@ describe('공고 목록 — 필터는 URL이 진실이다 (#13)', () => {
     expect(screen.queryByDisplayValue('서울')).not.toBeInTheDocument();
   });
 
+  it('should return to the previous filter when back is pressed after two changes', async () => {
+    // **replace를 쓰면 히스토리에 엔트리가 안 쌓인다.** 그러면 뒤로가기가
+    // 이전 필터가 아니라 목록 화면 자체를 벗어난다 (AC8).
+    mockApi({ status: 200, body: listBody([summary()], 1) });
+    const view = render(<JobPostListPage />);
+    await screen.findByText('사무실 청소');
+    const user = userEvent.setup();
+
+    await user.selectOptions(screen.getByLabelText('카테고리'), 'cat_1');
+    view.rerender(<JobPostListPage />);
+    await user.type(screen.getByLabelText('시/도'), '서울');
+    // 타이핑은 멈춘 뒤 300ms에 적용된다 (§11.2).
+    await waitFor(() => expect(push).toHaveBeenCalledTimes(2));
+    view.rerender(<JobPostListPage />);
+    expect(await screen.findByDisplayValue('서울')).toBeInTheDocument();
+
+    goBack();
+    view.rerender(<JobPostListPage />);
+
+    // 지역만 풀리고 카테고리는 남아야 한다.
+    expect(screen.queryByDisplayValue('서울')).not.toBeInTheDocument();
+    expect(await screen.findByText(/카테고리: 청소/)).toBeInTheDocument();
+  });
+
+  it('should hide the pager when the total is exactly one page', async () => {
+    // `>`를 `>=`로 잘못 쓰면 20건에서 쓸모없는 페이저가 뜬다.
+    mockApi({ status: 200, body: listBody([summary()], 20) });
+
+    render(<JobPostListPage />);
+    await screen.findByText('사무실 청소');
+
+    expect(
+      screen.queryByRole('button', { name: '다음' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('should move to the next page without losing the filter', async () => {
     currentQuery = 'category=cat_1';
     mockApi({ status: 200, body: listBody([summary()], 21) });
@@ -234,7 +288,7 @@ describe('공고 목록 — 필터는 URL이 진실이다 (#13)', () => {
 
     await userEvent.setup().click(next);
 
-    expect(replace).toHaveBeenCalledWith('/job-posts?category=cat_1&page=2');
+    expect(push).toHaveBeenCalledWith('/job-posts?category=cat_1&page=2');
   });
 
   it('should hide the pager when everything fits on one page', async () => {
@@ -246,5 +300,20 @@ describe('공고 목록 — 필터는 URL이 진실이다 (#13)', () => {
     expect(
       screen.queryByRole('button', { name: '다음' }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('공고 목록 — 타이핑 디바운스 (§11.2)', () => {
+  it('should send one request instead of one per keystroke', async () => {
+    // 글자마다 URL을 바꾸면 요청이 글자 수만큼 나가고, 히스토리에도
+    // 글자마다 엔트리가 쌓여 뒤로가기를 열 번 눌러야 빠져나온다.
+    mockApi({ status: 200, body: listBody([summary()], 1) });
+    render(<JobPostListPage />);
+    await screen.findByText('사무실 청소');
+
+    await userEvent.setup().type(screen.getByLabelText('검색'), '청소');
+
+    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+    expect(push).toHaveBeenCalledWith('/job-posts?q=%EC%B2%AD%EC%86%8C');
   });
 });

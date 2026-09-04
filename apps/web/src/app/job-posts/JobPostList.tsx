@@ -3,14 +3,19 @@
 import {
   JOB_POST_PAGE_SIZE,
   categoryListSchema,
+  filterToQuery,
   jobPostListSchema,
   type Category,
+  type JobPostFilter,
   type JobPostSummary,
 } from '@fixer/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './page.module.css';
+
+/** 타이핑을 멈추고 이만큼 지나면 적용한다. (§11.2) */
+const TYPING_DELAY_MS = 300;
 
 /** 적용된 조건 하나. 칩으로 보이고 개별 해제된다 (§11.2) */
 interface Chip {
@@ -40,6 +45,21 @@ export function JobPostList() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+
+  /**
+   * 타이핑 필터의 디바운스 타이머. (§11.2 — 300ms)
+   *
+   * 글자마다 URL을 바꾸면 요청이 글자 수만큼 나가고, 히스토리에도 글자마다
+   * 엔트리가 쌓여 뒤로가기를 열 번 눌러야 빠져나온다.
+   */
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (typingTimer.current !== null) clearTimeout(typingTimer.current);
+    },
+    [],
+  );
 
   // 목록은 URL이 바뀔 때마다 다시 읽는다. URL이 곧 요청이다.
   const query = params.toString();
@@ -96,17 +116,30 @@ export function JobPostList() {
    *
    * 필터를 바꾸면 페이지를 1로 되돌린다 — 3페이지를 보다 카테고리를 바꾸면
    * 결과가 1페이지뿐이라 빈 화면이 나온다.
+   *
+   * **`replace`가 아니라 `push`다.** `ADR-JOB-4`는 `replace`를 적었지만
+   * 그러면 히스토리에 엔트리가 안 쌓여, 필터를 두 번 바꾼 뒤 뒤로가기를
+   * 누르면 이전 필터가 아니라 **목록 화면 자체를 벗어난다.** AC8이 요구하는
+   * 것은 이전 필터로 돌아가는 것이라 `push`여야 한다.
    */
   function apply(changes: Partial<Record<Chip['key'] | 'page', string>>) {
-    const next = new URLSearchParams(params.toString());
-    for (const [key, value] of Object.entries(changes)) {
-      if (value === undefined || value === '') next.delete(key);
-      else next.set(key, value);
-    }
-    if (!('page' in changes)) next.delete('page');
+    const next: JobPostFilter = {
+      category: pick(changes, 'category', category),
+      sido: pick(changes, 'sido', sido),
+      sigungu: pick(changes, 'sigungu', sigungu),
+      q: pick(changes, 'q', q),
+      // 필터를 바꾸면 1페이지로 되돌린다. 페이지 이동일 때만 그 값을 쓴다.
+      page: 'page' in changes ? Number(changes.page ?? '1') || 1 : 1,
+    };
 
-    const search = next.toString();
-    router.replace(search === '' ? '/job-posts' : `/job-posts?${search}`);
+    const search = filterToQuery(next);
+    router.push(search === '' ? '/job-posts' : `/job-posts?${search}`);
+  }
+
+  /** 타이핑은 멈춘 뒤에 적용한다. 글자마다 URL을 바꾸지 않는다 */
+  function applyLater(changes: Partial<Record<Chip['key'], string>>) {
+    if (typingTimer.current !== null) clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => apply(changes), TYPING_DELAY_MS);
   }
 
   const chips: Chip[] = [];
@@ -146,30 +179,38 @@ export function JobPostList() {
           </select>
         </label>
 
+        {/*
+          타이핑 칸은 `key`에 URL 값을 준다. URL이 바뀌면 다시 마운트되어
+          그 값이 그대로 뜬다 — **필터 상태를 컴포넌트가 들고 있지 않으면서**
+          타이핑 중에는 화면이 튀지 않는다 (ADR-JOB-4).
+        */}
         <label className={styles.filterField}>
           <span className={styles.filterLabel}>시/도</span>
           <input
+            key={`sido:${sido}`}
             className={styles.filterInput}
-            value={sido}
-            onChange={(e) => apply({ sido: e.target.value })}
+            defaultValue={sido}
+            onChange={(e) => applyLater({ sido: e.target.value })}
           />
         </label>
 
         <label className={styles.filterField}>
           <span className={styles.filterLabel}>시/군/구</span>
           <input
+            key={`sigungu:${sigungu}`}
             className={styles.filterInput}
-            value={sigungu}
-            onChange={(e) => apply({ sigungu: e.target.value })}
+            defaultValue={sigungu}
+            onChange={(e) => applyLater({ sigungu: e.target.value })}
           />
         </label>
 
         <label className={styles.filterField}>
           <span className={styles.filterLabel}>검색</span>
           <input
+            key={`q:${q}`}
             className={styles.filterInput}
-            value={q}
-            onChange={(e) => apply({ q: e.target.value })}
+            defaultValue={q}
+            onChange={(e) => applyLater({ q: e.target.value })}
             placeholder="제목"
           />
         </label>
@@ -273,4 +314,14 @@ function formatDateTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+/** 바뀐 값이 있으면 그것을, 없으면 지금 값을. 빈 문자열은 "해제"다 */
+function pick(
+  changes: Partial<Record<string, string>>,
+  key: string,
+  current: string,
+): string | undefined {
+  const next = key in changes ? (changes[key] ?? '') : current;
+  return next === '' ? undefined : next;
 }

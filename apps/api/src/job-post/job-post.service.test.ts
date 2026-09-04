@@ -616,13 +616,25 @@ describe('list — 필터로 좁힌다 (#13)', () => {
   });
 
   it('should keep the other conditions when one is removed', async () => {
-    // 칩 하나를 지우면 그 조건만 풀린다 (AC4).
+    // 칩 하나를 지우면 **그 조건만** 풀린다 (AC4). 둘을 걸고 하나를 뺀 뒤
+    // 남은 하나가 여전히 걸러내는지를 본다 — 이름만 그런 테스트가 되지
+    // 않게 두 상태를 실제로 비교한다.
     const { service } = setup();
     await seedFour(service);
 
-    const list = await service.list({ page: 1, category: 'cat_delivery' });
+    const both = await service.list({
+      page: 1,
+      category: 'cat_delivery',
+      sigungu: '마포구',
+    });
+    const afterRemovingRegion = await service.list({
+      page: 1,
+      category: 'cat_delivery',
+    });
 
-    expect(list.total).toBe(2);
+    expect(both.total).toBe(1);
+    // 지역만 풀렸으므로 카테고리는 여전히 걸린다 — 전체 4건이 아니다.
+    expect(afterRemovingRegion.total).toBe(2);
   });
 
   it('should match a partial title', async () => {
