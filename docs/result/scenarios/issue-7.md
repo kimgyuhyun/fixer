@@ -114,7 +114,7 @@ jsdom에 canvas 2D 컨텍스트가 없다. 픽셀이 실제로 그려지는지�
 - [x] [정상] `getActiveTemplatePdf` — should return the active template bytes and its version
 - [x] [예외] `getActiveTemplatePdf` — should reject with AGREEMENT_TEMPLATE_MISSING when no template is active
 - [x] [정상] `GET /agreements/template` — should return 200 with application/pdf
-- [x] [예외] `GET /agreements/template` — should return 503 when no template is active
+- [x] [예외] `GET /agreements/template` — should return 503 with errorCode AGREEMENT_TEMPLATE_MISSING when no template is active
 
 ### 병합과 저장 (AC3)
 
@@ -124,7 +124,8 @@ jsdom에 canvas 2D 컨텍스트가 없다. 픽셀이 실제로 그려지는지�
 - [x] [경계] `sign` — should keep the filePath relative, never absolute
 - [x] [예외] `sign` — should reject when the merger throws and store nothing
 - [x] [정상] `POST /agreements` — should return 201 with id, agreedAt and templateVersion
-- [x] [정상] `POST /agreements` — should read ip and userAgent from the request, not the body
+- [x] [보안] `POST /agreements` — should ignore ip and userAgent in the body and use what the server observed
+- [x] [예외] `POST /agreements` — should return 400 when the signature is rejected by the service
 
 ### 서명 없이 동의 금지 (AC4)
 
@@ -160,7 +161,16 @@ jsdom에 canvas 2D 컨텍스트가 없다. 픽셀이 실제로 그려지는지�
 - [x] [화면] `AgreementPage` — should send the signature and move on when 동의 is pressed
 - [x] [화면] `AgreementPage` — should show the server message when the server rejects
 
-**총 28개** (정상 13 / 경계 4 / 예외 6 / 화면 5 — 일부 중복 집계 없음)
+**총 29개** (정상 13 / 경계 4 / 예외 7 / 보안 1 / 화면 5 — 일부 중복 집계 없음)
+
+> AC 검증에서 **컨트롤러 테스트 5건이 체크만 되고 실재하지 않는 것**이 잡혔다.
+> #6에서 똑같은 실수를 했고 `signup.controller.test.ts:9-13`의 회고 주석이
+> 이미 경고하고 있었는데 또 반복했다. 체크박스는 테스트를 쓴 뒤에 채운다.
+>
+> 그리고 **API 전체가 부팅 시 크래시하고 있었다.** `.env`에 `AGREEMENT_STORAGE_PATH`가
+> 없어 `LocalFileStore` 생성자가 던졌고 `AppModule`이 통째로 죽었다. 동의서만이
+> 아니라 API 프로세스 전부다. seed까지 넣고 실제로 `GET /agreements/template`이
+> 200에 776바이트 PDF를 주는 것을 확인했다.
 
 ---
 
@@ -174,7 +184,7 @@ jsdom에 canvas 2D 컨텍스트가 없다. 픽셀이 실제로 그려지는지�
 | 4   | 서명하지 않고 동의하면 막히고 안내가 뜬다                                 | `sign` 3건 · `POST /agreements — 400` · `AgreementPage — should keep the 동의 button disabled` · `— should show the server message` |
 | 5   | 저장소에 원본 서명 PNG가 남아 있지 않다                                   | `sign — should never put the signature png into the file store` · `— should put exactly one file, the merged pdf`                   |
 
-**커버리지: AC 5개 전부 커버 / 시나리오 28개 / 미커버 0개**
+**커버리지: AC 5개 전부 커버 / 시나리오 29개 / 미커버 0개**
 
 ---
 

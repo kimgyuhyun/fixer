@@ -7,13 +7,14 @@
     "postinstall": "prisma generate",
     "dev": "nest start --watch",
     "build": "nest build",
-    "start": "node dist/main",
+    "start": "node dist/src/main",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "db:seed": "prisma db seed",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -51,6 +52,7 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0",
     "vitest": "^4.1.11"
