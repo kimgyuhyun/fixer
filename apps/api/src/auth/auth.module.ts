@@ -14,6 +14,8 @@ import { PasswordResetController } from './password-reset.controller';
 import { PasswordResetService } from './password-reset.service';
 import { PrismaPasswordResetStore } from './prisma-password-reset.store';
 import { PrismaUserStore } from './prisma-user.store';
+import { ReactivationController } from './reactivation.controller';
+import { ReactivationService } from './reactivation.service';
 import { WithdrawalController } from './withdrawal.controller';
 import { WithdrawalService } from './withdrawal.service';
 import { SignupController } from './signup.controller';
@@ -31,6 +33,7 @@ import { SignupService } from './signup.service';
     LoginController,
     PasswordResetController,
     WithdrawalController,
+    ReactivationController,
   ],
   providers: [
     PrismaEmailVerificationStore,
@@ -114,6 +117,16 @@ import { SignupService } from './signup.service';
       ) => new SignupService(users, verification),
       inject: [PrismaUserStore, PrismaEmailVerificationStore],
     },
+    {
+      provide: ReactivationService,
+      // 가입과 같은 두 저장소를 본다. 되살리기는 만들기를 모르고
+      // 만들기는 되살리기를 모른다 — 포트만 좁게 나눠 두었다.
+      useFactory: (
+        users: PrismaUserStore,
+        verification: PrismaEmailVerificationStore,
+      ) => new ReactivationService(users, verification),
+      inject: [PrismaUserStore, PrismaEmailVerificationStore],
+    },
   ],
   exports: [
     EmailVerificationService,
@@ -121,6 +134,7 @@ import { SignupService } from './signup.service';
     LoginService,
     PasswordResetService,
     WithdrawalService,
+    ReactivationService,
   ],
 })
 export class AuthModule {}

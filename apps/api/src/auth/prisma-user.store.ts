@@ -57,4 +57,17 @@ export class PrismaUserStore implements UserStore, AuthUserStore {
       data: { deactivatedAt: at },
     });
   }
+
+  /**
+   * 비활성화를 풀고 비밀번호를 갈아끼운다. (#10)
+   *
+   * **`create`가 아니라 `update`다.** 새 행을 만들면 그 id를 참조하던
+   * 평점·경고가 통째로 끊겨 이력 세탁이 성공한다.
+   */
+  async reactivate(userId: string, passwordHash: string): Promise<UserRecord> {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { deactivatedAt: null, passwordHash },
+    });
+  }
 }

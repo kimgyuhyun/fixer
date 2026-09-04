@@ -16,4 +16,6 @@ export class SignupHttpError extends HttpException {
 const MESSAGES: Record<SignupErrorCode, string> = {
   [SIGNUP_ERRORS.EMAIL_NOT_VERIFIED]: '이메일 인증을 먼저 마쳐 주세요.',
   [SIGNUP_ERRORS.EMAIL_ALREADY_EXISTS]: '이미 가입된 이메일입니다.',
+  [SIGNUP_ERRORS.REACTIVATION_AVAILABLE]:
+    '탈퇴한 계정입니다. 재활성화하시겠습니까?',
 };

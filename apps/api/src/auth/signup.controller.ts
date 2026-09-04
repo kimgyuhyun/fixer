@@ -47,6 +47,8 @@ export class SignupController {
 const STATUS_BY_CODE: Record<SignupErrorCode, HttpStatus> = {
   [SIGNUP_ERRORS.EMAIL_NOT_VERIFIED]: HttpStatus.FORBIDDEN,
   [SIGNUP_ERRORS.EMAIL_ALREADY_EXISTS]: HttpStatus.CONFLICT,
+  // 중복과 같은 409다. 상태가 아니라 코드로 갈라야 웹이 안내를 바꾼다.
+  [SIGNUP_ERRORS.REACTIVATION_AVAILABLE]: HttpStatus.CONFLICT,
 };
 
 function toHttpError(error: unknown): unknown {

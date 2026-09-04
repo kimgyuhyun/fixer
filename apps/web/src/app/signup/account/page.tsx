@@ -1,6 +1,10 @@
 'use client';
 
-import { signupRequestSchema, signedUpSchema } from '@fixer/shared';
+import {
+  SIGNUP_ERRORS,
+  signupRequestSchema,
+  signedUpSchema,
+} from '@fixer/shared';
 import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { ZodError } from 'zod';
@@ -59,6 +63,13 @@ export default function SignupAccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  /**
+   * 탈퇴한 계정의 이메일로 가입을 시도했다. (#10)
+   *
+   * 새 계정을 만들지 않는다 — 만들면 경고 이력이 끊겨 세탁이 성공한다.
+   * 대신 되살릴지 물어보고, 동의하면 같은 행을 되살린다.
+   */
+  const [reactivating, setReactivating] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -82,6 +93,10 @@ export default function SignupAccountPage() {
       });
       const json: unknown = await res.json();
       if (!res.ok) {
+        if (codeOf(json) === SIGNUP_ERRORS.REACTIVATION_AVAILABLE) {
+          setReactivating(true);
+          return;
+        }
         setError(messageOf(json));
         return;
       }
@@ -92,6 +107,69 @@ export default function SignupAccountPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  /** 되살리기에 동의했다. 방금 입력한 비밀번호가 새 비밀번호가 된다 */
+  async function confirmReactivation() {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/reactivate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const json: unknown = await res.json();
+      if (!res.ok) {
+        setError(messageOf(json));
+        return;
+      }
+      signedUpSchema.parse(json);
+      setReactivating(false);
+      setDone(true);
+    } catch {
+      setError('요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (reactivating) {
+    return (
+      <main className={styles.page}>
+        <h1 className={styles.title}>재활성화하시겠습니까?</h1>
+        <p className={styles.lead}>
+          <strong>{email}</strong> 은 탈퇴한 계정입니다. 되살리면 탈퇴 전 평점과
+          이력이 그대로 이어집니다.
+        </p>
+        <p className={styles.note}>
+          방금 입력한 비밀번호가 새 비밀번호가 됩니다.
+        </p>
+
+        {error && (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+
+        <button
+          className={styles.submit}
+          type="button"
+          onClick={() => void confirmReactivation()}
+          disabled={loading}
+        >
+          {loading ? '재활성화하는 중…' : '재활성화하기'}
+        </button>
+        <button
+          className={styles.secondary}
+          type="button"
+          onClick={() => setReactivating(false)}
+          disabled={loading}
+        >
+          취소
+        </button>
+      </main>
+    );
   }
 
   if (done) {
@@ -212,4 +290,17 @@ function messageOf(json: unknown): string {
     return (json as { message: string }).message;
   }
   return '요청을 처리하지 못했습니다.';
+}
+
+/** 서버가 준 errorCode. 문구가 아니라 이걸로 분기한다 */
+function codeOf(json: unknown): string | null {
+  if (
+    typeof json === 'object' &&
+    json !== null &&
+    'errorCode' in json &&
+    typeof (json as { errorCode: unknown }).errorCode === 'string'
+  ) {
+    return (json as { errorCode: string }).errorCode;
+  }
+  return null;
 }

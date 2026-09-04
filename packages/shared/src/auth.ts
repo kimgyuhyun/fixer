@@ -99,6 +99,11 @@ export const SIGNUP_ERRORS = {
   EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
   /** 그 이메일로 이미 회원이 있다 */
   EMAIL_ALREADY_EXISTS: 'MEMBER_EMAIL_ALREADY_EXISTS',
+  /**
+   * 그 이메일이 **비활성화된** 계정의 것이다. 새 계정을 만들지 않고
+   * 재활성화를 권한다 (#10). 새로 만들면 경고 이력이 세탁된다.
+   */
+  REACTIVATION_AVAILABLE: 'AUTH_REACTIVATION_AVAILABLE',
 } as const;
 
 export type SignupErrorCode =
@@ -159,6 +164,30 @@ export const signedUpSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 export type SignedUp = z.infer<typeof signedUpSchema>;
+
+/**
+ * 재활성화 요청. (#10)
+ *
+ * 이름을 받지 않는다 — 되살리는 것은 그 사람이지 그 이름이 아니다.
+ * 비밀번호는 **새로 받는다**: 가입 화면에서 방금 입력한 것이 자기
+ * 비밀번호가 될 거라고 생각하기 때문이다.
+ */
+export const reactivateRequestSchema = z.object({
+  email: z.email({ error: '이메일 형식이 올바르지 않습니다.' }),
+  password: passwordSchema,
+});
+export type ReactivateRequest = z.infer<typeof reactivateRequestSchema>;
+
+/** 재활성화가 내는 실패 코드 */
+export const REACTIVATION_ERRORS = {
+  /** 이메일 인증을 마치지 않았다 */
+  EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
+  /** 되살릴 비활성 계정이 없다 — 이미 활성이거나 아예 없다 */
+  NOT_DEACTIVATED: 'AUTH_MEMBER_NOT_DEACTIVATED',
+} as const;
+
+export type ReactivationErrorCode =
+  (typeof REACTIVATION_ERRORS)[keyof typeof REACTIVATION_ERRORS];
 
 /**
  * 로그인 토큰 규칙. (이슈 #4, spec-fixed §2.5)

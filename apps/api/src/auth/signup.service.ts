@@ -80,8 +80,15 @@ export class SignupService {
       throw new SignupError(SIGNUP_ERRORS.EMAIL_NOT_VERIFIED);
     }
 
-    if (await this.users.findByEmail(normalizedEmail)) {
-      throw new SignupError(SIGNUP_ERRORS.EMAIL_ALREADY_EXISTS);
+    const existing = await this.users.findByEmail(normalizedEmail);
+    if (existing) {
+      // 비활성 계정이면 새로 만들지 않고 되살리기로 보낸다 (#10). 새 행을
+      // 만들면 그 id를 참조하던 경고·평점이 끊겨 이력 세탁이 성공한다.
+      throw new SignupError(
+        existing.deactivatedAt
+          ? SIGNUP_ERRORS.REACTIVATION_AVAILABLE
+          : SIGNUP_ERRORS.EMAIL_ALREADY_EXISTS,
+      );
     }
 
     const passwordHash = await hash(password, SIGNUP_RULES.bcryptCostFactor);

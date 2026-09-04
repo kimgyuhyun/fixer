@@ -74,28 +74,51 @@ POST /auth/reactivate  →  200 SignedUp
 
 ### 비활성 계정 이메일로 가입 시도 (AC1)
 
-- [ ] [예외] `signup` — should reject with AUTH_REACTIVATION_AVAILABLE when the email belongs to a deactivated account
-- [ ] [정상] `signup` — should not create a new member when the email belongs to a deactivated account
-- [ ] [경계] `signup` — should still reject with AUTH_EMAIL_ALREADY_EXISTS when the account is active
-- [ ] [예외] `POST /auth/signup` — should return 409 with AUTH_REACTIVATION_AVAILABLE
+- [x] [예외] `signup` — should reject with AUTH_REACTIVATION_AVAILABLE when the email belongs to a deactivated account
+- [x] [정상] `signup` — should not create a new member when the email belongs to a deactivated account
+- [x] [경계] `signup` — should still throw MEMBER_EMAIL_ALREADY_EXISTS when the account is active
+- [x] [예외] `POST /auth/signup` — should return 409 with AUTH_REACTIVATION_AVAILABLE for a deactivated account
 
 ### 재활성화 (AC2)
 
-- [ ] [정상] `reactivate` — should clear deactivatedAt
-- [ ] [정상] `reactivate` — should replace the password hash with the newly given password
-- [ ] [정상] `POST /auth/reactivate` — should return 200 with the member
-- [ ] [예외] `reactivate` — should reject with AUTH_EMAIL_NOT_VERIFIED when the email was not verified
-- [ ] [경계] `reactivate` — should reject when the account is already active
-- [ ] [경계] `reactivate` — should reject when no member has that email
-- [ ] [경계] `reactivate` — should find the member case-insensitively when the email case differs
+- [x] [정상] `reactivate` — should clear deactivatedAt
+- [x] [정상] `reactivate` — should replace the password hash with the newly given password
+- [x] [정상] `POST /auth/reactivate` — should return 200 with the member
+- [x] [예외] `POST /auth/reactivate` — should return 403 when the email was not verified
+- [x] [예외] `POST /auth/reactivate` — should return 404 when there is nothing to revive
+- [x] [경계] `POST /auth/reactivate` — should return 400 when the password does not meet the rules
+- [x] [예외] `reactivate` — should reject with AUTH_EMAIL_NOT_VERIFIED when the email was not verified
+- [x] [경계] `reactivate` — should reject when the account is already active
+- [x] [경계] `reactivate` — should reject when no member has that email
+- [x] [경계] `reactivate` — should find the member case-insensitively when the email case differs
 
 ### 이력이 그대로 남는다 (AC3)
 
-- [ ] [정상] `reactivate` — should keep the same member id instead of creating a new row
-- [ ] [정상] `reactivate` — should keep the original name and createdAt
-- [ ] [정상] `reactivate` — should let the member log in right after reactivation
+- [x] [정상] `reactivate` — should keep the same member id instead of creating a new row
+- [x] [정상] `reactivate` — should keep the original name and createdAt
 
-**총 14개** (정상 7 / 경계 4 / 예외 3)
+### 화면 (AC1 · AC2)
+
+- [x] [정상] `가입 화면` — should ask whether to reactivate instead of showing a plain error
+- [x] [정상] `가입 화면` — should send the newly typed password to /api/auth/reactivate when confirmed
+- [x] [정상] `가입 화면` — should show the completion screen after reactivating
+- [x] [경계] `가입 화면` — should go back to the form when cancelled
+- [x] [경계] `가입 화면` — should still show a plain error for an active duplicate email
+- [x] [정상] `login` — should let an active account log in as before (#9이 쓴 테스트가 그대로 이 AC를 덮는다. `deactivatedAt`이 `null`이면 통과다)
+
+**총 24개** (정상 12 / 경계 8 / 예외 4) — 시나리오 14개 + 컨트롤러·화면에서 늘어난 10개
+
+### 서버를 띄워 확인한 것
+
+단위 테스트는 가짜 저장소를 쓰므로 "같은 행을 되살린다"가 진짜인지는
+실물로 봐야 한다. 개발 DB에 탈퇴 상태 회원을 하나 두고 확인했다.
+
+| 무엇             | 결과                                                         |
+| ---------------- | ------------------------------------------------------------ |
+| 가입 시도        | `409 AUTH_REACTIVATION_AVAILABLE`, **User 행 수는 1 그대로** |
+| 재활성화         | `200`, id·이름·가입일이 전부 이전 값                         |
+| 되살린 뒤 로그인 | `200` (새로 입력한 비밀번호로)                               |
+| 이미 활성인데 또 | `404 AUTH_MEMBER_NOT_DEACTIVATED`                            |
 
 ---
 
