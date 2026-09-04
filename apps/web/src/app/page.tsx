@@ -28,12 +28,22 @@ const READY: Feature[] = [
     summary: '이메일로 6자리 코드를 받아 10분 안에 검증한다.',
     href: '/signup/verify-email',
   },
+  {
+    issue: 2,
+    title: '가입',
+    summary: '인증된 이메일에 비밀번호와 이름을 붙여 계정을 만든다.',
+    href: '/signup/account',
+  },
+  {
+    issue: 3,
+    title: '주소 등록',
+    summary: '우편번호 팝업으로 주소를 고르고 좌표까지 저장한다.',
+    href: '/signup/address',
+  },
 ];
 
 /** 아직 만들지 않은 것. 이 화면이 "무엇이 없는지"까지 말하게 한다. */
 const PLANNED: Feature[] = [
-  { issue: 2, title: '가입', summary: '인증된 이메일로 계정을 만든다.' },
-  { issue: 3, title: '주소 등록', summary: '주소를 검색해서 등록한다.' },
   { issue: 4, title: '로그인', summary: '로그인하고 내 정보를 본다.' },
   { issue: 6, title: '비밀번호 재설정', summary: '비밀번호를 다시 정한다.' },
   { issue: 12, title: '공고 등록', summary: '공고를 올리면 목록에 뜬다.' },
