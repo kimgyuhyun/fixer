@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import {
   PAYMENT_ERRORS,
+  POINT_ERRORS,
   refundIdempotencyKey,
   type RefundResult,
 } from '@fixer/shared';
 import { PaymentError } from './charge.service';
-import { PointLedgerService } from './point-ledger.service';
+import {
+  PointError,
+  PointLedgerService,
+  type PointTransactionRecord,
+} from './point-ledger.service';
 
 /** 소진 대상이 되는 결제 건 하나 */
 export interface RefundableLot {
@@ -132,11 +137,11 @@ export class RefundService {
 
       // 멱등 키를 **lot과 소진 후 잔여**로 만든다. 같은 취소를 두 번 하면
       // 두 번째도 같은 키가 나와 유니크 위반으로 막힌다 (AC3).
-      const { inserted } = await this.ledger.recordOnce({
+      const key = refundIdempotencyKey(lot.paymentId, consumedTotal);
+      const { inserted } = await this.recordRefund({
         userId,
-        type: 'REFUND',
         amount: -take,
-        idempotencyKey: refundIdempotencyKey(lot.paymentId, consumedTotal),
+        idempotencyKey: key,
         sourcePaymentId: lot.paymentId,
       });
 
@@ -160,5 +165,42 @@ export class RefundService {
       lots: taken,
       applied,
     };
+  }
+
+  /**
+   * 원장에 환불 한 줄. **먼저 끝난 요청과 겹친 경우를 여기서 흡수한다.**
+   *
+   * 취소 요청 둘이 거의 동시에 오면 둘 다 잔여를 같은 값으로 읽는다. 뒤에
+   * 도착한 쪽은 앞의 트랜잭션이 이미 커밋해 잔액을 깎아 놓았기 때문에
+   * 유니크 위반이 아니라 **조건부 UPDATE 실패**(`INSUFFICIENT`)를 먼저 맞는다.
+   * 그대로 두면 "이미 취소됨"이 아니라 500이 나간다.
+   *
+   * 그때 같은 키의 행이 이미 있으면 앞선 요청이 해낸 것이므로 성공으로 본다.
+   * 없으면 진짜로 잔액이 모자란 것이라 그대로 거절한다.
+   */
+  private async recordRefund(entry: {
+    userId: string;
+    amount: number;
+    idempotencyKey: string;
+    sourcePaymentId: string;
+  }): Promise<{ record: PointTransactionRecord; inserted: boolean }> {
+    try {
+      return await this.ledger.recordOnce({ ...entry, type: 'REFUND' });
+    } catch (error) {
+      if (
+        !(error instanceof PointError) ||
+        error.code !== POINT_ERRORS.INSUFFICIENT_BALANCE
+      ) {
+        throw error;
+      }
+
+      const existing = await this.ledger.findByIdempotencyKey(
+        entry.idempotencyKey,
+      );
+      if (existing === null) {
+        throw new PaymentError(PAYMENT_ERRORS.INSUFFICIENT_BALANCE);
+      }
+      return { record: existing, inserted: false };
+    }
   }
 }

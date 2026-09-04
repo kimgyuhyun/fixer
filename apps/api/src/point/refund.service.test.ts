@@ -343,10 +343,13 @@ describe('cancelPayment — 두 번 취소해도 한 번 (AC3)', () => {
     const { service, ledgerStore } = await setup([payment()]);
 
     await service.cancelPayment({ userId: USER, paymentId: 'pay_1' });
+    const afterFirst = ledgerStore.rows.at(-1)?.idempotencyKey;
+    await service.cancelPayment({ userId: USER, paymentId: 'pay_1' });
 
-    expect(ledgerStore.rows.at(-1)?.idempotencyKey).toBe(
-      refundIdempotencyKey('pay_1', 0),
-    );
+    expect(afterFirst).toBe(refundIdempotencyKey('pay_1', 0));
+    // 두 번째는 아무것도 더 쓰지 않았으므로 마지막 행이 그대로다.
+    expect(ledgerStore.rows.at(-1)?.idempotencyKey).toBe(afterFirst);
+    expect(ledgerStore.rows.filter((r) => r.type === 'REFUND')).toHaveLength(1);
   });
 });
 
@@ -409,6 +412,23 @@ describe('refund — 오래된 결제 건부터 소진한다 (ADR-PAY-7)', () =>
       amount: 50_000,
       createdAt: new Date('2026-07-01T00:00:00.000Z'),
       refundableUntil: new Date(NOW.getTime() - 1000),
+    });
+    const { service } = await setup([newer(), expired]);
+
+    const result = await service.refund({ userId: USER, amount: 30_000 });
+
+    expect(result.lots).toEqual([{ paymentId: 'pay_new', amount: 30_000 }]);
+  });
+
+  it('should skip a lot whose deadline is exactly now', async () => {
+    // `<=`로 판정한다. 만료 시각 그 순간은 이미 지난 것으로 본다 —
+    // 카드사에 1초 늦게 도착하면 취소가 거절되기 때문이다.
+    const deadline = new Date();
+    const expired = payment({
+      id: 'pay_old',
+      amount: 50_000,
+      createdAt: new Date('2026-07-01T00:00:00.000Z'),
+      refundableUntil: deadline,
     });
     const { service } = await setup([newer(), expired]);
 

@@ -11,7 +11,7 @@ import { PaymentError } from './charge.service';
 import { PointLedgerService } from './point-ledger.service';
 import { PrismaPointLedgerStore } from './prisma-point-ledger.store';
 import { PrismaRefundStore } from './prisma-refund.store';
-import { RefundService } from './refund.service';
+import { RefundService, type RefundStore } from './refund.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -195,6 +195,62 @@ describe('환불 — 진짜 Postgres에서', () => {
     ]);
 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    expect(
+      await prisma.pointTransaction.count({
+        where: { userId, type: 'REFUND' },
+      }),
+    ).toBe(1);
+    expect(await balanceOf(userId)).toBe(0);
+  });
+
+  it('should answer applied:false instead of throwing when two cancels read the same remaining', async () => {
+    // 자연 타이밍에서는 앞 요청이 먼저 끝나 두 번째가 remaining===0을 보고
+    // 조기 반환한다. **그건 운이다.** 두 조회를 강제로 같은 순간에 맞춰
+    // 진짜 경합을 만든다 — ac-verifier가 이 경로로 500을 재현했다.
+    const userId = await seedMember();
+    await seedCharge(userId, 'pay_old', 50_000, OLD);
+
+    const store = new PrismaRefundStore(prisma as unknown as PrismaService);
+    let waiting: (() => void) | null = null;
+    const bothArrived = new Promise<void>((resolve) => {
+      let seen = 0;
+      waiting = () => {
+        seen += 1;
+        if (seen === 2) resolve();
+      };
+    });
+
+    /** 두 호출이 **둘 다 조회를 마칠 때까지** 서로를 기다리게 한다 */
+    const barriered: RefundStore = {
+      listRefundableLots: (userId) => store.listRefundableLots(userId),
+      markCancelled: (paymentId) => store.markCancelled(paymentId),
+      async findLot(paymentId) {
+        const lot = await store.findLot(paymentId);
+        waiting?.();
+        await bothArrived;
+        return lot;
+      },
+    };
+
+    const racing = new RefundService(
+      barriered,
+      new PointLedgerService(
+        new PrismaPointLedgerStore(prisma as unknown as PrismaService),
+      ),
+    );
+
+    const results = await Promise.allSettled([
+      racing.cancelPayment({ userId, paymentId: 'pay_old' }),
+      racing.cancelPayment({ userId, paymentId: 'pay_old' }),
+    ]);
+
+    // 둘 다 성공 응답이어야 한다. 하나가 500이면 사용자는 취소가 안 된 줄 안다.
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+    const applied = results
+      .filter((r) => r.status === 'fulfilled')
+      .map((r) => r.value.applied);
+    expect(applied.filter(Boolean)).toHaveLength(1);
+
     expect(
       await prisma.pointTransaction.count({
         where: { userId, type: 'REFUND' },

@@ -98,6 +98,13 @@ export class PointLedgerService {
     return { record: result, inserted: true };
   }
 
+  /** 이 키로 이미 쓰인 행. 경합에서 "먼저 끝난 것"을 확인할 때 쓴다 (#29) */
+  async findByIdempotencyKey(
+    key: string,
+  ): Promise<PointTransactionRecord | null> {
+    return this.store.findByIdempotencyKey(key);
+  }
+
   /** 잔액. 진실의 원천은 원장이다 */
   async balanceOf(userId: string): Promise<number> {
     // 캐시가 아니라 원장 합계다. 캐시는 표시용이고 어긋나면 원장이 맞다.

@@ -162,7 +162,7 @@ lot 잔여가 아니라 **원장 합계**다. 포인트를 이미 썼으면 그 
 - [x] [정상] `포인트 화면` — should show which payment each refunded amount came from
 - [x] [예외] `포인트 화면` — should show the server message when the points were already spent
 
-**총 38개** (단위 22 + 통합 7 + 컨트롤러 6 + 화면 2, 그리고 `refund` 예외 1)
+**총 41개** (단위 24 + 통합 8 + 컨트롤러 6 + 화면 2, 그리고 `refund` 예외 1)
 
 ### 진짜 Postgres에서 나온 것
 
@@ -173,6 +173,27 @@ lot 잔여가 아니라 **원장 합계**다. 포인트를 이미 썼으면 그 
 잔액 검증(조건부 UPDATE, `ADR-PAY-2`)이 0으로 보고 전부 막는다. **실제
 충전은 `append`를 거치며 둘을 함께 갱신한다.** 테스트도 같은 상태를
 만들어야 한다는 것을 여기서 배웠다 — 가짜 저장소만 썼으면 영영 몰랐다.
+
+### ac-verifier가 잡은 것 — 동시 취소가 500을 냈다
+
+순차로 두 번 취소하는 것은 잘 막혔다. 문제는 **거의 동시에** 왔을 때다.
+
+두 요청이 둘 다 잔여를 50,000으로 읽으면, 뒤에 도착한 쪽은 앞 트랜잭션이
+이미 커밋해 잔액을 깎아 놓았기 때문에 **유니크 위반이 아니라 조건부 UPDATE
+실패**를 먼저 맞는다. 그 `PointError`는 `PaymentError`가 아니라 컨트롤러가
+잡지 못하고 **500**이 나갔다. 잔액은 멀쩡했지만 사용자는 취소가 안 된 줄 안다.
+
+같은 키의 행이 이미 있으면 앞선 요청이 해낸 것이므로 성공으로 흡수한다.
+없으면 진짜로 잔액이 모자란 것이라 그대로 거절한다.
+
+**기존 통합 테스트는 이걸 못 잡았다.** 자연 타이밍에서는 앞 요청이 먼저
+끝나 두 번째가 `remaining === 0`을 보고 조기 반환한다 — 우연히 통과한
+초록불이었다. 두 조회를 강제로 같은 순간에 맞추는 테스트를 새로 넣었고,
+고치기 전 상태에서 실제로 빨개지는 것을 확인했다.
+
+- [x] [경합] `통합` — should answer applied:false instead of throwing when two cancels read the same remaining
+- [x] [경계] `refund` — should skip a lot whose deadline is exactly now
+- [x] [경계] `cancelPayment` — should build the same idempotency key both times (두 번째 호출까지 실제로 실행하도록 고침)
 
 ### 서버를 띄워 확인한 것
 
