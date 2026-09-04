@@ -1,0 +1,115 @@
+/*
+ * 이슈 #14 · 공고 상세.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ * 숫자는 tabular-nums로 자릿수를 맞춘다.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+
+  width: 100%;
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.category {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.status {
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-2);
+
+  font-size: 0.8125rem;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+.lead {
+  color: var(--color-text-muted);
+}
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  padding: var(--space-3);
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+/* 좁은 화면에서는 라벨 위, 값 아래. 넓어지면 한 줄로 붙인다. */
+.fact {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-1);
+}
+
+@media (min-width: 30rem) {
+  .fact {
+    grid-template-columns: 7rem 1fr;
+    gap: var(--space-2);
+  }
+}
+
+.fact dt {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.numbers {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.description {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* 사용자가 쓴 줄바꿈을 그대로 살린다 */
+.body {
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.back {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+
+  font-weight: 600;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.error {
+  padding: var(--space-2);
+
+  color: var(--color-danger);
+  font-size: 0.875rem;
+
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius);
+}

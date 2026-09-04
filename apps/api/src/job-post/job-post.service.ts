@@ -8,6 +8,7 @@ import {
   holdIdempotencyKey,
   type CreateJobPostRequest,
   type JobPostErrorCode,
+  type JobPostDetail,
   type JobPostFilter,
   type JobPostList,
   type JobPostStatus,
@@ -85,6 +86,27 @@ export interface JobPostStore {
     filter: JobPostFilter,
     pageSize: number,
   ): Promise<{ items: JobPostRecord[]; total: number }>;
+
+  /**
+   * 공고 하나. **소프트 삭제된 것은 못 찾은 것으로 다룬다** (#14).
+   *
+   * "삭제되었습니다"를 주면 존재했다는 사실과 그 id가 유효했다는 것이
+   * 새어나간다. 목록에서 안 보이는 것과 같은 이유다.
+   */
+  findById(
+    jobPostId: string,
+  ): Promise<(JobPostRecord & { categoryName: string }) | null>;
+}
+
+/**
+ * 수락된 신청 수를 묻는 포트.
+ *
+ * `Application`(#17)이 아직 없다. #9의 `WithdrawalGuard`와 같은 방식으로
+ * 포트를 지금 만들고 구현체는 0을 돌려준다 — **"0 / 6"이 보이는 것이 화면이
+ * 안 나오는 것보다 낫다.** #17이 들어오면 어댑터만 채운다.
+ */
+export interface AcceptedCounter {
+  countAccepted(jobPostId: string): Promise<number>;
 }
 
 /** 회원의 기본 주소 한 건. 지역까지 함께 온다 (#13) */
@@ -118,6 +140,7 @@ export class JobPostService {
     private readonly store: JobPostStore,
     private readonly addresses: MemberAddressReader,
     private readonly balances: BalanceReader,
+    private readonly accepted: AcceptedCounter,
   ) {}
 
   async create(
@@ -157,6 +180,21 @@ export class JobPostService {
     }
 
     return toSummary(created);
+  }
+
+  /** 공고 하나. 없거나 소프트 삭제됐으면 못 찾은 것이다 */
+  async findById(jobPostId: string): Promise<JobPostDetail> {
+    const row = await this.store.findById(jobPostId);
+    if (row === null) {
+      throw new JobPostError(JOB_POST_ERRORS.NOT_FOUND);
+    }
+
+    return {
+      ...toSummary(row),
+      categoryName: row.categoryName,
+      requiredDescription: row.requiredDescription,
+      acceptedCount: await this.accepted.countAccepted(jobPostId),
+    };
   }
 
   async list(filter: JobPostFilter): Promise<JobPostList> {

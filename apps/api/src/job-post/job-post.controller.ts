@@ -6,15 +6,19 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
+  Param,
   Post,
   Query,
 } from '@nestjs/common';
 import {
   JOB_POST_ERRORS,
   createJobPostRequestSchema,
+  jobPostDetailSchema,
   jobPostFilterSchema,
   jobPostListSchema,
   jobPostSummarySchema,
+  type JobPostDetail,
   type JobPostList,
   type JobPostSummary,
 } from '@fixer/shared';
@@ -56,6 +60,16 @@ export class JobPostController {
     const filter = jobPostFilterSchema.parse(query ?? {});
     return jobPostListSchema.parse(await this.service.list(filter));
   }
+
+  /** 공고 하나. 소프트 삭제된 것은 404다 — 있었다는 사실도 알려주지 않는다 */
+  @Get(':id')
+  async detail(@Param('id') id: string): Promise<JobPostDetail> {
+    try {
+      return jobPostDetailSchema.parse(await this.service.findById(id));
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
 }
 
 function employerIdOf(body: unknown): string {
@@ -80,6 +94,13 @@ function toHttpError(error: unknown): unknown {
   }
 
   if (error instanceof JobPostError) {
+    if (error.code === JOB_POST_ERRORS.NOT_FOUND) {
+      return new NotFoundException({
+        errorCode: error.code,
+        message: '공고를 찾을 수 없습니다.',
+      });
+    }
+
     if (error.code === JOB_POST_ERRORS.NO_DEFAULT_ADDRESS) {
       return new BadRequestException({
         errorCode: error.code,

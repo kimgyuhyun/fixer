@@ -43,6 +43,7 @@ beforeAll(async () => {
     new PrismaJobPostStore(prisma as unknown as PrismaService),
     new PrismaMemberAddressReader(prisma as unknown as PrismaService),
     new PrismaBalanceReader(prisma as unknown as PrismaService),
+    { countAccepted: () => Promise.resolve(0) },
   );
 }, 180_000);
 
@@ -300,6 +301,27 @@ describe('공고 등록 — 진짜 Postgres에서', () => {
     // 범위를 넘어도 오류가 아니라 빈 목록이다.
     expect(past.items).toHaveLength(0);
     expect(past.total).toBe(21);
+  });
+
+  it('should hide a soft-deleted post from the detail view', async () => {
+    // 진짜 저장소가 `deletedAt`으로 거르는지는 Postgres만 안다.
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(500_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    // 상세는 잘 나온다.
+    expect((await service.findById(created.id)).categoryName).toBe('청소');
+
+    await prisma.jobPost.update({
+      where: { id: created.id },
+      data: { deletedAt: new Date() },
+    });
+
+    await expect(service.findById(created.id)).rejects.toMatchObject({
+      code: JOB_POST_ERRORS.NOT_FOUND,
+    });
+    // 목록에서도 사라진다.
+    expect((await service.list({ page: 1 })).total).toBe(0);
   });
 
   it('should list the created post with its total', async () => {

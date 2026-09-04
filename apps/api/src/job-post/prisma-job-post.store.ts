@@ -147,6 +147,20 @@ export class PrismaJobPostStore implements JobPostStore {
     ]);
     return { items: rows.map(toRecord), total };
   }
+
+  async findById(
+    jobPostId: string,
+  ): Promise<(JobPostRecord & { categoryName: string }) | null> {
+    const row = await this.prisma.jobPost.findFirst({
+      // **소프트 삭제된 것은 아예 못 찾는다** (#14). 상태는 안 본다 —
+      // 이미 지원한 사람이 취소된 공고를 다시 여는 경로가 있어야 한다.
+      where: { id: jobPostId, deletedAt: null },
+      include: { category: { select: { name: true } } },
+    });
+    if (row === null) return null;
+
+    return { ...toRecord(row), categoryName: row.category.name };
+  }
 }
 
 /** 가입 주소를 기본값으로 준다. 라벨이 여럿이면 먼저 등록한 것 (#3) */

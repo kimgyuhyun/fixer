@@ -131,6 +131,18 @@ class FakeStore implements JobPostStore {
     });
   }
 
+  findById(
+    jobPostId: string,
+  ): Promise<(JobPostRecord & { categoryName: string }) | null> {
+    const found = this.posts.find(
+      (p) => p.id === jobPostId && !this.deleted.has(p.id),
+    );
+    return Promise.resolve(found ? { ...found, categoryName: '청소' } : null);
+  }
+
+  /** 소프트 삭제된 공고. 진짜 저장소가 `deletedAt`으로 하는 일이다 */
+  readonly deleted = new Set<string>();
+
   /** 목록에 안 뜨는 것을 보려고 DRAFT 하나를 직접 넣는다 */
   seedDraft(): void {
     this.posts.push({
@@ -149,7 +161,14 @@ function addresses(home: MemberAddress | null): MemberAddressReader {
   return { defaultAddressOf: () => Promise.resolve(home) };
 }
 
-function setup(opts: { balance?: number; home?: MemberAddress | null } = {}): {
+function setup(
+  opts: {
+    balance?: number;
+    home?: MemberAddress | null;
+    /** 수락된 신청 수. #17이 오기 전까지 테스트가 직접 준다 */
+    accepted?: number;
+  } = {},
+): {
   service: JobPostService;
   store: FakeStore;
 } {
@@ -161,6 +180,7 @@ function setup(opts: { balance?: number; home?: MemberAddress | null } = {}): {
     store,
     addresses(opts.home === undefined ? HOME : opts.home),
     balances,
+    { countAccepted: () => Promise.resolve(opts.accepted ?? 0) },
   );
   return { service, store };
 }
@@ -730,5 +750,85 @@ describe('list — 페이징과 총 건수 (#13 AC6·AC7)', () => {
 
     expect(list.items).toHaveLength(0);
     expect(list.total).toBe(21);
+  });
+});
+
+describe('findById — 공고 상세 (#14)', () => {
+  it('should return the category name, address, time, reward, headcount and description', async () => {
+    const { service } = setup();
+    const created = await service.create(EMPLOYER, VALID);
+
+    const detail = await service.findById(created.id);
+
+    expect(detail).toMatchObject({
+      id: created.id,
+      title: '사무실 청소',
+      categoryName: '청소',
+      workAddress: HOME.roadAddress,
+      workStartAt: VALID.workStartAt,
+      workEndAt: VALID.workEndAt,
+      headcount: 3,
+      rewardPerPerson: 50_000,
+      requiredDescription: VALID.requiredDescription,
+    });
+  });
+
+  it('should return the budget so the screen can show what is locked', async () => {
+    const { service } = setup();
+    const created = await service.create(EMPLOYER, VALID);
+
+    const detail = await service.findById(created.id);
+
+    expect(detail.budget).toBe(150_000);
+  });
+
+  it('should report the accepted count next to the headcount', async () => {
+    const { service } = setup({ accepted: 2 });
+    const created = await service.create(EMPLOYER, VALID);
+
+    const detail = await service.findById(created.id);
+
+    expect(detail.acceptedCount).toBe(2);
+    expect(detail.headcount).toBe(3);
+  });
+
+  it('should report zero accepted until applications exist', async () => {
+    // Application(#17)이 오기 전까지 포트가 0을 돌려준다.
+    const { service } = setup();
+    const created = await service.create(EMPLOYER, VALID);
+
+    const detail = await service.findById(created.id);
+
+    expect(detail.acceptedCount).toBe(0);
+  });
+
+  it('should reject a soft-deleted post with JOB_POST_NOT_FOUND', async () => {
+    // "삭제되었습니다"를 주면 존재했다는 사실이 새어나간다.
+    const { service, store } = setup();
+    const created = await service.create(EMPLOYER, VALID);
+    store.deleted.add(created.id);
+
+    const error = await rejectionOf(service.findById(created.id));
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.NOT_FOUND);
+  });
+
+  it('should reject an id nobody has', async () => {
+    const { service } = setup();
+
+    const error = await rejectionOf(service.findById('job_missing'));
+
+    expect(codeOf(error)).toBe(JOB_POST_ERRORS.NOT_FOUND);
+  });
+
+  it('should still return a cancelled post', async () => {
+    // 목록에는 OPEN만 뜨지만, 이미 지원한 사람이 다시 여는 경로가 있어야 한다.
+    const { service, store } = setup();
+    const created = await service.create(EMPLOYER, VALID);
+    store.posts[0].status = 'CANCELLED';
+
+    const detail = await service.findById(created.id);
+
+    expect(detail.status).toBe('CANCELLED');
   });
 });

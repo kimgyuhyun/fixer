@@ -141,14 +141,12 @@ describe('POST /job-posts', () => {
 describe('GET /job-posts', () => {
   it('should return the items and the total', async () => {
     const controller = controllerWith({
-      list: vi
-        .fn()
-        .mockResolvedValue({
-          items: [CREATED],
-          total: 1,
-          page: 1,
-          pageSize: 20,
-        }),
+      list: vi.fn().mockResolvedValue({
+        items: [CREATED],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
     });
 
     await expect(controller.list({})).resolves.toEqual({
@@ -200,5 +198,35 @@ describe('GET /job-posts', () => {
       page: 1,
       pageSize: 20,
     });
+  });
+});
+
+describe('GET /job-posts/:id', () => {
+  const DETAIL = {
+    ...CREATED,
+    categoryName: '청소',
+    requiredDescription: '30평 사무실을 닦습니다.',
+    acceptedCount: 1,
+  };
+
+  it('should return the detail', async () => {
+    const controller = controllerWith({
+      findById: vi.fn().mockResolvedValue(DETAIL),
+    });
+
+    await expect(controller.detail('job_1')).resolves.toEqual(DETAIL);
+  });
+
+  it('should return 404 for a post that cannot be found', async () => {
+    const controller = controllerWith({
+      findById: vi
+        .fn()
+        .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_FOUND)),
+    });
+
+    const error = await rejectionOf(controller.detail('job_gone'));
+
+    expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
+    expect(bodyOf(error).errorCode).toBe(JOB_POST_ERRORS.NOT_FOUND);
   });
 });

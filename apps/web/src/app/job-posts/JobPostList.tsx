@@ -248,7 +248,10 @@ export function JobPostList() {
         <ul className={styles.list}>
           {items.map((item) => (
             <li key={item.id} className={styles.card}>
-              <h2 className={styles.cardTitle}>{item.title}</h2>
+              <h2 className={styles.cardTitle}>
+                {/* 목록에서 클릭하면 상세로 간다 (#14 AC1) */}
+                <Link href={`/job-posts/${item.id}`}>{item.title}</Link>
+              </h2>
               <p className={styles.address}>{item.workAddress}</p>
               <dl className={styles.meta}>
                 <div className={styles.metaRow}>

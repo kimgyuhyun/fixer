@@ -34,7 +34,12 @@ import {
         store: PrismaJobPostStore,
         addresses: PrismaMemberAddressReader,
         balances: PrismaBalanceReader,
-      ) => new JobPostService(store, addresses, balances),
+      ) =>
+        new JobPostService(store, addresses, balances, {
+          // Application(#17)이 아직 없다. 포트를 지금 만들고 0을 돌려준다 —
+          // "0 / 6"이 보이는 것이 화면이 안 나오는 것보다 낫다.
+          countAccepted: () => Promise.resolve(0),
+        }),
       inject: [
         PrismaJobPostStore,
         PrismaMemberAddressReader,

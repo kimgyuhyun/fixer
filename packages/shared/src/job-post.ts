@@ -158,6 +158,20 @@ export const jobPostSummarySchema = z.object({
 });
 export type JobPostSummary = z.infer<typeof jobPostSummarySchema>;
 
+/**
+ * 공고 상세. 목록 요약에 내용·카테고리 이름·확정 인원이 더 붙는다. (#14)
+ *
+ * 카테고리 이름을 함께 주는 이유는, 화면이 다시 조회해 id를 이름으로 바꾸면
+ * 요청이 두 번 나가고 그 사이에 이름이 늦게 채워지는 깜빡임이 생기기 때문이다.
+ */
+export const jobPostDetailSchema = jobPostSummarySchema.extend({
+  categoryName: z.string(),
+  requiredDescription: z.string(),
+  /** 수락된 신청 수. 화면에 `수락 / 모집`으로 보인다 */
+  acceptedCount: z.number().int(),
+});
+export type JobPostDetail = z.infer<typeof jobPostDetailSchema>;
+
 /** 한 페이지에 몇 건. 관리자 목록도 같은 값을 쓴다 (§11.2) */
 export const JOB_POST_PAGE_SIZE = 20;
 
