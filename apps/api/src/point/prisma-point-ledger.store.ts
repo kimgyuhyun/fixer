@@ -5,6 +5,7 @@ import type {
   PointLedgerStore,
   PointTransactionRecord,
 } from './point-ledger.service';
+import type { PointHistoryStore } from './point-history.service';
 
 /** Prisma가 유니크 제약 위반에 쓰는 코드 */
 const UNIQUE_VIOLATION = 'P2002';
@@ -21,7 +22,9 @@ const UNIQUE_VIOLATION = 'P2002';
  *    먼저 조회하고 없으면 넣는 방식은 조회와 삽입 사이에 틈이 있다.
  */
 @Injectable()
-export class PrismaPointLedgerStore implements PointLedgerStore {
+export class PrismaPointLedgerStore
+  implements PointLedgerStore, PointHistoryStore
+{
   constructor(private readonly prisma: PrismaService) {}
 
   async append(
@@ -93,6 +96,18 @@ export class PrismaPointLedgerStore implements PointLedgerStore {
       select: { cachedBalance: true },
     });
     return user?.cachedBalance ?? 0;
+  }
+
+  /** 내역 화면이 읽는다. 최근 것부터 (#28 AC5) */
+  async listByUser(
+    userId: string,
+    limit: number,
+  ): Promise<PointTransactionRecord[]> {
+    return this.prisma.pointTransaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
   }
 }
 

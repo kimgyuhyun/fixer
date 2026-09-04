@@ -52,6 +52,12 @@ const READY: Feature[] = [
     summary: '서명한 동의서를 다시 열어 본다. 남의 것은 못 본다.',
     href: '/my/agreement',
   },
+  {
+    issue: 28,
+    title: '포인트 충전',
+    summary: '금액을 고르면 서버가 금액을 대조하고 원장에 충전을 남긴다.',
+    href: '/points',
+  },
 ];
 
 /** 아직 만들지 않은 것. 이 화면이 "무엇이 없는지"까지 말하게 한다. */

@@ -59,6 +59,18 @@ export class PointLedgerService {
 
   /** 원장에 한 줄 쓴다. 잔액이 모자라면 거절한다 */
   async record(entry: LedgerEntry): Promise<PointTransactionRecord> {
+    return (await this.recordOnce(entry)).record;
+  }
+
+  /**
+   * `record`와 같되 **이번 호출이 실제로 원장을 늘렸는지**를 함께 준다.
+   *
+   * 충전(#28)이 필요로 한다. 재전송된 웹훅에 "충전했습니다"라고 답하면
+   * 화면이 같은 금액을 두 번 보여준다 — 원장은 멀쩡한데 사람이 놀란다.
+   */
+  async recordOnce(
+    entry: LedgerEntry,
+  ): Promise<{ record: PointTransactionRecord; inserted: boolean }> {
     // 모양부터 본다. 0원이나 소수가 원장에 들어가면 합계의 의미가 흐려진다.
     const checked = ledgerEntrySchema.parse(entry);
 
@@ -80,10 +92,10 @@ export class PointLedgerService {
           `멱등 키 ${checked.idempotencyKey}가 중복이라 했으나 행을 찾을 수 없습니다.`,
         );
       }
-      return existing;
+      return { record: existing, inserted: false };
     }
 
-    return result;
+    return { record: result, inserted: true };
   }
 
   /** 잔액. 진실의 원천은 원장이다 */

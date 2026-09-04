@@ -1,0 +1,176 @@
+/*
+ * 이슈 #28 · 포인트 충전과 내역.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ * 금액은 오른쪽 정렬 + tabular-nums로 자릿수를 맞춘다.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  width: 100%;
+  max-width: 30rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin-top: var(--space-3);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.note {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  padding: var(--space-2);
+
+  color: var(--color-text);
+  font: inherit;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.balance {
+  padding: var(--space-3);
+
+  font-size: 1.125rem;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.balance strong {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 좁은 화면에서는 두 칸, 넓어지면 한 줄에 넷 */
+.presets {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+}
+
+@media (min-width: 30rem) {
+  .presets {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.preset {
+  padding: var(--space-3) var(--space-2);
+
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.preset:not(:disabled):hover {
+  border-color: var(--color-primary);
+}
+
+.preset:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.preset:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
+
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.type {
+  font-weight: 600;
+}
+
+/* 금액은 오른쪽 정렬. 자릿수가 흔들리면 읽는 눈이 매번 다시 센다. */
+.amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.time {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.empty {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  text-align: center;
+
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+
+.error {
+  padding: var(--space-2);
+
+  color: var(--color-danger);
+  font-size: 0.875rem;
+
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius);
+}

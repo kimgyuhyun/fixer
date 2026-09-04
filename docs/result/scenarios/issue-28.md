@@ -106,45 +106,81 @@ GET  /points/me          →  200  { balance, transactions[] }
 
 ### 결제 시작 (AC1)
 
-- [ ] [정상] `start` — should create a pending payment row with the amount the server decided
-- [ ] [경계] `start` — should reject an amount that is not a positive multiple of the charge unit
-- [ ] [정상] `POST /payments` — should return the paymentId the client needs to open the checkout
+- [x] [정상] `start` — should create a pending payment row with the amount the server decided
+- [x] [경계] `start` — should reject an amount that is not a multiple of the charge unit
+- [x] [경계] `start` — should reject an amount over the per-charge limit
+- [x] [정상] `start` — should return a paymentId the client can open the checkout with
 
 ### 금액을 서버가 다시 확인한다 (AC2)
 
-- [ ] [정상] `confirm` — should ask the gateway for the payment instead of trusting the client
-- [ ] [정상] `confirm` — should record a CHARGE for the amount the gateway reported
-- [ ] [정상] `confirm` — should mark the payment row PAID
+- [x] [정상] `confirm` — should ask the gateway for the payment instead of trusting the client
+- [x] [정상] `confirm` — should record a CHARGE for the amount both sides agree on
+- [x] [정상] `confirm` — should report the balance as the ledger sum
+- [x] [정상] `confirm` — should mark the payment row PAID
 
 ### 금액이 다르면 거절한다 (AC3)
 
-- [ ] [예외] `confirm` — should reject with PAYMENT_AMOUNT_MISMATCH when the gateway amount differs
-- [ ] [정상] `confirm` — should not record anything when the amount differs
-- [ ] [예외] `confirm` — should reject with PAYMENT_NOT_PAID when the gateway says PENDING
-- [ ] [예외] `confirm` — should reject with PAYMENT_NOT_FOUND when the gateway knows no such payment
-- [ ] [경계] `confirm` — should reject a payment that belongs to another member
+- [x] [예외] `confirm` — should reject with PAYMENT_AMOUNT_MISMATCH when the gateway amount differs
+- [x] [정상] `confirm` — should not record anything when the amount differs
+- [x] [예외] `confirm` — should reject with PAYMENT_NOT_PAID when the gateway says PENDING
+- [x] [예외] `confirm` — should reject a FAILED payment too
+- [x] [예외] `confirm` — should reject with PAYMENT_NOT_FOUND when the gateway knows no such payment
+- [x] [경계] `confirm` — should reject a payment that belongs to another member
 
 ### 웹훅이 두 번 와도 한 건 (AC4)
 
-- [ ] [정상] `handleWebhook` — should record a CHARGE on the first delivery
-- [ ] [경계] `handleWebhook` — should record nothing more on the second delivery
-- [ ] [경계] `handleWebhook` — should succeed on the second delivery instead of failing
-- [ ] [예외] `handleWebhook` — should reject a body whose signature does not verify
-- [ ] [정상] `handleWebhook` — should record nothing when the signature is invalid
-- [ ] [경계] `confirm` + `handleWebhook` — should record one CHARGE when both arrive for the same payment
+- [x] [정상] `handleWebhook` — should record a CHARGE on the first delivery
+- [x] [경계] `handleWebhook` — should record nothing more on the second delivery
+- [x] [경계] `handleWebhook` — should succeed on the second delivery instead of failing
+- [x] [예외] `handleWebhook` — should reject a body whose signature does not verify
+- [x] [보안] `verify` — should reject a body signed with a different secret
+- [x] [보안] `verify` — should reject when the body was changed after signing
+- [x] [경계] `verify` — should reject a signature of a different length without throwing
+- [x] [보안] `verify` — should refuse to start without a secret
+- [x] [보안] `handleWebhook` — should ignore the amount written in the webhook body and ask the gateway
+- [x] [경계] `handleWebhook` — should reject a body that carries no paymentId
+- [x] [정상] `handleWebhook` — should record nothing when the signature is invalid
+- [x] [경계] `confirm` + `handleWebhook` — should record one CHARGE when the confirm API and the webhook both arrive
 
 ### 내역에서 보인다 (AC5)
 
-- [ ] [정상] `readHistory` — should list the charge with its amount and time
-- [ ] [정상] `readHistory` — should report the balance as the ledger sum
-- [ ] [경계] `readHistory` — should list nothing for a member who never charged
+- [x] [정상] `readHistory` — should list the charge with its amount and time
+- [x] [정상] `readHistory` — should report the balance as the ledger sum, not the cached value
+- [x] [경계] `readHistory` — should list nothing for a member who never charged
 
 ### 진짜 Postgres에서
 
-- [ ] [경계] `통합` — should record exactly one CHARGE when the same webhook arrives twice concurrently
-- [ ] [정상] `통합` — should leave the balance equal to the charged amount
+- [x] [경계] `통합` — should record exactly one CHARGE when the same webhook arrives twice at once
+- [x] [경계] `통합` — should report applied exactly once across concurrent deliveries
+- [x] [정상] `통합` — should leave the balance equal to the charged amount
+- [x] [예외] `통합` — should not charge when the gateway reports a different amount
+- [x] [정상] `통합` — should keep the payment row so a refund can find it later (#29가 쓴다)
 
-**총 22개** (정상 11 / 경계 7 / 예외 4)
+### 화면
+
+- [x] [정상] `포인트 화면` — should show the balance the server reported
+- [x] [정상] `포인트 화면` — should list a charge with a readable label instead of the raw code
+- [x] [경계] `포인트 화면` — should say there is nothing yet for a member who never charged
+- [x] [경계] `포인트 화면` — should not let a charge start before a member is chosen
+- [x] [정상] `포인트 화면` — should start and confirm the payment the server created
+- [x] [예외] `포인트 화면` — should show the server message when the amount did not match
+
+**총 40개** (단위 25 + 통합 5 + 화면 6 + 상수·서명 4)
+
+### 서버를 띄워 확인한 것
+
+| 무엇                   | 결과                                    |
+| ---------------------- | --------------------------------------- |
+| 결제 시작 → 확정       | `200`, 잔액 50,000                      |
+| 같은 건 두 번째 확정   | `200` `applied:false`, 잔액 그대로      |
+| 서명이 맞는 웹훅       | `200`, 잔액 두 배가 되지 않음           |
+| 서명이 틀린 웹훅       | `401 PAYMENT_WEBHOOK_SIGNATURE_INVALID` |
+| 1,500원 충전 시도      | `400 PAYMENT_INVALID_AMOUNT`            |
+| 남의 결제 건 확정 시도 | `403 PAYMENT_NOT_OWNED`                 |
+
+서명 검증은 **본문 문자열 원본**을 대상으로 하므로 `main.ts`에서
+`rawBody: true`를 켜야 한다. 파싱한 뒤 다시 직렬화하면 키 순서나 공백이
+달라져 맞지 않는다 — 실물로 확인한 것이 이 부분이다.
 
 ---
 

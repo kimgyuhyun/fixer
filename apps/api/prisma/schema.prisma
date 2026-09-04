@@ -46,6 +46,7 @@ model User {
   pointTransactions PointTransaction[]
   addresses         UserAddress[]
   agreements        Agreement[]
+  payments          Payment[]
 
   /// 파기 배치가 "비활성화됐고 아직 파기 안 된" 행만 훑는다 (#39)
   @@index([deactivatedAt, purgedAt])
@@ -194,4 +195,33 @@ model Agreement {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, agreedAt])
+}
+
+/// 결제 건 하나. (이슈 #28)
+///
+/// 원장만으로는 **어느 결제 건이 얼마 남았는지**를 알 수 없는데, ADR-PAY-7의
+/// FIFO 환불이 그 값을 필요로 한다(#29). 그래서 결제 건을 따로 들고 있는다.
+model Payment {
+  /// 포트원이 준 결제 건 식별자. **우리가 만들지 않는다** (ADR-PAY-3).
+  id             String        @id
+  userId         String
+  /// 결제 시작 때 **서버가 정한** 금액. 확정 때 포트원이 준 값과 대조한다.
+  amount         Int
+  /// 이 건에서 환불된 누계. 부분 환불이 여러 번 올 수 있다 (ADR-PAY-7).
+  refundedAmount Int           @default(0)
+  status         PaymentStatus @default(PENDING)
+  createdAt      DateTime      @default(now())
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// FIFO 소진이 오래된 것부터 훑는다 (ADR-PAY-7)
+  @@index([userId, createdAt])
+}
+
+enum PaymentStatus {
+  /// 결제창을 띄웠고 아직 확정되지 않았다
+  PENDING
+  /// 포트원이 PAID라고 했고 금액도 맞았다
+  PAID
+  /// 전액 취소됐다
+  CANCELLED
 }
