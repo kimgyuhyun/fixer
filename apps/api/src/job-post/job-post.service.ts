@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import {
   JOB_POST_ERRORS,
+  JOB_POST_PAGE_SIZE,
   budgetOf,
   canTransition,
   createJobPostRequestSchema,
   holdIdempotencyKey,
   type CreateJobPostRequest,
   type JobPostErrorCode,
+  type JobPostFilter,
   type JobPostList,
   type JobPostStatus,
   type JobPostSummary,
@@ -33,6 +35,8 @@ export interface JobPostRecord {
   status: JobPostStatus;
   version: number;
   workAddress: string;
+  workSido: string;
+  workSigungu: string;
   workStartAt: Date;
   workEndAt: Date;
   headcount: number;
@@ -61,6 +65,8 @@ export interface JobPostStore {
     categoryId: string;
     title: string;
     workAddress: string;
+    workSido: string;
+    workSigungu: string;
     workStartAt: Date;
     workEndAt: Date;
     headcount: number;
@@ -69,13 +75,29 @@ export interface JobPostStore {
     budget: number;
   }): Promise<JobPostRecord | 'INSUFFICIENT'>;
 
-  listOpen(): Promise<{ items: JobPostRecord[]; total: number }>;
+  /**
+   * `OPEN` 공고를 필터에 맞춰 한 페이지 준다.
+   *
+   * `total`은 **필터를 적용한 뒤의** 건수다 — 전체를 주면 "총 152건"인데
+   * 3건만 보이는 화면이 된다.
+   */
+  listOpen(
+    filter: JobPostFilter,
+    pageSize: number,
+  ): Promise<{ items: JobPostRecord[]; total: number }>;
+}
+
+/** 회원의 기본 주소 한 건. 지역까지 함께 온다 (#13) */
+export interface MemberAddress {
+  roadAddress: string;
+  sido: string;
+  sigungu: string;
 }
 
 /** 근무 주소 기본값을 물어보는 포트 (#3의 `UserAddress`) */
 export interface MemberAddressReader {
   /** 그 회원의 기본 주소. 없으면 null */
-  defaultAddressOf(userId: string): Promise<string | null>;
+  defaultAddressOf(userId: string): Promise<MemberAddress | null>;
 }
 
 /** 잔액을 묻는 포트. 부족 금액 안내에 쓴다 */
@@ -105,14 +127,16 @@ export class JobPostService {
     // 검증이 가장 먼저다. 형식이 틀린 요청은 저장소도 원장도 건드리지 않는다.
     const parsed = createJobPostRequestSchema.parse(input);
 
-    const workAddress = await this.resolveAddress(employerId, parsed);
+    const place = await this.resolveAddress(employerId, parsed);
     const budget = budgetOf(parsed);
 
     const created = await this.store.createOpenWithHold({
       employerId,
       categoryId: parsed.categoryId,
       title: parsed.title,
-      workAddress,
+      workAddress: place.roadAddress,
+      workSido: place.sido,
+      workSigungu: place.sigungu,
       workStartAt: new Date(parsed.workStartAt),
       workEndAt: new Date(parsed.workEndAt),
       headcount: parsed.headcount,
@@ -135,9 +159,17 @@ export class JobPostService {
     return toSummary(created);
   }
 
-  async list(): Promise<JobPostList> {
-    const { items, total } = await this.store.listOpen();
-    return { items: items.map(toSummary), total };
+  async list(filter: JobPostFilter): Promise<JobPostList> {
+    const { items, total } = await this.store.listOpen(
+      filter,
+      JOB_POST_PAGE_SIZE,
+    );
+    return {
+      items: items.map(toSummary),
+      total,
+      page: filter.page,
+      pageSize: JOB_POST_PAGE_SIZE,
+    };
   }
 
   /**
@@ -150,14 +182,23 @@ export class JobPostService {
   private async resolveAddress(
     employerId: string,
     parsed: CreateJobPostRequest,
-  ): Promise<string> {
+  ): Promise<MemberAddress> {
     const given = parsed.workAddress?.trim() ?? '';
-    if (given !== '') return given;
+    if (given !== '') {
+      // 지역은 스키마가 이미 요구했다. 여기까지 왔으면 있다.
+      return {
+        roadAddress: given,
+        sido: parsed.workSido ?? '',
+        sigungu: parsed.workSigungu ?? '',
+      };
+    }
 
     const fallback = await this.addresses.defaultAddressOf(employerId);
-    if (fallback === null || fallback.trim() === '') {
+    if (fallback === null || fallback.roadAddress.trim() === '') {
       throw new JobPostError(JOB_POST_ERRORS.NO_DEFAULT_ADDRESS);
     }
+    // **파싱이 아니라 복사다.** 문자열에서 시/도를 뽑아내면 틀린 공고가
+    // 조용히 지역 필터에서 사라진다.
     return fallback;
   }
 }
@@ -194,6 +235,8 @@ function toSummary(row: JobPostRecord): JobPostSummary {
     status: row.status,
     version: row.version,
     workAddress: row.workAddress,
+    workSido: row.workSido,
+    workSigungu: row.workSigungu,
     workStartAt: row.workStartAt.toISOString(),
     workEndAt: row.workEndAt.toISOString(),
     headcount: row.headcount,

@@ -223,7 +223,7 @@ describe('공고 등록 — 진짜 Postgres에서', () => {
     const employerId = await seedEmployer(500_000);
     await service.create(employerId, request(categoryId));
 
-    const list = await service.list();
+    const list = await service.list({ page: 1 });
 
     expect(list.total).toBe(1);
     expect(list.items[0].status).toBe('OPEN');

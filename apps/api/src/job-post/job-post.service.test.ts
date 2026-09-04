@@ -15,11 +15,19 @@ import {
   type BalanceReader,
   type JobPostRecord,
   type JobPostStore,
+  type MemberAddress,
   type MemberAddressReader,
 } from './job-post.service';
 
 const EMPLOYER = 'usr_employer';
-const HOME = '서울 강남구 테헤란로 1';
+const HOME: MemberAddress = {
+  roadAddress: '서울 강남구 테헤란로 1',
+  sido: '서울',
+  sigungu: '강남구',
+};
+
+/** 필터 없이 첫 페이지 */
+const ALL = { page: 1 } as const;
 
 const VALID: CreateJobPostRequest = {
   categoryId: 'cat_cleaning',
@@ -52,6 +60,8 @@ class FakeStore implements JobPostStore {
     categoryId: string;
     title: string;
     workAddress: string;
+    workSido: string;
+    workSigungu: string;
     workStartAt: Date;
     workEndAt: Date;
     headcount: number;
@@ -75,6 +85,8 @@ class FakeStore implements JobPostStore {
       status,
       version: 1,
       workAddress: input.workAddress,
+      workSido: input.workSido,
+      workSigungu: input.workSigungu,
       workStartAt: input.workStartAt,
       workEndAt: input.workEndAt,
       headcount: input.headcount,
@@ -94,9 +106,29 @@ class FakeStore implements JobPostStore {
     return Promise.resolve(row);
   }
 
-  listOpen(): Promise<{ items: JobPostRecord[]; total: number }> {
-    const items = this.posts.filter((p) => p.status === 'OPEN');
-    return Promise.resolve({ items, total: items.length });
+  listOpen(
+    filter: {
+      category?: string;
+      sido?: string;
+      sigungu?: string;
+      q?: string;
+      page: number;
+    },
+    pageSize: number,
+  ): Promise<{ items: JobPostRecord[]; total: number }> {
+    const matched = this.posts.filter(
+      (p) =>
+        p.status === 'OPEN' &&
+        (!filter.category || p.categoryId === filter.category) &&
+        (!filter.sido || p.workSido === filter.sido) &&
+        (!filter.sigungu || p.workSigungu === filter.sigungu) &&
+        (!filter.q || p.title.toLowerCase().includes(filter.q.toLowerCase())),
+    );
+    const start = (filter.page - 1) * pageSize;
+    return Promise.resolve({
+      items: matched.slice(start, start + pageSize),
+      total: matched.length,
+    });
   }
 
   /** 목록에 안 뜨는 것을 보려고 DRAFT 하나를 직접 넣는다 */
@@ -113,11 +145,11 @@ class FakeStore implements JobPostStore {
   }
 }
 
-function addresses(home: string | null): MemberAddressReader {
+function addresses(home: MemberAddress | null): MemberAddressReader {
   return { defaultAddressOf: () => Promise.resolve(home) };
 }
 
-function setup(opts: { balance?: number; home?: string | null } = {}): {
+function setup(opts: { balance?: number; home?: MemberAddress | null } = {}): {
   service: JobPostService;
   store: FakeStore;
 } {
@@ -387,7 +419,7 @@ describe('list — 목록에 뜬다 (AC5)', () => {
     const { service } = setup();
     const created = await service.create(EMPLOYER, VALID);
 
-    const list = await service.list();
+    const list = await service.list(ALL);
 
     expect(list.items.map((i) => i.id)).toEqual([created.id]);
   });
@@ -398,7 +430,7 @@ describe('list — 목록에 뜬다 (AC5)', () => {
     await service.create(EMPLOYER, VALID);
     store.seedDraft();
 
-    const list = await service.list();
+    const list = await service.list(ALL);
 
     expect(list.items).toHaveLength(1);
     expect(list.items[0].status).toBe('OPEN');
@@ -409,7 +441,7 @@ describe('list — 목록에 뜬다 (AC5)', () => {
     await service.create(EMPLOYER, VALID);
     await service.create(EMPLOYER, { ...VALID, title: '창고 정리' });
 
-    const list = await service.list();
+    const list = await service.list(ALL);
 
     expect(list.total).toBe(2);
   });
@@ -424,7 +456,7 @@ describe('create — 근무 주소 기본값 (AC6)', () => {
       workAddress: undefined,
     });
 
-    expect(created.workAddress).toBe(HOME);
+    expect(created.workAddress).toBe(HOME.roadAddress);
   });
 
   it('should keep the given work address when one is provided', async () => {
@@ -433,6 +465,8 @@ describe('create — 근무 주소 기본값 (AC6)', () => {
     const created = await service.create(EMPLOYER, {
       ...VALID,
       workAddress: '서울 마포구 월드컵북로 1',
+      workSido: '서울',
+      workSigungu: '마포구',
     });
 
     expect(created.workAddress).toBe('서울 마포구 월드컵북로 1');
@@ -446,7 +480,7 @@ describe('create — 근무 주소 기본값 (AC6)', () => {
       workAddress: '   ',
     });
 
-    expect(created.workAddress).toBe(HOME);
+    expect(created.workAddress).toBe(HOME.roadAddress);
   });
 
   it('should reject when the address is blank and the member has none', async () => {
@@ -458,5 +492,231 @@ describe('create — 근무 주소 기본값 (AC6)', () => {
 
     expect(codeOf(error)).toBe(JOB_POST_ERRORS.NO_DEFAULT_ADDRESS);
     expect(store.posts).toHaveLength(0);
+  });
+});
+
+describe('list — 필터로 좁힌다 (#13)', () => {
+  const MAPO: MemberAddress = {
+    roadAddress: '서울 마포구 월드컵북로 1',
+    sido: '서울',
+    sigungu: '마포구',
+  };
+  const BUSAN: MemberAddress = {
+    roadAddress: '부산 해운대구 해운대로 1',
+    sido: '부산',
+    sigungu: '해운대구',
+  };
+
+  /** 카테고리·지역·제목이 서로 다른 공고 넷을 만든다 */
+  async function seedFour(service: JobPostService) {
+    await service.create(EMPLOYER, {
+      ...VALID,
+      title: '강남 사무실 청소',
+    });
+    await service.create(EMPLOYER, {
+      ...VALID,
+      title: '마포 창고 정리',
+      workAddress: MAPO.roadAddress,
+      workSido: MAPO.sido,
+      workSigungu: MAPO.sigungu,
+    });
+    await service.create(EMPLOYER, {
+      ...VALID,
+      title: '해운대 전단 배포',
+      categoryId: 'cat_delivery',
+      workAddress: BUSAN.roadAddress,
+      workSido: BUSAN.sido,
+      workSigungu: BUSAN.sigungu,
+    });
+    await service.create(EMPLOYER, {
+      ...VALID,
+      title: '마포 사무실 청소',
+      categoryId: 'cat_delivery',
+      workAddress: MAPO.roadAddress,
+      workSido: MAPO.sido,
+      workSigungu: MAPO.sigungu,
+    });
+  }
+
+  it('should return only the posts of the chosen category', async () => {
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({ page: 1, category: 'cat_delivery' });
+
+    expect(list.items.map((i) => i.title).sort()).toEqual([
+      '마포 사무실 청소',
+      '해운대 전단 배포',
+    ]);
+  });
+
+  it('should return everything when no filter is chosen', async () => {
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({ page: 1 });
+
+    expect(list.total).toBe(4);
+  });
+
+  it('should return nothing for a category that has no posts', async () => {
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({ page: 1, category: 'cat_none' });
+
+    expect(list.items).toHaveLength(0);
+    expect(list.total).toBe(0);
+  });
+
+  it('should return only the posts in the chosen sido', async () => {
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({ page: 1, sido: '부산' });
+
+    expect(list.items.map((i) => i.title)).toEqual(['해운대 전단 배포']);
+  });
+
+  it('should narrow further with sigungu', async () => {
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({
+      page: 1,
+      sido: '서울',
+      sigungu: '마포구',
+    });
+
+    expect(list.total).toBe(2);
+    expect(list.items.every((i) => i.workSigungu === '마포구')).toBe(true);
+  });
+
+  it('should filter by sigungu alone when no sido was chosen', async () => {
+    // 무시하면 사용자는 필터가 먹은 줄 알고 엉뚱한 목록을 본다.
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({ page: 1, sigungu: '해운대구' });
+
+    expect(list.items.map((i) => i.title)).toEqual(['해운대 전단 배포']);
+  });
+
+  it('should apply category and region together', async () => {
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({
+      page: 1,
+      category: 'cat_delivery',
+      sigungu: '마포구',
+    });
+
+    expect(list.items.map((i) => i.title)).toEqual(['마포 사무실 청소']);
+  });
+
+  it('should keep the other conditions when one is removed', async () => {
+    // 칩 하나를 지우면 그 조건만 풀린다 (AC4).
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({ page: 1, category: 'cat_delivery' });
+
+    expect(list.total).toBe(2);
+  });
+
+  it('should match a partial title', async () => {
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({ page: 1, q: '사무실' });
+
+    expect(list.total).toBe(2);
+  });
+
+  it('should match case-insensitively', async () => {
+    const { service } = setup();
+    await service.create(EMPLOYER, { ...VALID, title: 'Office Cleaning' });
+
+    const list = await service.list({ page: 1, q: 'office' });
+
+    expect(list.total).toBe(1);
+  });
+
+  it('should report zero total when nothing matches', async () => {
+    const { service } = setup();
+    await seedFour(service);
+
+    const list = await service.list({ page: 1, q: '존재하지않는말' });
+
+    expect(list).toMatchObject({ total: 0, page: 1 });
+    expect(list.items).toHaveLength(0);
+  });
+});
+
+describe('list — 페이징과 총 건수 (#13 AC6·AC7)', () => {
+  /** 21건을 만든다. 페이지당 20이므로 2페이지에 1건이 남는다 */
+  async function seedTwentyOne(service: JobPostService) {
+    for (let i = 1; i <= 21; i += 1) {
+      await service.create(EMPLOYER, { ...VALID, title: `공고 ${i}` });
+    }
+  }
+
+  /** 21건 × 15만이라 잔액이 넉넉해야 한다 */
+  const RICH = { balance: 10_000_000 };
+
+  it('should return twenty on the first page', async () => {
+    const { service } = setup(RICH);
+    await seedTwentyOne(service);
+
+    const list = await service.list({ page: 1 });
+
+    expect(list.items).toHaveLength(20);
+    expect(list.pageSize).toBe(20);
+  });
+
+  it('should return the remaining one item on page two of twenty-one', async () => {
+    const { service } = setup(RICH);
+    await seedTwentyOne(service);
+
+    const list = await service.list({ page: 2 });
+
+    expect(list.items).toHaveLength(1);
+    expect(list.page).toBe(2);
+  });
+
+  it('should report twenty-one as the total on page one', async () => {
+    const { service } = setup(RICH);
+    await seedTwentyOne(service);
+
+    const list = await service.list({ page: 1 });
+
+    expect(list.total).toBe(21);
+  });
+
+  it('should count only the filtered posts, not every post', async () => {
+    // 전체를 주면 "총 21건"인데 3건만 보이는 화면이 된다.
+    const { service } = setup(RICH);
+    await seedTwentyOne(service);
+    await service.create(EMPLOYER, {
+      ...VALID,
+      title: '따로',
+      categoryId: 'cat_delivery',
+    });
+
+    const list = await service.list({ page: 1, category: 'cat_delivery' });
+
+    expect(list.total).toBe(1);
+  });
+
+  it('should return an empty page instead of failing when the page is past the end', async () => {
+    // 마지막 페이지에서 필터를 바꾸면 흔히 생긴다. 오류로 만들면 화면이 깨진다.
+    const { service } = setup(RICH);
+    await seedTwentyOne(service);
+
+    const list = await service.list({ page: 5 });
+
+    expect(list.items).toHaveLength(0);
+    expect(list.total).toBe(21);
   });
 });

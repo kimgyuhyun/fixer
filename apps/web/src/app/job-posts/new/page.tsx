@@ -38,6 +38,10 @@ export default function NewJobPostPage() {
   const [employerId, setEmployerId] = useState('');
   const [title, setTitle] = useState('');
   const [workAddress, setWorkAddress] = useState('');
+  // 주소를 직접 쓰면 지역도 받아야 한다. 안 받으면 그 공고가 지역
+  // 필터에서 조용히 빠져 아무에게도 안 보인다 (#13).
+  const [workSido, setWorkSido] = useState('');
+  const [workSigungu, setWorkSigungu] = useState('');
   const [workStartAt, setWorkStartAt] = useState('');
   const [workEndAt, setWorkEndAt] = useState('');
   const [headcount, setHeadcount] = useState('1');
@@ -81,6 +85,8 @@ export default function NewJobPostPage() {
       // 빈 문자열이 아니라 undefined로 보낸다. "안 정했다"와 "빈 값을
       // 정했다"는 다르고, 서버는 전자만 기본값으로 채운다.
       workAddress: workAddress.trim() === '' ? undefined : workAddress,
+      workSido: workSido.trim() === '' ? undefined : workSido,
+      workSigungu: workSigungu.trim() === '' ? undefined : workSigungu,
       workStartAt: toIso(workStartAt),
       workEndAt: toIso(workEndAt),
       headcount: Number(headcount),
@@ -201,6 +207,36 @@ export default function NewJobPostPage() {
             placeholder="비워 두면 가입 주소로 채워집니다"
           />
           <FieldError message={fieldErrors.workAddress} />
+        </div>
+
+        {/* 주소를 직접 쓴 경우에만 필요하다. 비워 두면 가입 주소의
+            지역이 그대로 따라온다. */}
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="workSido">
+            시/도
+          </label>
+          <input
+            id="workSido"
+            className={styles.input}
+            value={workSido}
+            onChange={(e) => setWorkSido(e.target.value)}
+            placeholder="주소를 직접 입력했을 때만"
+          />
+          <FieldError message={fieldErrors.workSido} />
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="workSigungu">
+            시/군/구
+          </label>
+          <input
+            id="workSigungu"
+            className={styles.input}
+            value={workSigungu}
+            onChange={(e) => setWorkSigungu(e.target.value)}
+            placeholder="주소를 직접 입력했을 때만"
+          />
+          <FieldError message={fieldErrors.workSigungu} />
         </div>
 
         <div className={styles.field}>

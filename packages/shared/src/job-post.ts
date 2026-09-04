@@ -95,6 +95,14 @@ export const createJobPostRequestSchema = z
       .min(1, { error: '제목을 입력해 주세요.' })
       .max(80, { error: '제목은 80자까지 쓸 수 있습니다.' }),
     workAddress: z.string().trim().optional(),
+    /**
+     * 지역. **주소를 직접 보내면 이것도 함께 보내야 한다** (#13).
+     *
+     * 주소 문자열에서 뽑아내면 파싱이 틀린 공고가 조용히 지역 필터에서
+     * 사라진다. #3의 우편번호 팝업이 둘을 함께 주므로 화면이 못 채울 일은 없다.
+     */
+    workSido: z.string().trim().optional(),
+    workSigungu: z.string().trim().optional(),
     workStartAt: z.iso.datetime({ error: '근무 시작 일시를 골라 주세요.' }),
     workEndAt: z.iso.datetime({ error: '근무 종료 일시를 골라 주세요.' }),
     headcount: z
@@ -120,6 +128,12 @@ export const createJobPostRequestSchema = z
   .refine((v) => new Date(v.workEndAt) > new Date(v.workStartAt), {
     error: '근무 종료는 시작보다 뒤여야 합니다.',
     path: ['workEndAt'],
+  })
+  // 주소를 직접 정했으면 지역도 정해야 한다. 없으면 그 공고는 지역
+  // 필터에서 조용히 빠져 아무에게도 안 보인다.
+  .refine((v) => (v.workAddress ?? '') === '' || (v.workSido ?? '') !== '', {
+    error: '주소를 직접 입력하면 시/도도 함께 골라 주세요.',
+    path: ['workSido'],
   });
 
 export type CreateJobPostRequest = z.infer<typeof createJobPostRequestSchema>;
@@ -132,6 +146,8 @@ export const jobPostSummarySchema = z.object({
   status: z.enum(JOB_POST_STATUSES),
   version: z.number().int(),
   workAddress: z.string(),
+  workSido: z.string(),
+  workSigungu: z.string(),
   workStartAt: z.iso.datetime(),
   workEndAt: z.iso.datetime(),
   headcount: z.number().int(),
@@ -142,12 +158,54 @@ export const jobPostSummarySchema = z.object({
 });
 export type JobPostSummary = z.infer<typeof jobPostSummarySchema>;
 
+/** 한 페이지에 몇 건. 관리자 목록도 같은 값을 쓴다 (§11.2) */
+export const JOB_POST_PAGE_SIZE = 20;
+
+/**
+ * 목록 필터. **URL 쿼리스트링이 이 모양 그대로다** (ADR-JOB-4).
+ *
+ * 필터 상태의 진실은 URL 하나다. 컴포넌트가 따로 들고 있으면 뒤로가기에서
+ * 둘이 어긋난다.
+ */
+export const jobPostFilterSchema = z.object({
+  category: z.string().trim().min(1).optional(),
+  sido: z.string().trim().min(1).optional(),
+  sigungu: z.string().trim().min(1).optional(),
+  /** 제목 부분 일치. 상세 내용은 안 뒤진다 (ADR-JOB-5) */
+  q: z.string().trim().min(1).optional(),
+  /** 1부터. 범위를 넘으면 오류가 아니라 빈 목록이다 */
+  page: z.coerce.number().int().min(1).catch(1).default(1),
+});
+export type JobPostFilter = z.infer<typeof jobPostFilterSchema>;
+
 /** 목록 응답. 총 건수를 함께 준다 (ADR-JOB-5 오프셋 페이징) */
 export const jobPostListSchema = z.object({
   items: z.array(jobPostSummarySchema),
+  /** **필터를 적용한 뒤의** 건수. 전체를 주면 "총 152건인데 3건만 보이는" 화면이 된다 */
   total: z.number().int(),
+  page: z.number().int(),
+  pageSize: z.number().int(),
 });
 export type JobPostList = z.infer<typeof jobPostListSchema>;
+
+/**
+ * 필터를 URL 쿼리스트링으로. 빈 값은 아예 넣지 않는다 — 링크가 지저분해진다.
+ *
+ * `page=1`도 넣지 않는다. 첫 페이지가 기본값이라 넣으면 같은 화면을 가리키는
+ * 주소가 두 개가 되고, 뒤로가기가 한 번 더 필요해진다.
+ */
+export function filterToQuery(filter: JobPostFilter): string {
+  const pairs: [string, string][] = [];
+  if (filter.category) pairs.push(['category', filter.category]);
+  if (filter.sido) pairs.push(['sido', filter.sido]);
+  if (filter.sigungu) pairs.push(['sigungu', filter.sigungu]);
+  if (filter.q) pairs.push(['q', filter.q]);
+  if (filter.page > 1) pairs.push(['page', String(filter.page)]);
+
+  return pairs
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+}
 
 /** 예산. 이 계산이 여러 곳에 흩어지면 한 곳만 틀려도 돈이 어긋난다 */
 export function budgetOf(input: {

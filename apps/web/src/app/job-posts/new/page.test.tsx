@@ -115,6 +115,8 @@ const CREATED = {
   status: 'OPEN',
   version: 1,
   workAddress: '서울 강남구 테헤란로 1',
+  workSido: '서울',
+  workSigungu: '강남구',
   workStartAt: '2026-10-01T09:00:00.000Z',
   workEndAt: '2026-10-01T18:00:00.000Z',
   headcount: 3,
@@ -253,5 +255,52 @@ describe('공고 등록 (#12)', () => {
     expect(
       await screen.findByText('한 명 이상 모집해야 합니다.'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('공고 작성 — 지역 (#13)', () => {
+  it('should ask for a region when the address is typed by hand', async () => {
+    // 지역 없이 저장되면 그 공고는 지역 필터에서 조용히 빠진다.
+    const fetchMock = mockRoutes({
+      '/api/categories': { status: 200, body: CATEGORIES },
+      '/api/job-posts': { status: 201, body: CREATED },
+    });
+    render(<NewJobPostPage />);
+    await screen.findByRole('option', { name: '청소' });
+
+    const user = await fillForm({ address: '서울 마포구 월드컵북로 1' });
+    await user.click(screen.getByRole('button', { name: '공고 올리기' }));
+
+    expect(
+      await screen.findByText('주소를 직접 입력하면 시/도도 함께 골라 주세요.'),
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]) === '/api/job-posts'),
+    ).toHaveLength(0);
+  });
+
+  it('should send the region along with a hand-typed address', async () => {
+    const fetchMock = mockRoutes({
+      '/api/categories': { status: 200, body: CATEGORIES },
+      '/api/job-posts': { status: 201, body: CREATED },
+    });
+    render(<NewJobPostPage />);
+    await screen.findByRole('option', { name: '청소' });
+
+    const user = await fillForm({ address: '서울 마포구 월드컵북로 1' });
+    await user.type(screen.getByLabelText('시/도'), '서울');
+    await user.type(screen.getByLabelText('시/군/구'), '마포구');
+    await user.click(screen.getByRole('button', { name: '공고 올리기' }));
+
+    await screen.findByRole('heading', { name: '공고를 올렸습니다' });
+    const sent = fetchMock.mock.calls.find(
+      (call) => String(call[0]) === '/api/job-posts',
+    );
+    const body = JSON.parse(String(sent?.[1]?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    expect(body.workSido).toBe('서울');
+    expect(body.workSigungu).toBe('마포구');
   });
 });

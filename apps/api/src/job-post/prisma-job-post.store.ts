@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { JobPostFilter } from '@fixer/shared';
 import {
   holdKeyFor,
   transition,
   type BalanceReader,
   type JobPostRecord,
   type JobPostStore,
+  type MemberAddress,
   type MemberAddressReader,
 } from './job-post.service';
 
@@ -30,6 +32,8 @@ export class PrismaJobPostStore implements JobPostStore {
     categoryId: string;
     title: string;
     workAddress: string;
+    workSido: string;
+    workSigungu: string;
     workStartAt: Date;
     workEndAt: Date;
     headcount: number;
@@ -46,6 +50,8 @@ export class PrismaJobPostStore implements JobPostStore {
             categoryId: input.categoryId,
             title: input.title,
             workAddress: input.workAddress,
+            workSido: input.workSido,
+            workSigungu: input.workSigungu,
             workStartAt: input.workStartAt,
             workEndAt: input.workEndAt,
             headcount: input.headcount,
@@ -109,14 +115,34 @@ export class PrismaJobPostStore implements JobPostStore {
     }
   }
 
-  async listOpen(): Promise<{ items: JobPostRecord[]; total: number }> {
-    const where = { status: 'OPEN' as const, deletedAt: null };
+  async listOpen(
+    filter: JobPostFilter,
+    pageSize: number,
+  ): Promise<{ items: JobPostRecord[]; total: number }> {
+    const where = {
+      status: 'OPEN' as const,
+      deletedAt: null,
+      ...(filter.category ? { categoryId: filter.category } : {}),
+      ...(filter.sido ? { workSido: filter.sido } : {}),
+      // 시/도 없이 시/군/구만 골라도 그대로 거른다. 무시하면 사용자는
+      // 필터가 먹은 줄 알고 엉뚱한 목록을 본다.
+      ...(filter.sigungu ? { workSigungu: filter.sigungu } : {}),
+      ...(filter.q
+        ? { title: { contains: filter.q, mode: 'insensitive' as const } }
+        : {}),
+    };
+
     const [rows, total] = await Promise.all([
       this.prisma.jobPost.findMany({
         where,
         // 최신순. 목록의 유일한 정렬이라 복합 인덱스가 이 순서다 (ADR-JOB-5).
         orderBy: { createdAt: 'desc' },
+        // 범위를 넘은 페이지는 오류가 아니라 빈 목록이다 — 마지막 페이지에서
+        // 필터를 바꾸면 흔히 생기는 상황이라 화면이 깨지면 안 된다.
+        skip: (filter.page - 1) * pageSize,
+        take: pageSize,
       }),
+      // **필터를 적용한 뒤의** 건수다. 같은 where를 쓴다.
       this.prisma.jobPost.count({ where }),
     ]);
     return { items: rows.map(toRecord), total };
@@ -128,13 +154,13 @@ export class PrismaJobPostStore implements JobPostStore {
 export class PrismaMemberAddressReader implements MemberAddressReader {
   constructor(private readonly prisma: PrismaService) {}
 
-  async defaultAddressOf(userId: string): Promise<string | null> {
+  async defaultAddressOf(userId: string): Promise<MemberAddress | null> {
     const row = await this.prisma.userAddress.findFirst({
       where: { userId },
       orderBy: { createdAt: 'asc' },
-      select: { roadAddress: true },
+      select: { roadAddress: true, sido: true, sigungu: true },
     });
-    return row?.roadAddress ?? null;
+    return row ?? null;
   }
 }
 
@@ -167,6 +193,8 @@ function toRecord(row: {
   status: string;
   version: number;
   workAddress: string;
+  workSido: string;
+  workSigungu: string;
   workStartAt: Date;
   workEndAt: Date;
   headcount: number;

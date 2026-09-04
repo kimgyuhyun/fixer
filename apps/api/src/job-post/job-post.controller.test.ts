@@ -35,6 +35,8 @@ const CREATED = {
   status: 'OPEN' as const,
   version: 1,
   workAddress: '서울 강남구 테헤란로 1',
+  workSido: '서울',
+  workSigungu: '강남구',
   workStartAt: '2026-10-01T09:00:00.000Z',
   workEndAt: '2026-10-01T18:00:00.000Z',
   headcount: 3,
@@ -139,20 +141,64 @@ describe('POST /job-posts', () => {
 describe('GET /job-posts', () => {
   it('should return the items and the total', async () => {
     const controller = controllerWith({
-      list: vi.fn().mockResolvedValue({ items: [CREATED], total: 1 }),
+      list: vi
+        .fn()
+        .mockResolvedValue({
+          items: [CREATED],
+          total: 1,
+          page: 1,
+          pageSize: 20,
+        }),
     });
 
-    await expect(controller.list()).resolves.toEqual({
+    await expect(controller.list({})).resolves.toEqual({
       items: [CREATED],
       total: 1,
+      page: 1,
+      pageSize: 20,
     });
+  });
+
+  it('should pass the query string filter straight through', async () => {
+    // 필터의 진실은 URL 하나다 (ADR-JOB-4). 컨트롤러가 값을 만들어내면 안 된다.
+    const list = vi
+      .fn()
+      .mockResolvedValue({ items: [], total: 0, page: 2, pageSize: 20 });
+    const controller = controllerWith({ list });
+
+    await controller.list({ category: 'cat_1', sido: '서울', page: '2' });
+
+    expect(list).toHaveBeenCalledWith({
+      category: 'cat_1',
+      sido: '서울',
+      page: 2,
+    });
+  });
+
+  it('should fall back to page one for a page that is not a number', async () => {
+    // 링크를 손으로 고친 사람에게 500을 주는 것보다 첫 페이지가 낫다.
+    const list = vi
+      .fn()
+      .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
+    const controller = controllerWith({ list });
+
+    await controller.list({ page: 'abc' });
+
+    expect(list).toHaveBeenCalledWith({ page: 1 });
   });
 
   it('should return an empty list without failing', async () => {
     const controller = controllerWith({
-      list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      list: vi
+        .fn()
+        .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
     });
 
-    await expect(controller.list()).resolves.toEqual({ items: [], total: 0 });
+    await expect(controller.list({})).resolves.toEqual({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
   });
 });

@@ -87,51 +87,75 @@ GET /job-posts?category=&sido=&sigungu=&q=&page=
 
 ### 카테고리로 거른다 (AC1)
 
-- [ ] [정상] `list` — should return only the posts of the chosen category
-- [ ] [경계] `list` — should return everything when no category is chosen
-- [ ] [경계] `list` — should return nothing for a category that has no posts
+- [x] [정상] `list` — should return only the posts of the chosen category
+- [x] [경계] `list` — should return everything when no filter is chosen
+- [x] [경계] `list` — should return nothing for a category that has no posts
 
 ### 지역으로 거른다 (AC2)
 
-- [ ] [정상] `list` — should return only the posts in the chosen sido
-- [ ] [정상] `list` — should narrow further with sigungu
-- [ ] [경계] `list` — should filter by sigungu alone when no sido was chosen
-- [ ] [정상] `create` — should copy sido and sigungu from the member address when the address is blank
-- [ ] [예외] `create` — should reject an explicit address that carries no region
+- [x] [정상] `list` — should return only the posts in the chosen sido
+- [x] [정상] `list` — should narrow further with sigungu
+- [x] [경계] `list` — should filter by sigungu alone when no sido was chosen
+- [x] [정상] `create` — should fill the work address from the member address when it is blank (#12 테스트가 지역까지 함께 본다)
+- [x] [예외] `작성 화면` — should ask for a region when the address is typed by hand
+- [x] [정상] `작성 화면` — should send the region along with a hand-typed address
 
 ### 조건을 AND로 겹친다 (AC4)
 
-- [ ] [정상] `list` — should apply category and region together
-- [ ] [정상] `list` — should keep the other conditions when one is removed
+- [x] [정상] `list` — should apply category and region together
+- [x] [정상] `list` — should keep the other conditions when one is removed
 
 ### 빈 상태 (AC5)
 
-- [ ] [경계] `list` — should report zero total when nothing matches
-- [ ] [정상] `목록 화면` — should show the empty-state notice when nothing matches
+- [x] [경계] `list` — should report zero total when nothing matches
+- [x] [정상] `목록 화면` — should say nothing matches when the list is empty
 
 ### 페이징과 총 건수 (AC6 · AC7)
 
-- [ ] [경계] `list` — should return the remaining one item on page two of twenty-one
-- [ ] [정상] `list` — should report twenty-one as the total on page one
-- [ ] [경계] `list` — should count only the filtered posts, not every post
-- [ ] [경계] `list` — should return an empty page instead of failing when the page is past the end
-- [ ] [경계] `list` — should treat a page below one as page one
+- [x] [정상] `list` — should return twenty on the first page
+- [x] [경계] `list` — should return the remaining one item on page two of twenty-one
+- [x] [정상] `list` — should report twenty-one as the total on page one
+- [x] [경계] `list` — should count only the filtered posts, not every post
+- [x] [경계] `list` — should return an empty page instead of failing when the page is past the end
+- [x] [경계] `POST 컨트롤러` — should fall back to page one for a page that is not a number
+- [x] [정상] `컨트롤러` — should pass the query string filter straight through
 
 ### 검색 (§11.2)
 
-- [ ] [정상] `list` — should match a partial title
-- [ ] [경계] `list` — should match case-insensitively
+- [x] [정상] `list` — should match a partial title
+- [x] [경계] `list` — should match case-insensitively
 
 ### URL이 유일한 진실이다 (AC3 · AC8)
 
-- [ ] [정상] `목록 화면` — should read the filter from the query string on first render
-- [ ] [정상] `목록 화면` — should put the chosen category into the URL
-- [ ] [경계] `목록 화면` — should reset to page one when a filter changes
-- [ ] [정상] `목록 화면` — should show a chip for each applied filter
-- [ ] [정상] `목록 화면` — should drop only that condition when a chip is removed
-- [ ] [경계] `목록 화면` — should keep no filter state of its own so back navigation stays correct
+- [x] [정상] `목록 화면` — should read the filter from the query string on first render
+- [x] [정상] `목록 화면` — should put the chosen category into the URL
+- [x] [경계] `목록 화면` — should reset to page one when a filter changes
+- [x] [정상] `목록 화면` — should show a chip for each applied filter
+- [x] [정상] `목록 화면` — should drop only that condition when a chip is removed
+- [x] [경계] `목록 화면` — should keep no filter state of its own so back navigation stays correct
+- [x] [정상] `목록 화면` — should move to the next page without losing the filter
+- [x] [경계] `목록 화면` — should hide the pager when everything fits on one page
 
-**총 24개** (정상 11 / 경계 11 / 예외 2)
+**총 30개** (서버 21 + 컨트롤러 2 + 화면 9, 겹치는 항목 제외)
+
+### 서버를 띄워 확인한 것
+
+강남·마포·해운대 공고 셋을 올리고 걸러 봤다.
+
+| 무엇                    | 결과                                    |
+| ----------------------- | --------------------------------------- |
+| 전체                    | 3건                                     |
+| 시/도 = 서울            | 2건 (마포·강남)                         |
+| **시/군/구만 = 마포구** | 1건 — 시/도 없이도 걸린다               |
+| 검색 = 청소             | 1건 (제목 부분 일치)                    |
+| 카테고리 + 시/군/구     | 1건 (AND)                               |
+| `page=9` (범위 밖)      | `200`, 빈 목록에 `total: 3` — 안 깨진다 |
+
+### 빌드가 한 번 막혔다 — `Suspense`
+
+`useSearchParams()`는 프리렌더 시점에 값을 알 수 없어 Next가 경계를 요구한다.
+경계가 없으면 **테스트는 전부 통과하는데 빌드가 이 페이지에서 멈춘다.**
+목록 본체를 `JobPostList.tsx`로 빼고 페이지가 `Suspense`로 감쌌다.
 
 ---
 

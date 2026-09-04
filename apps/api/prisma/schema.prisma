@@ -259,6 +259,10 @@ model JobPost {
   // ── 필수항목 6개. 이 값들이 version을 올린다 (§3.4) ──
   /// 기본값은 가입 주소. **서버가 채운다** — 화면이 채우면 옛 값을 보낼 수 있다.
   workAddress         String
+  /// 지역 필터 1단계 (#13). 문자열을 파싱하지 않고 분해해서 담는다 (ADR-AUTH-2와 같은 이유)
+  workSido            String  @default("")
+  /// 지역 필터 2단계. 세종특별자치시처럼 없는 지역은 빈 문자열
+  workSigungu         String  @default("")
   workStartAt         DateTime
   workEndAt           DateTime
   headcount           Int
@@ -277,6 +281,8 @@ model JobPost {
 
   /// 목록은 "OPEN을 최신순으로"만 읽는다 (ADR-JOB-5)
   @@index([status, createdAt])
+  /// 지역 필터가 시/도 → 시/군/구 두 단계로 좁힌다 (#13)
+  @@index([workSido, workSigungu, status])
   @@index([employerId])
   @@index([categoryId])
 }

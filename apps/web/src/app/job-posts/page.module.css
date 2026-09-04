@@ -118,3 +118,117 @@
   border: 1px solid var(--color-danger);
   border-radius: var(--radius);
 }
+
+/* ── 이슈 #13에서 더한 것 ── */
+
+/* 좁은 화면에서는 한 줄에 하나, 넓어지면 넷 */
+.filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+@media (min-width: 36rem) {
+  .filters {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.filterField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.filterLabel {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.filterInput {
+  width: 100%;
+  padding: var(--space-2);
+
+  color: var(--color-text);
+  font: inherit;
+
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.filterInput:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  padding: var(--space-1) var(--space-2);
+
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8125rem;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--color-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* 화면에서만 감춘다. 읽어주는 도구에는 남는다 */
+.srOnly {
+  position: absolute;
+
+  overflow: hidden;
+  clip-path: inset(50%);
+
+  width: 1px;
+  height: 1px;
+
+  white-space: nowrap;
+}
+
+.pager {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: center;
+
+  padding: var(--space-3) 0;
+}
+
+.pagerButton {
+  padding: var(--space-2) var(--space-3);
+
+  color: var(--color-text);
+  font: inherit;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.pagerButton:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.pagerNow {
+  font-variant-numeric: tabular-nums;
+}

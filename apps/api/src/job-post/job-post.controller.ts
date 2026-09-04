@@ -7,10 +7,12 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   JOB_POST_ERRORS,
   createJobPostRequestSchema,
+  jobPostFilterSchema,
   jobPostListSchema,
   jobPostSummarySchema,
   type JobPostList,
@@ -43,9 +45,16 @@ export class JobPostController {
     }
   }
 
+  /**
+   * 목록. 필터는 **쿼리스트링에서만** 온다 (ADR-JOB-4).
+   *
+   * 잘못된 `page`는 오류로 만들지 않고 1로 본다. 링크를 손으로 고친
+   * 사람에게 500을 주는 것보다 첫 페이지를 보여주는 편이 낫다.
+   */
   @Get()
-  async list(): Promise<JobPostList> {
-    return jobPostListSchema.parse(await this.service.list());
+  async list(@Query() query: unknown): Promise<JobPostList> {
+    const filter = jobPostFilterSchema.parse(query ?? {});
+    return jobPostListSchema.parse(await this.service.list(filter));
   }
 }
 
