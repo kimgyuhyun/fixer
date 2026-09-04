@@ -204,3 +204,63 @@ describe('PrismaPointLedgerStore — 잔액 검증 (AC2)', () => {
     expect(await store.sumBalance(USER)).toBe(0);
   });
 });
+
+describe('PrismaPointLedgerStore — 잠금과 반환 (AC3)', () => {
+  it('should return the balance to 10000 after HOLD 6000 then RELEASE 6000', async () => {
+    // 유닛 테스트는 가짜 저장소로만 봤다. 실제 SQL 두 문장이 순서대로
+    // 돌았을 때 정확히 원상복귀하는지는 진짜 DB에서만 드러난다.
+    await memberWith(10_000);
+
+    await store.append({
+      userId: USER,
+      type: 'HOLD',
+      amount: -6_000,
+      idempotencyKey: 'hold_6000',
+    });
+    expect(await store.sumBalance(USER)).toBe(4_000);
+
+    await store.append({
+      userId: USER,
+      type: 'RELEASE',
+      amount: 6_000,
+      idempotencyKey: 'release_6000',
+    });
+
+    expect(await store.sumBalance(USER)).toBe(10_000);
+    expect(await store.readCachedBalance(USER)).toBe(10_000);
+  });
+});
+
+describe('PrismaPointLedgerStore — 캐시와 원장 (AC6)', () => {
+  it('should match the cached balance after many sequential writes', async () => {
+    // 경합이 아니라 순차 쓰기다. 경합 케이스와 다른 것을 본다 —
+    // 한 문장씩 정상적으로 돌았을 때 두 숫자가 끝까지 붙어 가는가.
+    await memberWith(100_000);
+
+    const moves: { type: 'HOLD' | 'RELEASE' | 'CHARGE'; amount: number }[] = [
+      { type: 'HOLD', amount: -30_000 },
+      { type: 'RELEASE', amount: 10_000 },
+      { type: 'CHARGE', amount: 5_000 },
+      { type: 'HOLD', amount: -20_000 },
+      { type: 'RELEASE', amount: 20_000 },
+      { type: 'HOLD', amount: -1_000 },
+    ];
+
+    for (const [i, move] of moves.entries()) {
+      await store.append({
+        userId: USER,
+        type: move.type,
+        amount: move.amount,
+        idempotencyKey: `seq_${i}`,
+      });
+      // 매 단계마다 붙어 있어야 한다. 마지막에만 보면 중간에 어긋났다가
+      // 우연히 맞아떨어진 경우를 놓친다.
+      expect(await store.readCachedBalance(USER)).toBe(
+        await store.sumBalance(USER),
+      );
+    }
+
+    // 100000 − 30000 + 10000 + 5000 − 20000 + 20000 − 1000
+    expect(await store.sumBalance(USER)).toBe(84_000);
+  });
+});

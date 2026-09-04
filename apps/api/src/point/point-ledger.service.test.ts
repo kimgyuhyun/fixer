@@ -16,6 +16,12 @@ const NOW = new Date('2026-09-04T00:00:00.000Z');
  */
 class FakeLedgerStore implements PointLedgerStore {
   readonly rows: PointTransactionRecord[] = [];
+  /**
+   * **원장과 따로 들고 있다.** 진짜 저장소가 `User.cachedBalance` 컬럼과
+   * 원장 합계라는 서로 다른 두 값을 갖는 것과 같다. 여기서 합계를 그대로
+   * 돌려주면 "둘이 일치한다"는 단언이 무엇을 넣든 참이 되어 무의미해진다.
+   */
+  private cached = new Map<string, number>();
 
   append(
     entry: LedgerEntry,
@@ -41,6 +47,7 @@ class FakeLedgerStore implements PointLedgerStore {
       createdAt: NOW,
     };
     this.rows.push(row);
+    this.cached.set(entry.userId, balance + entry.amount);
     return Promise.resolve(row);
   }
 
@@ -54,9 +61,13 @@ class FakeLedgerStore implements PointLedgerStore {
     return Promise.resolve(this.sum(userId));
   }
 
-  /** 캐시도 원장에서 만든다. 어긋날 자리를 두지 않는다 */
   readCachedBalance(userId: string): Promise<number> {
-    return Promise.resolve(this.sum(userId));
+    return Promise.resolve(this.cached.get(userId) ?? 0);
+  }
+
+  /** 캐시만 망가뜨린다. 원장은 그대로 — 어긋난 상태를 만들기 위한 것이다 */
+  corruptCache(userId: string, wrong: number): void {
+    this.cached.set(userId, wrong);
   }
 
   private sum(userId: string): number {
@@ -112,14 +123,22 @@ describe('record — 잔액 계산', () => {
   });
 
   it('should keep the cached balance equal to the ledger sum', async () => {
-    // AC6. 어긋나면 캐시를 버린다 — 원장이 진실이다 (ADR-PAY-1).
+    // AC6. 가짜 저장소가 캐시를 원장과 따로 들고 있으므로 어긋날 수 있다.
     const { service, store } = setup();
     await service.record(entry({ type: 'CHARGE', amount: 10_000 }));
     await service.record(entry({ type: 'HOLD', amount: -3_000 }));
 
-    await expect(store.readCachedBalance(USER)).resolves.toBe(
-      await store.sumBalance(USER),
-    );
+    expect(await store.readCachedBalance(USER)).toBe(7_000);
+    expect(await store.sumBalance(USER)).toBe(7_000);
+  });
+
+  it('should report the ledger sum, not the cache, when they disagree', async () => {
+    // ADR-PAY-1 — 어긋나면 원장이 맞다. 금전 판정은 캐시를 보지 않는다.
+    const { service, store } = setup();
+    await service.record(entry({ type: 'CHARGE', amount: 10_000 }));
+    store.corruptCache(USER, 999_999);
+
+    await expect(service.balanceOf(USER)).resolves.toBe(10_000);
   });
 
   it('should sum many rows of mixed types correctly', async () => {

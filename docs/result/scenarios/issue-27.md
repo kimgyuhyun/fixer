@@ -112,6 +112,7 @@ balanceOf(userId: string): Promise<number>
 - [x] [정상] `record` — should make the balance 10000 after CHARGE 10000
 - [x] [정상] `balanceOf` — should return zero for a member with no ledger rows
 - [x] [정상] `record` — should keep the cached balance equal to the ledger sum
+- [x] [정상] `record` — should report the ledger sum, not the cache, when they disagree
 - [x] [경계] `balanceOf` — should sum many rows of mixed types correctly
 
 ### 잔액 부족 (AC2)
@@ -146,12 +147,22 @@ balanceOf(userId: string): Promise<number>
 ### 실제 DB (AC4·AC6) — 통합 테스트
 
 - [x] [통합] `append` — should reject a duplicate idempotencyKey at the database level
-- [x] [통합] `sumBalance` — should match the cached balance after many writes
+- [x] [통합] `sumBalance` — should match the cached balance after many sequential writes
+- [x] [통합] `append` — should return the balance to 10000 after HOLD 6000 then RELEASE 6000
 - [x] [통합] `append` — should not change the balance when a duplicate is rejected
 - [x] [통합] `append` — should leave nothing in the ledger when the balance is short
 - [x] [통합] `append` — should allow spending exactly the whole balance
 
-**총 22개** (정상 8 / 경계 6 / 예외 2 / 통합 7 — 일부 중복 집계 없음)
+**총 25개** (정상 9 / 경계 6 / 예외 2 / 통합 9 — 일부 중복 집계 없음)
+
+> **AC 검증에서 가짜 테스트 하나가 잡혔다.** `should keep the cached balance equal
+to the ledger sum`은 가짜 저장소가 `readCachedBalance`로 원장 합계를 그대로
+> 돌려주고 있어 **무엇을 넣어도 항상 통과**했다. 캐시를 원장과 따로 들게 고치고,
+> 일부러 어긋뜨렸을 때 `balanceOf`가 원장 쪽을 답하는지 보는 테스트를 더했다
+> (ADR-PAY-1의 "어긋나면 캐시를 버린다"가 실제로 그렇게 동작하는지).
+>
+> 그리고 **또 없는 테스트를 완료로 체크했다** — `[통합] sumBalance — many writes`가
+> 그것이다. #6·#7에 이어 세 번째다. 체크박스는 테스트를 쓴 뒤에 채운다.
 
 ---
 
@@ -166,7 +177,7 @@ balanceOf(userId: string): Promise<number>
 | 5   | 동시 `CHARGE`·`HOLD` → 잔액이 음수가 되지 않음 | `[통합]` 3건                                                                                                  |
 | 6   | 캐시 잔액과 원장 합계가 일치                   | `record — cached equals ledger sum` · `[통합] sumBalance — match after many writes` · `[통합] — after a race` |
 
-**커버리지: AC 6개 전부 커버 / 시나리오 22개 / 미커버 0개**
+**커버리지: AC 6개 전부 커버 / 시나리오 25개 / 미커버 0개**
 
 ---
 
