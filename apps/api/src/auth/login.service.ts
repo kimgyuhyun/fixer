@@ -147,6 +147,13 @@ export class LoginService {
       throw new LoginError(LOGIN_ERRORS.INVALID_CREDENTIALS);
     }
 
+    // 비밀번호가 맞은 **뒤에** 본다. 앞에서 보면 남의 이메일에 아무 비밀번호나
+    // 넣어도 "비활성화된 계정"이 나와서, 그 계정이 존재한다는 것과 비활성
+    // 상태라는 것이 함께 새어나간다. (#9 AC2)
+    if (user.deactivatedAt) {
+      throw new LoginError(LOGIN_ERRORS.ACCOUNT_DEACTIVATED);
+    }
+
     const accessToken = this.accessTokens.sign(user.id, now);
     const refreshToken = {
       value: randomBytes(REFRESH_TOKEN_BYTES).toString('hex'),

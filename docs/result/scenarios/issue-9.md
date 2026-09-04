@@ -73,46 +73,65 @@ AC4·AC5가 참조하는 `Application`(#17)과 `JobPost`(#12) 모델이 아직 �
 **비활성화 계정 로그인은 403이지 401이 아니다.**
 비밀번호는 맞았다. 401을 주면 사용자가 비밀번호를 다시 입력한다.
 
+**비활성화 검사는 비밀번호 대조 _뒤에_ 한다.**
+처음엔 앞에 두려 했는데 그러면 구멍이 생긴다 — 남의 이메일에 아무 비밀번호나
+넣어도 "비활성화된 계정"이 나와서 **그 계정이 존재한다는 것과 비활성 상태라는
+것이 함께 새어나간다.** #4에서 응답 시간으로 새던 것과 같은 종류다.
+비밀번호가 맞은 사람에게만 알려준다 — 그건 본인 계정이다.
+
 ---
 
 ## 시나리오
 
 ### 탈퇴 성공 (AC1)
 
-- [ ] [정상] `withdraw` — should stamp deactivatedAt
-- [ ] [정상] `withdraw` — should delete every refresh token of that member
-- [ ] [정상] `POST /auth/withdraw` — should return 204
+- [x] [정상] `withdraw` — should stamp deactivatedAt
+- [x] [정상] `withdraw` — should delete every refresh token of that member
+- [x] [정상] `POST /auth/withdraw` — should return 204
 
 ### 잔액이 남으면 막힌다 (AC3)
 
-- [ ] [예외] `withdraw` — should reject with AUTH_WITHDRAWAL_BLOCKED when the balance is positive
-- [ ] [예외] `withdraw` — should say 남은 포인트를 환전한 뒤 as the reason
-- [ ] [경계] `withdraw` — should allow withdrawing when the balance is exactly zero
-- [ ] [정상] `withdraw` — should check the ledger sum, not the cached balance
+- [x] [예외] `withdraw` — should reject with AUTH_WITHDRAWAL_BLOCKED when the balance is positive
+- [x] [예외] `withdraw` — should say 남은 포인트를 환전한 뒤 as the reason
+- [x] [경계] `withdraw` — should allow withdrawing when the balance is exactly zero
+- [x] [정상] `withdraw` — should check the ledger sum, not the cached balance
 
 ### 진행 중 계약이 있으면 막힌다 (AC4)
 
-- [ ] [예외] `withdraw` — should reject when an active contract exists
-- [ ] [예외] `withdraw` — should say 진행 중인 일거리 as the reason
+- [x] [예외] `withdraw` — should reject when an active contract exists
+- [x] [예외] `withdraw` — should say 진행 중인 일거리 as the reason
 
 ### 본인 공고가 있으면 막힌다 (AC5)
 
-- [ ] [예외] `withdraw` — should reject when an open job post exists
-- [ ] [예외] `withdraw` — should say 등록한 공고를 마감한 뒤 as the reason
+- [x] [예외] `withdraw` — should reject when an open job post exists
+- [x] [예외] `withdraw` — should say 등록한 공고를 마감한 뒤 as the reason
 
 ### 여러 조건에 걸릴 때
 
-- [ ] [경계] `withdraw` — should report every blocking reason, not just the first
-- [ ] [정상] `withdraw` — should not touch the member when it rejected
+- [x] [경계] `withdraw` — should report every blocking reason, not just the first
+- [x] [정상] `withdraw` — should not touch the member when it rejected
 
 ### 비활성화 계정은 로그인 못 한다 (AC2)
 
-- [ ] [예외] `login` — should reject a deactivated account with AUTH_ACCOUNT_DEACTIVATED
-- [ ] [경계] `login` — should reject before checking the password
-- [ ] [예외] `POST /auth/login` — should return 403 for a deactivated account
-- [ ] [예외] `POST /auth/withdraw` — should return 409 with the reasons
+- [x] [예외] `login` — should reject a deactivated account with AUTH_ACCOUNT_DEACTIVATED
+- [x] [경계] `login` — should not reveal deactivation to someone with the wrong password
+- [x] [예외] `POST /auth/login` — should return 403 for a deactivated account
+- [x] [예외] `POST /auth/withdraw` — should return 409 with every blocking reason
 
-**총 17개** (정상 6 / 경계 4 / 예외 7)
+### 회원이 그 상태가 아닐 때 (구현 중 발견)
+
+시나리오를 쓸 때 놓쳤다. 실제로 서버를 띄워 없는 id로 호출했더니 Prisma가
+`P2025`로 터져 **500**이 나갔다 — 사용자 잘못인데 서버 고장처럼 보인다.
+
+- [x] [예외] `withdraw` — should reject with AUTH_MEMBER_NOT_FOUND when the member does not exist
+- [x] [경계] `withdraw` — should not re-stamp deactivatedAt when the member already withdrew
+- [x] [예외] `POST /auth/withdraw` — should return 404, not 500
+- [x] [예외] `POST /auth/withdraw` — should return 400 when userId is missing
+
+두 번째가 특히 중요하다. 이미 탈퇴한 계정에 다시 찍으면 **파기 기한(#39,
+비활성 4개월)이 그만큼 미뤄져** 개인정보가 더 오래 남는다.
+
+**총 21개** (정상 6 / 경계 5 / 예외 10) — 처음 17개 + 구현 중 4개
 
 ---
 

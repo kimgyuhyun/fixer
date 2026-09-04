@@ -41,4 +41,20 @@ export class PrismaUserStore implements UserStore, AuthUserStore {
       data: { passwordHash },
     });
   }
+
+  /** 없는 회원이면 undefined, 활성이면 null, 비활성이면 그 시각 (#9) */
+  async findDeactivatedAt(userId: string): Promise<Date | null | undefined> {
+    const row = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { deactivatedAt: true },
+    });
+    return row === null ? undefined : row.deactivatedAt;
+  }
+
+  async deactivate(userId: string, at: Date): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { deactivatedAt: at },
+    });
+  }
 }

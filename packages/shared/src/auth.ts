@@ -228,6 +228,11 @@ export const LOGIN_ERRORS = {
   INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
   /** 유효한 Access도, 살아 있는 Refresh도 없다 */
   UNAUTHENTICATED: 'AUTH_UNAUTHENTICATED',
+  /**
+   * 비활성화된 계정이다. 비밀번호는 맞았으므로 401이 아니라 403이다 —
+   * 401을 주면 사용자가 비밀번호를 다시 입력한다.
+   */
+  ACCOUNT_DEACTIVATED: 'AUTH_ACCOUNT_DEACTIVATED',
 } as const;
 
 export type LoginErrorCode = (typeof LOGIN_ERRORS)[keyof typeof LOGIN_ERRORS];
@@ -263,3 +268,20 @@ export const myProfileSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 export type MyProfile = z.infer<typeof myProfileSchema>;
+
+/** 탈퇴 보류 사유 (`spec-fixed.md` §2.6) */
+export const WITHDRAWAL_BLOCKERS = {
+  ACTIVE_CONTRACT: '진행 중인 일거리가 끝난 뒤 탈퇴할 수 있습니다',
+  OPEN_JOB_POST: '등록한 공고를 마감한 뒤 탈퇴할 수 있습니다',
+  POSITIVE_BALANCE: '남은 포인트를 환전한 뒤 탈퇴할 수 있습니다',
+} as const;
+
+export type WithdrawalBlocker =
+  (typeof WITHDRAWAL_BLOCKERS)[keyof typeof WITHDRAWAL_BLOCKERS];
+
+/** 탈퇴가 막혔을 때 내는 코드 */
+export const WITHDRAWAL_ERRORS = {
+  BLOCKED: 'AUTH_WITHDRAWAL_BLOCKED',
+  /** 그 id의 회원이 없다. 토큰은 살아 있는데 행이 사라진 경우다 */
+  NOT_FOUND: 'AUTH_MEMBER_NOT_FOUND',
+} as const;

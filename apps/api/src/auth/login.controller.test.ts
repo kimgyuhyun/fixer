@@ -167,6 +167,27 @@ describe('GET /auth/me', () => {
   });
 });
 
+describe('POST /auth/login — 탈퇴한 계정', () => {
+  it('should return 403 for a deactivated account', async () => {
+    // 401이 아니다. 누구인지는 확인됐고 그 계정으로 못 들어올 뿐이라,
+    // 웹이 재활성화 안내로 보낼지를 상태 코드만 보고 가를 수 있어야 한다. (#9 AC2)
+    const controller = controllerWith({
+      login: vi
+        .fn()
+        .mockRejectedValue(new LoginError(LOGIN_ERRORS.ACCOUNT_DEACTIVATED)),
+    });
+
+    const error = await rejectionOf(
+      controller.login(CREDENTIALS, fakeResponse()),
+    );
+
+    expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
+    expect(bodyOf(error)).toMatchObject({
+      errorCode: LOGIN_ERRORS.ACCOUNT_DEACTIVATED,
+    });
+  });
+});
+
 describe('POST /auth/logout', () => {
   it('should return 204 and clear both auth cookies', async () => {
     const logout = vi.fn().mockResolvedValue(undefined);

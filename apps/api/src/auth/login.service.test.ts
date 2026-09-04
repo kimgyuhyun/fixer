@@ -509,3 +509,38 @@ describe('logout', () => {
     expect(accessTokens).toBeDefined();
   });
 });
+
+describe('login — 비활성화 계정 (#9 AC2)', () => {
+  it('should reject a deactivated account with AUTH_ACCOUNT_DEACTIVATED', async () => {
+    const { service } = setup([member({ deactivatedAt: NOW })]);
+
+    const error = await rejectionOf(
+      service.login({ email: EMAIL, password: PASSWORD }, NOW),
+    );
+
+    expect(codeOf(error)).toBe(LOGIN_ERRORS.ACCOUNT_DEACTIVATED);
+  });
+
+  it('should not reveal deactivation to someone with the wrong password', async () => {
+    // 앞에서 검사하면 남의 이메일에 아무 비밀번호나 넣어도 "비활성화된
+    // 계정"이 나와서 그 계정의 존재와 상태가 함께 새어나간다.
+    const { service } = setup([member({ deactivatedAt: NOW })]);
+
+    const error = await rejectionOf(
+      service.login({ email: EMAIL, password: 'wrong-password' }, NOW),
+    );
+
+    expect(codeOf(error)).toBe(LOGIN_ERRORS.INVALID_CREDENTIALS);
+  });
+
+  it('should let an active account log in as before', async () => {
+    const { service } = setup([member({ deactivatedAt: null })]);
+
+    const session = await service.login(
+      { email: EMAIL, password: PASSWORD },
+      NOW,
+    );
+
+    expect(session.user.email).toBe(EMAIL);
+  });
+});

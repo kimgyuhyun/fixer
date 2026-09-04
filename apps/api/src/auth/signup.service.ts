@@ -28,6 +28,8 @@ export interface UserRecord {
   /** bcrypt 해시. 평문은 어디에도 남기지 않는다 */
   passwordHash: string;
   createdAt: Date;
+  /** 비활성화 시각. `null`이면 활성이다 (#9, ADR-AUTH-3) */
+  deactivatedAt?: Date | null;
 }
 
 /**

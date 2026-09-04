@@ -6,6 +6,7 @@ import { ConsoleMailProvider } from './console-mail.provider';
 import { LoginController } from './login.controller';
 import { LoginService } from './login.service';
 import { PrismaRefreshTokenStore } from './prisma-refresh-token.store';
+import { PrismaPointLedgerStore } from '../point/prisma-point-ledger.store';
 import { EmailVerificationController } from './email-verification.controller';
 import { EmailVerificationService } from './email-verification.service';
 import { PrismaEmailVerificationStore } from './prisma-email-verification.store';
@@ -13,6 +14,8 @@ import { PasswordResetController } from './password-reset.controller';
 import { PasswordResetService } from './password-reset.service';
 import { PrismaPasswordResetStore } from './prisma-password-reset.store';
 import { PrismaUserStore } from './prisma-user.store';
+import { WithdrawalController } from './withdrawal.controller';
+import { WithdrawalService } from './withdrawal.service';
 import { SignupController } from './signup.controller';
 import { SignupService } from './signup.service';
 
@@ -27,12 +30,14 @@ import { SignupService } from './signup.service';
     SignupController,
     LoginController,
     PasswordResetController,
+    WithdrawalController,
   ],
   providers: [
     PrismaEmailVerificationStore,
     PrismaUserStore,
     PrismaRefreshTokenStore,
     PrismaPasswordResetStore,
+    PrismaPointLedgerStore,
     ConsoleMailProvider,
     {
       // 서명 비밀키는 코드에 두지 않는다. 없으면 켜지지 않게 한다 —
@@ -74,6 +79,25 @@ import { SignupService } from './signup.service';
       ],
     },
     {
+      provide: WithdrawalService,
+      // 진행 중 계약(#17)과 본인 공고(#12)는 아직 모델이 없다. 포트를
+      // 지금 만들고 구현체는 false를 돌려준다 — 그 이슈가 들어오면 채운다.
+      useFactory: (
+        users: PrismaUserStore,
+        refreshTokens: PrismaRefreshTokenStore,
+        ledger: PrismaPointLedgerStore,
+      ) =>
+        new WithdrawalService(users, refreshTokens, ledger, {
+          hasActiveContract: () => Promise.resolve(false),
+          hasOpenJobPost: () => Promise.resolve(false),
+        }),
+      inject: [
+        PrismaUserStore,
+        PrismaRefreshTokenStore,
+        PrismaPointLedgerStore,
+      ],
+    },
+    {
       provide: EmailVerificationService,
       useFactory: (
         store: PrismaEmailVerificationStore,
@@ -96,6 +120,7 @@ import { SignupService } from './signup.service';
     SignupService,
     LoginService,
     PasswordResetService,
+    WithdrawalService,
   ],
 })
 export class AuthModule {}

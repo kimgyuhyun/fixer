@@ -32,6 +32,8 @@ model User {
   updatedAt    DateTime @updatedAt
   /// 표시용 캐시. **진실의 원천은 원장이다** (ADR-PAY-1).
   cachedBalance Int     @default(0)
+  /// 비활성화 시각. **상태 컬럼을 만들지 않는다** — 이것 하나로 판정한다 (ADR-AUTH-3).
+  deactivatedAt DateTime?
 
   /// 로그인 세션들. (#4)
   refreshTokens     RefreshToken[]
