@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type {
-  JobPostFilter,
-  JobPostStatus,
-  JobPostVersionSnapshot,
+import {
+  ADMIN_ACTIONS,
+  type JobPostFilter,
+  type JobPostStatus,
+  type JobPostVersionSnapshot,
 } from '@fixer/shared';
 import {
   holdKeyFor,
@@ -314,6 +315,20 @@ export class PrismaJobPostStore implements JobPostStore {
               userId: input.employerId,
               reason: 'POSTER_CANCEL',
               jobPostId: input.jobPostId,
+            },
+          });
+        }
+
+        if (input.audit) {
+          // **같은 트랜잭션이다** (#35 AC4). 뒤에 따로 쓰면 그 사이에 죽었을
+          // 때 "취소는 됐는데 누가 왜 했는지 없는 공고"가 남는다.
+          await tx.adminAuditLog.create({
+            data: {
+              adminId: input.audit.adminId,
+              action: ADMIN_ACTIONS.JOB_POST_FORCE_CANCEL,
+              targetType: 'JobPost',
+              targetId: input.jobPostId,
+              reason: input.audit.reason,
             },
           });
         }

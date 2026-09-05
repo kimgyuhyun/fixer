@@ -1,14 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  AdminErrorCode,
-  AdminJobPostFilter,
-  AdminJobPostList,
-  CancelJobPostResult,
+import {
+  ADMIN_ERRORS,
+  JOB_POST_ERRORS,
+  JOB_POST_PAGE_SIZE,
+  cancelIdempotencyKey,
+  type AdminErrorCode,
+  type AdminJobPostFilter,
+  type AdminJobPostList,
+  type AdminJobPostSummary,
+  type CancelJobPostResult,
 } from '@fixer/shared';
-import type {
-  AcceptedCounter,
-  JobPostRecord,
-  JobPostStore,
+import {
+  JobPostError,
+  transition,
+  type AcceptedCounter,
+  type JobPostRecord,
+  type JobPostStore,
 } from '../job-post/job-post.service';
 
 /** 관리자 계층이 던지는 도메인 에러 */
@@ -57,15 +64,84 @@ export class AdminJobPostService {
     private readonly accepted: AcceptedCounter,
   ) {}
 
-  list(_filter: AdminJobPostFilter): Promise<AdminJobPostList> {
-    throw new Error('not implemented');
+  async list(filter: AdminJobPostFilter): Promise<AdminJobPostList> {
+    const { items, total } = await this.admins.listAll(
+      filter,
+      JOB_POST_PAGE_SIZE,
+    );
+    return {
+      items: items.map(toAdminSummary),
+      total,
+      page: filter.page,
+      pageSize: JOB_POST_PAGE_SIZE,
+    };
   }
 
-  forceCancel(_input: {
+  /**
+   * 사유를 남기고 강제 취소한다. 잠긴 포인트는 전액 되돌아간다 (AC3).
+   *
+   * #16의 본인 취소와 다른 점은 **소유자 확인을 하지 않는 것** 하나다.
+   * 대신 사유가 필수이고, 감사 로그가 취소와 같은 트랜잭션에 실린다 (AC4).
+   */
+  async forceCancel(input: {
     adminId: string;
     jobPostId: string;
     reason: string;
   }): Promise<CancelJobPostResult> {
-    throw new Error('not implemented');
+    const reason = input.reason.trim();
+    // 사유 검증이 가장 먼저다. 사유 없는 조치는 저장소도 원장도 안 건드린다.
+    if (reason === '') {
+      throw new AdminError(ADMIN_ERRORS.REASON_REQUIRED);
+    }
+
+    const current = await this.posts.findById(input.jobPostId);
+    if (current === null) {
+      throw new JobPostError(JOB_POST_ERRORS.NOT_FOUND);
+    }
+
+    // 표에 없는 전이는 거부된다 (ADR-JOB-3). 이미 취소된 공고도 여기서 걸린다.
+    // 저장소를 부르기 전에 걸리므로 **조치가 없었는데 로그만 남는 일이 없다.**
+    transition(current.status, 'CANCELLED');
+
+    // 아무도 수락되지 않았으면 피해자가 없다. 누가 눌렀든 규칙은 #16과 같다 —
+    // 일하기로 한 사람 입장에서는 똑같이 약속이 깨진 것이다.
+    const penalize = (await this.accepted.countAccepted(current.id)) > 0;
+
+    const result = await this.posts.cancelAndRelease({
+      jobPostId: current.id,
+      employerId: current.employerId,
+      expectedStatus: current.status,
+      penalize,
+      // **#16과 같은 키다.** 본인이 취소하든 관리자가 취소하든 그 공고의
+      // 잠긴 돈은 한 번만 풀려야 한다.
+      idempotencyKey: cancelIdempotencyKey(current.id),
+      audit: { adminId: input.adminId, reason },
+    });
+
+    if (result === 'STALE') {
+      // 우리가 읽은 뒤 누군가 상태를 바꿨다. 덮어쓰지 않고 거절한다.
+      throw new JobPostError(JOB_POST_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: 'CANCELLED',
+      });
+    }
+
+    return {
+      id: current.id,
+      status: 'CANCELLED',
+      released: result.released,
+      penalized: penalize,
+    };
   }
+}
+
+function toAdminSummary(row: AdminJobPostRow): AdminJobPostSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    employerName: row.employerName,
+    categoryName: row.categoryName,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+  };
 }

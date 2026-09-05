@@ -1,0 +1,141 @@
+/*
+ * 이슈 #35 · 관리자 공고 관리.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ * 표 정렬은 가변 텍스트=좌, 형식 자료=중앙 (spec-fixed §11.2).
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+
+  width: 100%;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.notice {
+  padding: var(--space-4);
+
+  color: var(--color-text-muted);
+  text-align: center;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.field input,
+.field select {
+  /* 터치 목표 최소 44px */
+  min-height: 44px;
+  padding: var(--space-2);
+
+  color: var(--color-text);
+  font-size: 1rem;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.filters button,
+.actions button {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+
+  font-weight: 600;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.filters button:hover,
+.actions button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.actions button:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.total {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* 좁은 화면에서 표가 페이지를 밀지 않고 자기 안에서 스크롤한다 */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--space-2);
+
+  /* 가변 텍스트는 좌측 정렬이 기본이다 */
+  text-align: left;
+  white-space: nowrap;
+
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+
+  background: var(--color-surface);
+
+  font-size: 0.875rem;
+}
+
+/* 상태·등록일처럼 형식이 일정한 자료는 중앙 */
+.center {
+  text-align: center;
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+
+  padding: var(--space-4);
+
+  background: var(--color-surface);
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}

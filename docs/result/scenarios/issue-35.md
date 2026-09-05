@@ -4,7 +4,7 @@
 > PRD: `docs/result/prd/job-post.md` · 사양: `spec-fixed.md` §11.1 §11.2 §11.6
 > 담당: B · 선행 #13(공고 목록·필터) · #16(공고 취소) — 둘 다 머지 완료
 > 브랜치 `feat/job-post/issue-35` (base: `main`)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: Green 완료 — 시나리오 35개 전부 통과
 
 ---
 
@@ -363,47 +363,47 @@ middleware 양쪽"을 요구하는데, **middleware는 로그인 여부까지만
 
 ### 정상
 
-- [ ] [정상] `AdminGuard` — should allow the request when the access cookie belongs to a user whose role is ADMIN
-- [ ] [정상] `AdminGuard` — should expose the authenticated user id as the admin principal when it allows the request
-- [ ] [정상] `AdminGuard` — should allow the request and set a renewed access cookie when the access token expired but the refresh token is alive
-- [ ] [정상] `AdminJobPostService.list` — should return title, employerName, categoryName, status and createdAt for every row
-- [ ] [정상] `AdminJobPostService.list` — should include posts of every status when no status filter is given
-- [ ] [정상] `AdminJobPostService.list` — should return only that employer's posts when q matches an employer name
-- [ ] [정상] `AdminJobPostService.list` — should return the post when q matches its title instead of an employer name
-- [ ] [정상] `AdminJobPostService.forceCancel` — should set the post to CANCELLED and release the whole held amount
-- [ ] [정상] `AdminJobPostService.forceCancel` — should record an AdminAuditLog row carrying the admin id, the reason and the time
-- [ ] [정상] `AdminJobPostList` — should render title, employer, category, status and createdAt columns for each row
-- [ ] [정상] `middleware` — should redirect to /login when /admin/job-posts is opened without the access cookie
+- [x] [정상] `AdminGuard` — should allow the request when the access cookie belongs to a user whose role is ADMIN
+- [x] [정상] `AdminGuard` — should expose the authenticated user id as the admin principal when it allows the request
+- [x] [정상] `AdminGuard` — should allow the request and set a renewed access cookie when the access token expired but the refresh token is alive
+- [x] [정상] `AdminJobPostService.list` — should return title, employerName, categoryName, status and createdAt for every row
+- [x] [정상] `AdminJobPostService.list` — should include posts of every status when no status filter is given
+- [x] [정상] `AdminJobPostService.list` — should return only that employer's posts when q matches an employer name
+- [x] [정상] `AdminJobPostService.list` — should return the post when q matches its title instead of an employer name
+- [x] [정상] `AdminJobPostService.forceCancel` — should set the post to CANCELLED and release the whole held amount
+- [x] [정상] `AdminJobPostService.forceCancel` — should record an AdminAuditLog row carrying the admin id, the reason and the time
+- [x] [정상] `AdminJobPostList` — should render title, employer, category, status and createdAt columns for each row
+- [x] [정상] `middleware` — should redirect to /login when /admin/job-posts is opened without the access cookie
 
 ### 경계
 
-- [ ] [경계] `AdminJobPostService.forceCancel` — should release the amount actually held in the ledger, not the recomputed budget, when the budget was edited after posting
-- [ ] [경계] `AdminJobPostService.forceCancel` — should release 0 and still record the audit log when nothing is held
-- [ ] [경계] `AdminJobPostService.forceCancel` — should record exactly one RELEASE when the same post is force-cancelled twice concurrently
-- [ ] [경계] `AdminJobPostService.forceCancel` — should not penalize the employer when the post has no accepted applicant
-- [ ] [경계] `AdminJobPostService.forceCancel` — should penalize the employer once when the post has at least one accepted applicant
-- [ ] [경계] `AdminJobPostService.forceCancel` — should cancel a CLOSED post as well, since the transition table allows CLOSED to CANCELLED
-- [ ] [경계] `cancelAndRelease` — should leave the post uncancelled when writing the audit log fails
-- [ ] [경계] `AdminJobPostService.list` — should match an employer name partially and case-insensitively
-- [ ] [경계] `AdminJobPostService.list` — should narrow by both filters when q and status are given together
-- [ ] [경계] `AdminJobPostService.list` — should return an empty items array with the unfiltered-page total when page is past the last page
-- [ ] [경계] `adminJobPostFilterSchema` — should fall back to page 1 when page is 0 or not a number
+- [x] [경계] `AdminJobPostService.forceCancel` — should release the amount actually held in the ledger, not the recomputed budget, when the budget was edited after posting
+- [x] [경계] `AdminJobPostService.forceCancel` — should release 0 and still record the audit log when nothing is held
+- [x] [경계] `AdminJobPostService.forceCancel` — should record exactly one RELEASE when the same post is force-cancelled twice concurrently
+- [x] [경계] `AdminJobPostService.forceCancel` — should not penalize the employer when the post has no accepted applicant
+- [x] [경계] `AdminJobPostService.forceCancel` — should penalize the employer once when the post has at least one accepted applicant
+- [x] [경계] `AdminJobPostService.forceCancel` — should cancel a CLOSED post as well, since the transition table allows CLOSED to CANCELLED
+- [x] [경계] `cancelAndRelease` — should leave the post uncancelled when writing the audit log fails
+- [x] [경계] `AdminJobPostService.list` — should match an employer name partially and case-insensitively
+- [x] [경계] `AdminJobPostService.list` — should narrow by both filters when q and status are given together
+- [x] [경계] `AdminJobPostService.list` — should return an empty items array with the unfiltered-page total when page is past the last page
+- [x] [경계] `adminJobPostFilterSchema` — should fall back to page 1 when page is 0 or not a number
 
 ### 예외
 
-- [ ] [예외] `AdminGuard` — should throw AUTH_UNAUTHENTICATED when the request carries neither an access nor a refresh cookie
-- [ ] [예외] `AdminGuard` — should throw AUTH_UNAUTHENTICATED when the access cookie is forged and no refresh cookie is present
-- [ ] [예외] `AdminGuard` — should throw ADMIN_FORBIDDEN when the authenticated user no longer exists
-- [ ] [예외] `AdminGuard` — should throw ADMIN_FORBIDDEN when the user's role is USER
-- [ ] [예외] `AdminJobPostService.forceCancel` — should throw ADMIN_REASON_REQUIRED when the reason is empty or only whitespace
-- [ ] [예외] `AdminJobPostService.forceCancel` — should throw JOB_POST_NOT_FOUND when the post does not exist or is soft-deleted
-- [ ] [예외] `AdminJobPostService.forceCancel` — should throw JOB_POST_INVALID_TRANSITION when the post is already CANCELLED
-- [ ] [예외] `AdminJobPostService.forceCancel` — should throw JOB_POST_INVALID_TRANSITION when the post is COMPLETED
-- [ ] [예외] `AdminJobPostService.forceCancel` — should write no audit log when the cancel is rejected
-- [ ] [예외] `AdminJobPostController` — should answer 403 with ADMIN_FORBIDDEN when a non-admin calls the list endpoint
-- [ ] [예외] `AdminJobPostController` — should answer 400 with ADMIN_REASON_REQUIRED when the cancel body has no reason
-- [ ] [예외] `AdminJobPostList` — should keep the confirm button disabled until a reason is typed
-- [ ] [예외] `AdminJobPostList` — should render a "권한이 없습니다" notice instead of the table when forbidden is true
+- [x] [예외] `AdminGuard` — should throw AUTH_UNAUTHENTICATED when the request carries neither an access nor a refresh cookie
+- [x] [예외] `AdminGuard` — should throw AUTH_UNAUTHENTICATED when the access cookie is forged and no refresh cookie is present
+- [x] [예외] `AdminGuard` — should throw ADMIN_FORBIDDEN when the authenticated user no longer exists
+- [x] [예외] `AdminGuard` — should throw ADMIN_FORBIDDEN when the user's role is USER
+- [x] [예외] `AdminJobPostService.forceCancel` — should throw ADMIN_REASON_REQUIRED when the reason is empty or only whitespace
+- [x] [예외] `AdminJobPostService.forceCancel` — should throw JOB_POST_NOT_FOUND when the post does not exist or is soft-deleted
+- [x] [예외] `AdminJobPostService.forceCancel` — should throw JOB_POST_INVALID_TRANSITION when the post is already CANCELLED
+- [x] [예외] `AdminJobPostService.forceCancel` — should throw JOB_POST_INVALID_TRANSITION when the post is COMPLETED
+- [x] [예외] `AdminJobPostService.forceCancel` — should write no audit log when the cancel is rejected
+- [x] [예외] `AdminJobPostController` — should answer 403 with ADMIN_FORBIDDEN when a non-admin calls the list endpoint
+- [x] [예외] `AdminJobPostController` — should answer 400 with ADMIN_REASON_REQUIRED when the cancel body has no reason
+- [x] [예외] `AdminJobPostList` — should keep the confirm button disabled until a reason is typed
+- [x] [예외] `AdminJobPostList` — should render a "권한이 없습니다" notice instead of the table when forbidden is true
 
 ---
 

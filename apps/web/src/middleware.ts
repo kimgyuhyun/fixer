@@ -6,8 +6,12 @@ import { AUTH_COOKIES } from '@fixer/shared';
  *
  * 페이지마다 검사를 붙이면 새 보호 페이지를 만들 때마다 빠뜨린다.
  * 한 곳에서 판단하면 빠뜨릴 자리가 없다.
+ *
+ * **`/admin`은 로그인 여부까지만 여기서 본다** (#35). 관리자인지는 API의
+ * `AdminGuard`가 요청마다 DB를 보고 판정한다 — `role`을 토큰에 복사하면
+ * 권한을 회수당한 관리자가 토큰 수명 동안 계속 통과한다.
  */
-export const PROTECTED_PATHS = ['/my'];
+export const PROTECTED_PATHS = ['/my', '/admin'];
 
 /**
  * 쿠키를 **서버 단에서** 검사한다. 클라이언트 자바스크립트로는 우회할 수 없다.

@@ -1,13 +1,15 @@
 import {
+  ForbiddenException,
   Inject,
   Injectable,
   createParamDecorator,
   type CanActivate,
   type ExecutionContext,
 } from '@nestjs/common';
-import type { UserRole } from '@fixer/shared';
-import type { Request } from 'express';
-import { LoginService } from '../auth/login.service';
+import { ADMIN_ERRORS, AUTH_COOKIES, type UserRole } from '@fixer/shared';
+import type { Request, Response } from 'express';
+import { LoginError, LoginService } from '../auth/login.service';
+import { LoginHttpError } from '../auth/login.http-error';
 
 /** 가드를 통과한 요청에 심어 두는 주체. 감사 로그의 "누가"가 여기서 온다 */
 export interface AdminPrincipal {
@@ -53,9 +55,83 @@ export class AdminGuard implements CanActivate {
     @Inject(ROLE_READER) private readonly roles: RoleReader,
   ) {}
 
-  canActivate(_context: ExecutionContext): Promise<boolean> {
-    throw new Error('not implemented');
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const http = context.switchToHttp();
+    const request = http.getRequest<RequestWithAdmin>();
+    const response = http.getResponse<Response>();
+
+    const userId = await this.callerOf(request, response);
+
+    if ((await this.roles.roleOf(userId)) !== 'ADMIN') {
+      // 없는 회원도 여기로 온다. 관리자가 아닌 것과 구분해 알려줄 이유가
+      // 없고, 구분하면 그 id가 실재하는지가 새어나간다.
+      throw new ForbiddenException({
+        errorCode: ADMIN_ERRORS.FORBIDDEN,
+        message: '관리자만 접근할 수 있습니다.',
+      });
+    }
+
+    request.admin = { userId };
+    return true;
   }
+
+  /**
+   * 쿠키에서 회원을 뽑는다. Access가 만료됐어도 Refresh가 살아 있으면
+   * 갱신하고 그대로 진행한다 — `/api/auth/me`·#36과 같은 처리다.
+   */
+  private async callerOf(
+    request: Request,
+    response: Response,
+  ): Promise<string> {
+    const cookies = parseCookies(request.headers.cookie);
+    try {
+      const session = await this.logins.authenticate({
+        accessToken: cookies[AUTH_COOKIES.access],
+        refreshToken: cookies[AUTH_COOKIES.refresh],
+      });
+
+      if (session.renewedAccessToken) {
+        // 속성이 `login.controller.ts`의 `AUTH_COOKIE_OPTIONS`와 **한 글자도
+        // 달라선 안 된다.** 하나라도 다르면 브라우저가 다른 쿠키로 보고
+        // 갱신분이 원래 것을 덮어쓰지 못한다.
+        response.cookie(AUTH_COOKIES.access, session.renewedAccessToken.value, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'lax',
+          path: '/',
+          expires: session.renewedAccessToken.expiresAt,
+        });
+      }
+
+      return session.userId;
+    } catch (error) {
+      throw error instanceof LoginError
+        ? new LoginHttpError(error.code)
+        : error;
+    }
+  }
+}
+
+/**
+ * `Cookie` 헤더를 이름-값으로 가른다.
+ *
+ * `login.controller.ts`·`notification.controller.ts`에 같은 함수가 있다.
+ * 셋을 공용으로 빼는 것은 Refactor 단계에서 한다.
+ */
+function parseCookies(header: string | undefined): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  if (header === undefined) return cookies;
+
+  for (const pair of header.split(';')) {
+    const separator = pair.indexOf('=');
+    if (separator === -1) continue;
+
+    const name = pair.slice(0, separator).trim();
+    if (name === '') continue;
+    cookies[name] = decodeURIComponent(pair.slice(separator + 1).trim());
+  }
+
+  return cookies;
 }
 
 /** 컨트롤러가 관리자 id를 꺼내는 파라미터 데코레이터 */
