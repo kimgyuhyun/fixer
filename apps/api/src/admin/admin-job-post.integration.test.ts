@@ -151,7 +151,7 @@ async function seedPost(
     headcount: HEADCOUNT,
     rewardPerPerson: REWARD,
     requiredDescription: '30평 사무실 바닥과 창문을 닦습니다.',
-  } as Parameters<JobPostService['create']>[1]);
+  });
   return created.id;
 }
 

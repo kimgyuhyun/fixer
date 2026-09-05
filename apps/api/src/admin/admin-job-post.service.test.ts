@@ -89,9 +89,7 @@ class FakeJobPostStore implements Partial<JobPostStore> {
     private readonly result: 'OK' | 'STALE' = 'OK',
   ) {}
 
-  findById(
-    _id: string,
-  ): Promise<(JobPostRecord & { categoryName: string }) | null> {
+  findById(): Promise<(JobPostRecord & { categoryName: string }) | null> {
     return Promise.resolve(
       this.post === null ? null : { ...this.post, categoryName: '청소' },
     );

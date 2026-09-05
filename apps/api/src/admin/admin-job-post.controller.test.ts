@@ -6,7 +6,7 @@ import {
   AUTH_COOKIES,
   type AdminJobPostSummary,
 } from '@fixer/shared';
-import type { AddressInfo } from 'node:net';
+import type { AddressInfo, Server } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LoginService } from '../auth/login.service';
 import { AdminJobPostController } from './admin-job-post.controller';
@@ -84,7 +84,8 @@ async function startWith(
   app = moduleRef.createNestApplication();
   await app.init();
   await app.listen(0);
-  const { port } = app.getHttpServer().address() as AddressInfo;
+  const server = app.getHttpServer() as Server;
+  const { port } = server.address() as AddressInfo;
   return `http://127.0.0.1:${port}`;
 }
 
