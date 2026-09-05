@@ -89,47 +89,69 @@ GET /exchange-accounts/me  →  200  MaskedAccount
 
 ### 암호화해서 저장한다 (AC1)
 
-- [ ] [정상] `register` — should store the account number encrypted, not in plain text
-- [ ] [정상] `register` — should be able to read the number back through the cipher
-- [ ] [정상] `register` — should keep the last four digits for masking
-- [ ] [보안] `cipher` — should produce a different ciphertext each time for the same number
-- [ ] [보안] `cipher` — should refuse to decrypt a tampered ciphertext
-- [ ] [보안] `cipher` — should refuse to start without a key
+- [x] [정상] `register` — should store the account number encrypted, not in plain text
+- [x] [정상] `register` — should be able to read the number back through the cipher
+- [x] [정상] `cipher` — should read back what it encrypted
+- [x] [경계] `cipher` — should refuse a ciphertext whose shape is wrong
+- [x] [정상] `register` — should strip hyphens before storing
+- [x] [정상] `register` — should keep the last four digits for masking
+- [x] [보안] `cipher` — should produce a different ciphertext each time for the same number
+- [x] [보안] `cipher` — should refuse to decrypt a tampered ciphertext
+- [x] [보안] `cipher` — should refuse to start without a key
 
 ### 형식이 맞으면 즉시 VERIFIED (AC2)
 
-- [ ] [정상] `register` — should mark a well-formed account VERIFIED right away
-- [ ] [정상] `register` — should record no rejection reason when it passed
-- [ ] [경계] `register` — should accept the shortest allowed account number
-- [ ] [경계] `register` — should accept the longest allowed account number
+- [x] [정상] `register` — should mark a well-formed account VERIFIED right away
+- [x] [정상] `register` — should record no rejection reason when it passed
+- [x] [경계] `register` — should accept the shortest allowed account number
+- [x] [경계] `register` — should accept the longest allowed account number
 
 ### 형식이 틀리면 REJECTED (AC3)
 
-- [ ] [예외] `register` — should reject an account number that is too short
-- [ ] [예외] `register` — should reject an account number with letters in it
-- [ ] [예외] `register` — should reject an unknown bank code
-- [ ] [정상] `register` — should say why it was rejected
-- [ ] [정상] `register` — should store nothing when the format is wrong
+- [x] [예외] `register` — should reject an account number that is too short
+- [x] [예외] `register` — should reject an account number with letters in it
+- [x] [예외] `register` — should reject an unknown bank code
+- [x] [정상] `register` — should say why it was rejected
+- [x] [정상] `register` — should store nothing when the format is wrong
 
 ### 화면에서는 마스킹된다 (AC4)
 
-- [ ] [보안] `findMine` — should never return the account number in plain text
-- [ ] [정상] `findMine` — should return the masked number and the bank code
-- [ ] [예외] `findMine` — should reject a member who registered no account
-- [ ] [정상] `계좌 화면` — should show the masked number
-- [ ] [보안] `계좌 화면` — should show a rejection reason when the account was refused
+- [x] [보안] `findMine` — should never return the account number in plain text
+- [x] [정상] `findMine` — should return the masked number and the bank name
+- [x] [예외] `findMine` — should reject a member who registered no account
+- [x] [정상] `계좌 화면` — should show the masked number
+- [x] [보안] `계좌 화면` — should never show the full account number after registering
+- [x] [정상] `계좌 화면` — should strip hyphens before sending
+- [x] [예외] `계좌 화면` — should show why the account was refused
+- [x] [정상] `계좌 화면` — should load an account that was registered before
+- [x] [경계] `계좌 화면` — should not let a registration start before a member is chosen
 
 ### 덮어쓰기
 
-- [ ] [경계] `register` — should replace the account when the member registers again
-- [ ] [경계] `register` — should verify again from scratch after a replacement
+- [x] [경계] `register` — should replace the account when the member registers again
+- [x] [경계] `register` — should verify again from scratch after a replacement
 
 ### 진짜 Postgres에서
 
-- [ ] [보안] `통합` — should leave no plain account number in the database
-- [ ] [경계] `통합` — should keep one account per member
+- [x] [보안] `통합` — should leave no plain account number in the database
+- [x] [경계] `통합` — should keep one account per member
+- [x] [정상] `통합` — should read the number back for a payout
+- [x] [경계] `통합` — should store nothing when the format is wrong
+- [x] [경계] `통합` — should not let two members share one row
+- [x] [정상] `revealForPayout` — should return the plain number for a payout
+- [x] [예외] `revealForPayout` — should reject a member who registered no account
 
-**총 24개** (정상 9 / 경계 5 / 예외 4 / 보안 6)
+**총 34개** (서비스·암복호화 23 + 통합 5 + 화면 6)
+
+### 서버를 띄워 확인한 것
+
+| 무엇                | 결과                                                 |
+| ------------------- | ---------------------------------------------------- |
+| 등록                | `****5678`, `VERIFIED`. 하이픈은 지워졌다            |
+| DB의 계좌 컬럼      | `RgTWY08QDAsdnPL6:3bCZ...:F5+wJCHJ6eErva8=` — 암호문 |
+| **평문 검색**       | **0건**                                              |
+| `123` (자릿수 부족) | `400`, "계좌번호는 10~14자리입니다."                 |
+| `999` (없는 은행)   | `400`, "지원하지 않는 은행입니다."                   |
 
 ---
 

@@ -59,6 +59,12 @@ const READY: Feature[] = [
     href: '/points',
   },
   {
+    issue: 30,
+    title: '환전 계좌',
+    summary: '계좌를 등록하면 암호화되어 저장되고 뒤 4자리만 보인다.',
+    href: '/my/account',
+  },
+  {
     issue: 12,
     title: '공고 등록·목록',
     summary: '공고를 올리면 예산이 잠기고 목록에 뜬다.',

@@ -49,6 +49,7 @@ model User {
   payments          Payment[]
   jobPosts          JobPost[]
   penalties         Penalty[]
+  exchangeAccount   ExchangeAccount?
 
   /// 파기 배치가 "비활성화됐고 아직 파기 안 된" 행만 훑는다 (#39)
   @@index([deactivatedAt, purgedAt])
@@ -354,4 +355,40 @@ enum PenaltyReason {
   SAME_DAY_CANCEL
   /// 구인자가 수락자가 있는 공고를 취소했다
   POSTER_CANCEL
+}
+
+/// 환전받을 계좌. (이슈 #30, `spec-fixed.md` §6.4.1)
+///
+/// **계좌번호는 암호화해서 담는다** (ADR-PAY-6). 평문으로 두면 DB 백업 하나가
+/// 새는 순간 전원의 계좌가 샌다.
+model ExchangeAccount {
+  id       String @id @default(cuid())
+  /// 회원당 한 계좌. 여러 개면 환전 요청마다 어느 계좌인지 정해야 하는데
+  /// 그 단계는 §6.4에 없다.
+  userId   String @unique
+  bankCode String
+
+  /// `iv:authTag:ciphertext` 한 컬럼. 셋으로 쪼개면 하나만 지워질 수 있다.
+  accountNumberEncrypted String
+  /// 마스킹 표시용 뒤 4자리. **평문이지만 이것만으로는 계좌를 쓸 수 없다** —
+  /// 목록을 그릴 때마다 복호화하면 전 회원의 계좌번호가 메모리에 올라온다.
+  accountNumberLast4     String
+  holderName             String
+
+  verificationStatus AccountVerificationStatus @default(PENDING)
+  /// 왜 거절됐나. 없으면 사용자가 무엇을 고쳐야 하는지 모른다
+  rejectedReason     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AccountVerificationStatus {
+  /// 아직 검증 전
+  PENDING
+  /// 검증 통과. stub 모드는 형식만 보고 즉시 이 상태가 된다 (§6.4.2)
+  VERIFIED
+  /// 형식이 틀렸거나 실명 대조에 실패했다
+  REJECTED
 }

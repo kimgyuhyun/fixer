@@ -1,0 +1,134 @@
+/*
+ * 이슈 #30 · 환전 계좌.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ * 계좌번호는 tabular-nums로 자릿수를 맞춘다.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.note {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.registered {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  padding: var(--space-3);
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+/* 좁은 화면에서는 라벨 위, 값 아래. 넓어지면 한 줄로 붙인다. */
+.row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-1);
+}
+
+@media (min-width: 24rem) {
+  .row {
+    grid-template-columns: 5rem 1fr;
+    gap: var(--space-2);
+  }
+}
+
+.row dt {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.numbers {
+  font-variant-numeric: tabular-nums;
+}
+
+.reason {
+  color: var(--color-danger);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  padding: var(--space-2);
+
+  color: var(--color-text);
+  font: inherit;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.submit {
+  padding: var(--space-3);
+
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+
+  background: var(--color-primary);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.submit:disabled {
+  background: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.error {
+  padding: var(--space-2);
+
+  color: var(--color-danger);
+  font-size: 0.875rem;
+
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius);
+}
