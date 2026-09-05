@@ -10,6 +10,8 @@ import {
   type ApplicationStatus,
   type ApplicationSummary,
   type ApplyRequest,
+  type CompleteJobPostRequest,
+  type CompletionSummary,
   type JobPostStatus,
 } from '@fixer/shared';
 
@@ -109,6 +111,30 @@ export interface ApplicationStore {
     acceptedAt: Date;
   }): Promise<ApplicationRecord | 'STALE' | 'FULL'>;
 
+  /**
+   * 완료 확인을 **한 트랜잭션으로** 확정한다 (#23, `ADR-PAY-4`).
+   *
+   * 1. `JobPost SET COMPLETED WHERE id=? AND status=?` → 0행이면 `'STALE'`
+   * 2. `Application SET COMPLETED WHERE jobPostId=? AND status='ACCEPTED'`
+   * 3. 확정 인원마다 구직자 `PAYOUT +rewardPerPerson`
+   * 4. 남은 잠금액을 구인자에게 `RELEASE`
+   *
+   * **구인자의 `−` 행은 쓰지 않는다.** `HOLD`가 공고 `OPEN` 시점에 이미
+   * 뺐다. 여기서 또 쓰면 같은 돈이 두 번 빠져 원장 합이 음수가 된다.
+   *
+   * 반환할 잠금액을 예산에서 다시 계산하지 않고 **그 공고를 참조하는 원장
+   * 행의 합**을 쓴다 — #15가 예산을 고친 공고는 예산과 실제 잠금이 다르다
+   * (`cancelAndRelease`와 같은 판단).
+   *
+   * `'STALE'` = 우리가 읽은 뒤 상태가 바뀌었다. **아무것도 커밋하지 않는다.**
+   */
+  completeAndSettle(input: {
+    jobPostId: string;
+    employerId: string;
+    expectedStatus: JobPostStatus;
+    rewardPerPerson: number;
+  }): Promise<SettlementResult | 'STALE'>;
+
   /** 구인자의 지원자 목록. 오래 지원한 순 (선착순 표시지 선착순 수락은 아니다) */
   listByJobPost(
     jobPostId: string,
@@ -127,6 +153,16 @@ export interface ApplicantProfileReader {
   profilesOf(
     applicantIds: readonly string[],
   ): Promise<Map<string, ApplicantProfile>>;
+}
+
+/** 완료 확인이 실제로 옮긴 돈 (#23) */
+export interface SettlementResult {
+  /** 지급받은 사람 수 */
+  paidCount: number;
+  /** 지급 총액 */
+  paidTotal: number;
+  /** 구인자에게 돌아간 미체결분 */
+  releasedTotal: number;
 }
 
 /** 지원자 한 명의 표시용 정보 */
@@ -159,6 +195,8 @@ export interface JobPostForApplication {
   headcount: number;
   /** 확정 인원 (#18). 정원이 찼는지는 저장소의 조건부 UPDATE가 최종 판정한다 */
   acceptedCount: number;
+  /** 1인당 보상금 (#23). 완료 확인이 확정 인원마다 이 금액을 지급한다 */
+  rewardPerPerson: number;
 }
 
 /**
@@ -219,6 +257,17 @@ export class ApplicationService {
     }
 
     return toSummary(accepted);
+  }
+
+  /**
+   * 구인자가 업무 완료를 확인한다 (#23, `ADR-APP-5`).
+   *
+   * 확정 인원분은 구직자에게 `PAYOUT`되고 남은 잠금은 `RELEASE`된다.
+   * **시스템은 일이 끝났는지 알 방법이 없다** — 출퇴근 체크도 GPS도 없으므로
+   * 구인자의 확인이 유일한 신호다.
+   */
+  complete(_input: CompleteJobPostRequest): Promise<CompletionSummary> {
+    throw new Error('not implemented');
   }
 
   /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */

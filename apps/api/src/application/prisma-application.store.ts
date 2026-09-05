@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { ApplicationStatus } from '@fixer/shared';
+import type { ApplicationStatus, JobPostStatus } from '@fixer/shared';
 import type {
   ApplicantProfile,
   ApplicantProfileReader,
@@ -8,6 +8,7 @@ import type {
   ApplicationStore,
   JobPostForApplication,
   JobPostReader,
+  SettlementResult,
 } from './application.service';
 
 /** Prisma가 유니크 제약 위반에 쓰는 코드 */
@@ -142,6 +143,15 @@ export class PrismaApplicationStore implements ApplicationStore {
     }
   }
 
+  completeAndSettle(_input: {
+    jobPostId: string;
+    employerId: string;
+    expectedStatus: JobPostStatus;
+    rewardPerPerson: number;
+  }): Promise<SettlementResult | 'STALE'> {
+    throw new Error('not implemented');
+  }
+
   async listByJobPost(
     jobPostId: string,
     statuses: readonly ApplicationStatus[],
@@ -179,6 +189,7 @@ export class PrismaJobPostReader implements JobPostReader {
         version: true,
         headcount: true,
         acceptedCount: true,
+        rewardPerPerson: true,
       },
     });
   }

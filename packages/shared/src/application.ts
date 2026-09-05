@@ -90,6 +90,8 @@ export const APPLICATION_ERRORS = {
   HEADCOUNT_FULL: 'APPLICATION_HEADCOUNT_FULL',
   /** 그 공고의 구인자가 아니다 (#18) */
   NOT_EMPLOYER: 'APPLICATION_NOT_EMPLOYER',
+  /** 공고를 그 상태로 옮길 수 없다 (#23). **job-post의 코드를 재사용한다** */
+  JOB_POST_INVALID_TRANSITION: 'JOB_POST_INVALID_TRANSITION',
 } as const;
 
 export type ApplicationErrorCode =
@@ -130,6 +132,34 @@ export const acceptApplicationRequestSchema = z.object({
 export type AcceptApplicationRequest = z.infer<
   typeof acceptApplicationRequestSchema
 >;
+
+/** 완료 확인 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#23) */
+export const completeJobPostRequestSchema = z.object({
+  jobPostId: z.string().min(1, { error: '공고를 알 수 없습니다.' }),
+  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
+});
+export type CompleteJobPostRequest = z.infer<
+  typeof completeJobPostRequestSchema
+>;
+
+/**
+ * 완료 확인 결과 (#23).
+ *
+ * 화면이 "3명에게 30,000P 지급, 30,000P 반환"을 그린다. 셋을 다 주는 이유는
+ * **구인자가 무슨 일이 일어났는지 봐야 하기 때문**이다 — 확정 인원분만
+ * 나가고 나머지가 돌아온 것을 숫자로 확인하지 못하면 돈이 샜다고 믿게 된다.
+ */
+export const completionSummarySchema = z.object({
+  jobPostId: z.string(),
+  status: z.literal('COMPLETED'),
+  /** 지급받은 사람 수 */
+  paidCount: z.number().int().min(0),
+  /** 지급 총액 */
+  paidTotal: z.number().int().min(0),
+  /** 구인자에게 돌아간 미체결분 */
+  releasedTotal: z.number().int().min(0),
+});
+export type CompletionSummary = z.infer<typeof completionSummarySchema>;
 
 /** 표본이 이보다 적으면 평균을 감춘다 (`spec-fixed.md` §7) */
 export const RATING_MIN_SAMPLES = 3;

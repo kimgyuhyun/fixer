@@ -175,7 +175,6 @@ interface SettlementResult {
 ### 예외
 
 - [ ] [예외] `complete` — should throw JOB_POST_NOT_FOUND when the post does not exist
-- [ ] [예외] `complete` — should throw JOB_POST_NOT_FOUND when the post was soft deleted
 - [ ] [예외] `complete` — should throw APPLICATION_NOT_EMPLOYER when someone else confirms
 - [ ] [예외] `complete` — should throw JOB_POST_INVALID_TRANSITION when the post is already COMPLETED
 - [ ] [예외] `complete` — should throw JOB_POST_INVALID_TRANSITION when the post was cancelled
@@ -190,20 +189,31 @@ interface SettlementResult {
 - [ ] [통합] `completeAndSettle` — should let exactly one of two concurrent completions settle
 - [ ] [통합] `completeAndSettle` — should keep the cached balance equal to the ledger sum for employer and workers
 - [ ] [통합] `completeAndSettle` — should leave the job post OPEN when the payout writes fail
+- [ ] [통합] `complete` — should throw JOB_POST_NOT_FOUND when the post was soft deleted
 
 ---
 
 ## AC 대조
 
-| #   | AC                                                      | 커버하는 시나리오                                                                                                                                                                                                              |
-| --- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | 확정 3명·정원 6명 → 3명분 `PAYOUT`, 3명분 `RELEASE`     | `[정상] pay each accepted worker` · `[정상] release the 3 unmatched slots` · `[정상] report paidCount 3` · `[경계] release nothing when full` · `[경계] pay nobody when none accepted` · `[경계] not pay an APPLIED applicant` |
-| 2   | 완료 후 구직자 잔액이 보상금만큼 늘어 있다              | `[통합] increase each worker's balance` · `[통합] cached balance equals ledger sum`                                                                                                                                            |
-| 3   | 완료 후 공고 상태가 `COMPLETED`다                       | `[정상] move the job post to COMPLETED` · `[정상] move every ACCEPTED application to COMPLETED`                                                                                                                                |
-| 4   | 이미 완료된 공고를 또 확인해도 지급이 두 번 되지 않는다 | `[예외] already COMPLETED` · `[예외] write nothing when the status changed` · `[통합] nothing more when completed twice` · `[통합] exactly one of two concurrent`                                                              |
-| 5   | 완료 확인 전에는 구직자 잔액이 아직 늘지 않았다         | `[통합] leave the worker balance unchanged before completion`                                                                                                                                                                  |
+| #   | AC                                                      | 커버하는 시나리오                                                                                                                                                                                                                                                                                 |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 확정 3명·정원 6명 → 3명분 `PAYOUT`, 3명분 `RELEASE`     | `[정상] pay each accepted worker` · `[정상] release the 3 unmatched slots` · `[정상] report paidCount 3` · `[경계] release nothing when full` · `[경계] pay nobody when none accepted` · `[경계] not pay an APPLIED applicant` · **`[통합] leave the employer holding only the released amount`** |
+| 2   | 완료 후 구직자 잔액이 보상금만큼 늘어 있다              | `[통합] increase each worker's balance` · `[통합] cached balance equals ledger sum`                                                                                                                                                                                                               |
+| 3   | 완료 후 공고 상태가 `COMPLETED`다                       | `[정상] move the job post to COMPLETED` · `[정상] move every ACCEPTED application to COMPLETED`                                                                                                                                                                                                   |
+| 4   | 이미 완료된 공고를 또 확인해도 지급이 두 번 되지 않는다 | `[예외] already COMPLETED` · `[예외] write nothing when the status changed` · `[통합] nothing more when completed twice` · `[통합] exactly one of two concurrent`                                                                                                                                 |
+| 5   | 완료 확인 전에는 구직자 잔액이 아직 늘지 않았다         | `[통합] leave the worker balance unchanged before completion`                                                                                                                                                                                                                                     |
 
-**커버리지: AC 5개 전부 커버 / 시나리오 26개 / 미커버 0개**
+**커버리지: AC 5개 전부 커버 / 시나리오 25개 / 미커버 0개**
+
+> **AC1의 산술은 통합 테스트가 지킨다.** 서비스 단위 테스트의 가짜 저장소는
+> 지급·반환 계산을 스스로 하므로, 그 테스트들이 검증하는 것은 **배선**(주인
+> 확인, 전이 판정, 요약 매핑)이지 금액 자체가 아니다. 진짜 원장 행은
+> `[통합]`이 센다. #27에서 가짜 저장소가 항상 통과하는 테스트를 만든 적이
+> 있어 여기에 적어 둔다.
+
+> **`soft deleted`는 통합으로 옮겼다.** 소프트 삭제를 걸러내는 것은
+> `PrismaJobPostReader`의 `WHERE deletedAt IS NULL`이라, 가짜 저장소로는
+> `does not exist`와 똑같은 테스트가 된다.
 
 ### AC에 없는데 넣은 시나리오
 

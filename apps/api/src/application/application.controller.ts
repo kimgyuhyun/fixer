@@ -156,6 +156,8 @@ const MESSAGES: Record<ApplicationErrorCode, string> = {
   [APPLICATION_ERRORS.JOB_POST_NOT_FOUND]: '공고를 찾을 수 없습니다.',
   [APPLICATION_ERRORS.HEADCOUNT_FULL]: '이미 정원이 찼습니다.',
   [APPLICATION_ERRORS.NOT_EMPLOYER]: '이 공고의 구인자가 아닙니다.',
+  [APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION]:
+    '지금 상태에서는 완료 확인을 할 수 없습니다.',
 };
 
 function toHttpError(error: unknown): unknown {

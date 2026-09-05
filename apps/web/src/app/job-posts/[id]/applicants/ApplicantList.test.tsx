@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApplicantList } from './ApplicantList';
 
@@ -78,5 +79,44 @@ describe('ApplicantList', () => {
 
     expect(await screen.findByText('김구직')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '수락' })).toBeNull();
+  });
+});
+describe('ApplicantList — 완료 확인 (#23)', () => {
+  it('should show the 완료 확인 button to the employer', async () => {
+    mockList(
+      listOf([{ ...APPLICANT, status: 'ACCEPTED' }], { acceptedCount: 1 }),
+    );
+
+    render(<ApplicantList jobPostId="job_1" />);
+
+    expect(
+      await screen.findByRole('button', { name: '완료 확인' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should reload the list after the completion succeeds', async () => {
+    // 완료 확인은 신청 상태와 공고 상태를 함께 바꾼다. 목록을 다시 읽지
+    // 않으면 화면에 옛 상태가 남는다.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve(
+          listOf([{ ...APPLICANT, status: 'ACCEPTED' }], { acceptedCount: 1 }),
+        ),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApplicantList jobPostId="job_1" />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: '완료 확인' }),
+    );
+
+    const calls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(calls).toContain('/api/applications/complete');
+    // 첫 조회 · 완료 확인 · 다시 조회
+    expect(
+      calls.filter((url) => url.startsWith('/api/applications?')),
+    ).toHaveLength(2);
   });
 });
