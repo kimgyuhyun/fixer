@@ -140,10 +140,18 @@ export interface JobPostStore {
   cancelAndRelease(input: {
     jobPostId: string;
     employerId: string;
+    /**
+     * 서비스가 읽은 그 시점의 상태.
+     *
+     * **저장소가 이 값을 `WHERE`에 걸어 다시 확인한다.** 서비스의 조회와
+     * 저장소의 쓰기는 다른 트랜잭션이라, 그 사이에 다른 경로가 상태를
+     * 바꿨으면 덮어쓰면 안 된다.
+     */
+    expectedStatus: JobPostStatus;
     /** 수락자가 있어 경고를 쌓아야 하나 */
     penalize: boolean;
     idempotencyKey: string;
-  }): Promise<{ released: number; alreadyReleased: boolean }>;
+  }): Promise<{ released: number; alreadyReleased: boolean } | 'STALE'>;
 }
 
 /**
@@ -342,17 +350,26 @@ export class JobPostService {
     // 아무도 지원하지 않았으면 피해자가 없다. 경고는 약속이 있었을 때만이다.
     const penalize = (await this.accepted.countAccepted(current.id)) > 0;
 
-    const { released } = await this.store.cancelAndRelease({
+    const result = await this.store.cancelAndRelease({
       jobPostId: current.id,
       employerId: current.employerId,
+      expectedStatus: current.status,
       penalize,
       idempotencyKey: cancelIdempotencyKey(current.id),
     });
 
+    if (result === 'STALE') {
+      // 우리가 읽은 뒤 누군가 상태를 바꿨다. 덮어쓰지 않고 거절한다.
+      throw new JobPostError(JOB_POST_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: 'CANCELLED',
+      });
+    }
+
     return {
       id: current.id,
       status: 'CANCELLED',
-      released,
+      released: result.released,
       penalized: penalize,
     };
   }

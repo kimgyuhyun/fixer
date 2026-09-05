@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { JobPostFilter, JobPostVersionSnapshot } from '@fixer/shared';
+import type {
+  JobPostFilter,
+  JobPostStatus,
+  JobPostVersionSnapshot,
+} from '@fixer/shared';
 import {
   holdKeyFor,
   transition,
@@ -257,9 +261,10 @@ export class PrismaJobPostStore implements JobPostStore {
   async cancelAndRelease(input: {
     jobPostId: string;
     employerId: string;
+    expectedStatus: JobPostStatus;
     penalize: boolean;
     idempotencyKey: string;
-  }): Promise<{ released: number; alreadyReleased: boolean }> {
+  }): Promise<{ released: number; alreadyReleased: boolean } | 'STALE'> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         // 실제로 잠긴 금액. HOLD는 음수, RELEASE는 양수라 합이 곧 잔여다.
@@ -269,10 +274,16 @@ export class PrismaJobPostStore implements JobPostStore {
         });
         const released = -(_sum.amount ?? 0);
 
-        await tx.jobPost.update({
-          where: { id: input.jobPostId },
-          data: { status: transition('OPEN', 'CANCELLED') },
+        // **상태를 `WHERE`에 건다.** 서비스가 읽은 뒤 누군가 상태를 바꿨으면
+        // 0건이 되어 아무것도 안 바뀐다 — 조건부 UPDATE와 같은 방식이다.
+        // 전이 자체가 표에 있는지는 `transition`이 판정한다 (ADR-JOB-3).
+        const affected = await tx.jobPost.updateMany({
+          where: { id: input.jobPostId, status: input.expectedStatus },
+          data: { status: transition(input.expectedStatus, 'CANCELLED') },
         });
+        if (affected.count === 0) {
+          throw new StaleStatus();
+        }
 
         if (released > 0) {
           await tx.$executeRaw`
@@ -307,6 +318,7 @@ export class PrismaJobPostStore implements JobPostStore {
         return { released, alreadyReleased: false };
       });
     } catch (error) {
+      if (error instanceof StaleStatus) return 'STALE';
       if (isUniqueViolation(error)) {
         // 다른 요청이 먼저 풀었다. 오류가 아니라 "이미 됨"이다.
         return { released: 0, alreadyReleased: true };
@@ -367,6 +379,9 @@ export class PrismaBalanceReader implements BalanceReader {
 
 /** 트랜잭션을 되돌리기 위한 내부 신호. 밖으로 새지 않는다 */
 class InsufficientBalance extends Error {}
+
+/** 우리가 읽은 뒤 상태가 바뀌었다. 덮어쓰지 않고 되돌린다 */
+class StaleStatus extends Error {}
 
 function isUniqueViolation(error: unknown): boolean {
   return (error as { code?: unknown }).code === UNIQUE_VIOLATION;

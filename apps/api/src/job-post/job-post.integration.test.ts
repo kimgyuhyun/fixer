@@ -553,3 +553,86 @@ describe('공고 취소 — 진짜 Postgres에서 (#16)', () => {
     expect(await prisma.penalty.count()).toBe(0);
   });
 });
+describe('공고 취소 — 상태 가드 (#16, ac-verifier가 잡은 것)', () => {
+  it('should cancel a CLOSED post against the real database', async () => {
+    // 전이표에 `CLOSED → CANCELLED`가 있다. 저장소가 'OPEN'을 하드코딩하고
+    // 있었을 때는 이 경로를 타는 테스트가 하나도 없었다.
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+    await prisma.jobPost.update({
+      where: { id: created.id },
+      data: { status: 'CLOSED' },
+    });
+
+    const result = await service.cancel({ employerId, jobPostId: created.id });
+
+    expect(result.status).toBe('CANCELLED');
+    expect(result.released).toBe(BUDGET);
+    expect(await balanceOf(employerId)).toBe(1_000_000);
+  });
+
+  it('should not overwrite a post whose status changed after it was read', async () => {
+    // 서비스의 조회와 저장소의 쓰기는 다른 트랜잭션이다. 그 사이에 다른
+    // 경로가 상태를 바꿨으면 덮어쓰면 안 된다.
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    const store = new PrismaJobPostStore(prisma as unknown as PrismaService);
+    // 서비스가 OPEN을 읽은 직후 누군가 COMPLETED로 바꾼 상황이다.
+    await prisma.jobPost.update({
+      where: { id: created.id },
+      data: { status: 'COMPLETED' },
+    });
+
+    const result = await store.cancelAndRelease({
+      jobPostId: created.id,
+      employerId,
+      expectedStatus: 'OPEN',
+      penalize: false,
+      idempotencyKey: `cancel:${created.id}`,
+    });
+
+    expect(result).toBe('STALE');
+    const row = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: created.id },
+    });
+    // 상태도 돈도 그대로다.
+    expect(row.status).toBe('COMPLETED');
+    expect(await balanceOf(employerId)).toBe(1_000_000 - BUDGET);
+    expect(
+      await prisma.pointTransaction.count({
+        where: { referenceId: created.id, type: 'RELEASE' },
+      }),
+    ).toBe(0);
+  });
+
+  it('should report a stale status as an invalid transition', async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+    await prisma.jobPost.update({
+      where: { id: created.id },
+      data: { status: 'EXPIRED' },
+    });
+
+    // EXPIRED는 전이표에 없으므로 서비스가 먼저 막는다.
+    await expect(
+      service.cancel({ employerId, jobPostId: created.id }),
+    ).rejects.toMatchObject({ code: JOB_POST_ERRORS.INVALID_TRANSITION });
+  });
+
+  it('should always report penalized false while the accepted counter is stubbed', async () => {
+    // **#17이 어댑터를 채우기 전까지 AC2는 실제로 동작하지 않는다.**
+    // 이 테스트가 그 사실을 고정한다 — 조용히 바뀌면 여기가 빨개진다.
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+
+    const result = await service.cancel({ employerId, jobPostId: created.id });
+
+    expect(result.penalized).toBe(false);
+    expect(await prisma.penalty.count()).toBe(0);
+  });
+});

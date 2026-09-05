@@ -5,6 +5,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { ACCOUNT_ERRORS } from '@fixer/shared';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../generated/prisma/client';
 import { EnvAccountCipher } from './account-cipher';
@@ -114,13 +115,14 @@ describe('계좌 등록 — 진짜 Postgres에서', () => {
   it('should store nothing when the format is wrong', async () => {
     const userId = await seedMember();
 
+    // 인자 없는 toThrow()는 아무 에러로도 통과한다. 코드까지 본다.
     await expect(
       service.register(userId, {
         bankCode: '088',
         accountNumber: '1',
         holderName: '김구직',
       }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: ACCOUNT_ERRORS.INVALID_FORMAT });
 
     expect(await prisma.exchangeAccount.count()).toBe(0);
   });

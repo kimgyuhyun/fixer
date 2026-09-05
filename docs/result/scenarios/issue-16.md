@@ -113,7 +113,7 @@ lot 잔여를 원장에서 계산한 것과 같은 판단이다.
 - [x] [경계] `POST /job-posts/:id/cancel` — should return 400 when employerId is missing
 - [x] [예외] `POST /job-posts/:id/cancel` — should return 404 for a post that cannot be found
 
-**총 26개** (서비스 14 + 통합 5 + 컨트롤러 6, 겹치는 항목 제외)
+**총 30개** (서비스 14 + 통합 9 + 컨트롤러 6, 겹치는 항목 제외)
 
 ### 서버를 띄워 확인한 것
 
@@ -127,6 +127,30 @@ lot 잔여를 원장에서 계산한 것과 같은 판단이다.
 | 목록         | 0건 (사라졌다)                             |
 | 상세         | `CANCELLED` — 여전히 볼 수 있다            |
 | 두 번째 취소 | `409`, 잔액 500,000 그대로 (두 배 안 된다) |
+
+### ac-verifier가 잡은 것 — 저장소가 상태를 안 봤다
+
+`cancelAndRelease`가 `transition('OPEN', 'CANCELLED')`를 **하드코딩**하고
+있었다. 문자열 리터럴이라 검사가 항상 통과하고, `UPDATE`에도 상태 조건이
+없어 **DB 차원의 가드가 사실상 없었다.**
+
+두 가지가 걸렸다.
+
+1. `CLOSED → CANCELLED`는 전이표에 있는데 그 경로를 타는 테스트가 하나도 없었다
+   — 하드코딩된 `'OPEN'` 덕에 우연히 동작하고 있었다
+2. 서비스의 조회와 저장소의 쓰기는 다른 트랜잭션이라, 그 사이에 상태가
+   바뀌면 **`COMPLETED` 공고를 `CANCELLED`로 덮어쓸 수 있었다**
+
+읽은 시점의 상태를 저장소에 넘기고 `WHERE status = ?`에 건다. 0건이면
+아무것도 안 바뀌고 `'STALE'`로 되돌아온다 — 조건부 UPDATE와 같은 방식이다.
+
+- [x] [경계] `통합` — should cancel a CLOSED post against the real database
+- [x] [경계] `통합` — should not overwrite a post whose status changed after it was read
+- [x] [예외] `통합` — should report a stale status as an invalid transition
+- [x] [경계] `통합` — should always report penalized false while the accepted counter is stubbed
+
+마지막 항목은 **AC2가 지금 동작하지 않는다는 사실을 고정한다.** #17이
+어댑터를 채우면 그 테스트가 빨개지고, 그때 함께 고치라는 신호가 된다.
 
 ### 지금은 경고가 실제로 안 쌓인다
 

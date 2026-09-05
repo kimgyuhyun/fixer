@@ -185,11 +185,15 @@ class FakeStore implements JobPostStore {
   cancelAndRelease(input: {
     jobPostId: string;
     employerId: string;
+    expectedStatus: JobPostRecord['status'];
     penalize: boolean;
     idempotencyKey: string;
-  }): Promise<{ released: number; alreadyReleased: boolean }> {
+  }): Promise<{ released: number; alreadyReleased: boolean } | 'STALE'> {
     const row = this.posts.find((p) => p.id === input.jobPostId);
     if (!row) throw new Error('없는 공고를 취소하려 했다');
+    // 진짜 저장소가 `WHERE status = ?`로 하는 일이다. 그 사이에 바뀌었으면
+    // 아무것도 안 바꾼다.
+    if (row.status !== input.expectedStatus) return Promise.resolve('STALE');
 
     // 실제로 잠긴 금액. 예산에서 다시 계산하지 않는다.
     const locked = -this.holds
