@@ -151,6 +151,13 @@ export interface JobPostStore {
     /** 수락자가 있어 경고를 쌓아야 하나 */
     penalize: boolean;
     idempotencyKey: string;
+    /**
+     * 관리자 강제 취소면 감사 로그를 **같은 트랜잭션에** 남긴다 (#35 AC4).
+     *
+     * 뒤에 따로 쓰면 그 사이에 죽었을 때 조치가 증발한다. 취소는 됐는데
+     * 누가 왜 했는지가 없는 상태가 AC4가 막으려는 바로 그것이다.
+     */
+    audit?: { adminId: string; reason: string };
   }): Promise<{ released: number; alreadyReleased: boolean } | 'STALE'>;
 }
 

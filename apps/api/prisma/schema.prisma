@@ -20,7 +20,7 @@ datasource db {
 ///
 /// 서비스의 모든 행위 주체다. 이 이슈는 "가입되는 최소한의 User"까지만 만든다.
 /// 주소(#3)·동의서(#7)·평점·잔액 캐시는 각 이슈가 자기 컬럼을 들고 온다.
-/// role과 deactivatedAt은 ADR-AUTH-3(계정 생명주기)이 확정된 뒤에 붙인다.
+/// role과 deactivatedAt은 ADR-AUTH-3(계정 생명주기)이 확정되며 붙었다.
 model User {
   id           String   @id @default(cuid())
   /// 소문자로 정규화해서 저장한다. 대소문자만 다른 중복 계정을 막는다.
@@ -39,6 +39,12 @@ model User {
   /// 상태 컬럼이 아니라 **시각 기록**이라 ADR-AUTH-3의 기각 사유에 걸리지
   /// 않는다. 이게 없으면 배치가 어제 파기한 계정을 오늘 또 훑는다.
   purgedAt      DateTime?
+  /// 관리자 여부. **별도 테이블을 만들지 않는다** (spec §11.1, #35).
+  ///
+  /// 화면에서 관리자를 만드는 기능은 두지 않는다 — 최초 관리자는 seed로만
+  /// 만든다. 이 값을 토큰에 복사하지 않는 이유는 가드가 요청마다 여기를
+  /// 읽어야 권한 회수가 즉시 반영되기 때문이다 (ADR-AUTH-3과 같은 판단).
+  role          UserRole  @default(USER)
 
   /// 로그인 세션들. (#4)
   refreshTokens     RefreshToken[]
@@ -52,9 +58,44 @@ model User {
   exchangeAccount   ExchangeAccount?
   applications      Application[]
   notifications     Notification[]
+  adminAuditLogs    AdminAuditLog[]
 
   /// 파기 배치가 "비활성화됐고 아직 파기 안 된" 행만 훑는다 (#39)
   @@index([deactivatedAt, purgedAt])
+}
+
+/// 회원 등급. `packages/shared/src/admin.ts`의 USER_ROLES와 같아야 한다.
+enum UserRole {
+  USER
+  ADMIN
+}
+
+/// 관리자 조치 기록. (이슈 #35, spec §11.5 "누가·언제·무엇을·왜")
+///
+/// **레코드를 지우지 않는다.** 분쟁 대응 근거다 — Penalty와 같은 이유이고
+/// 보관 기간도 같은 3년이다 (RETENTION.DISPUTE_MS).
+///
+/// #33(제재 해제)·#34(환전 승인·계좌 열람)가 같은 표에 쌓는다. 그래서
+/// action과 targetType을 문자열로 두고 도메인별 표를 나누지 않는다.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  /// 무엇을 했나. 예: JOB_POST_FORCE_CANCEL
+  action     String
+  /// 무엇에 했나. 예: JobPost
+  targetType String
+  targetId   String
+  /// 왜. 강제 취소는 사유가 필수지만 #34의 계좌번호 열람처럼 사유가 없는
+  /// 조치도 있어 컬럼 자체는 nullable이다. 필수 여부는 서비스가 판정한다.
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  /// "이 공고에 무슨 조치가 있었나" (#35 AC4)
+  @@index([targetType, targetId])
+  /// "이 관리자가 무엇을 했나"
+  @@index([adminId, createdAt])
 }
 
 /// 회원의 주소. (이슈 #3, ADR-AUTH-2)

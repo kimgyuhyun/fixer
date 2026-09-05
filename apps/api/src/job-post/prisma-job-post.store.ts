@@ -265,6 +265,8 @@ export class PrismaJobPostStore implements JobPostStore {
     expectedStatus: JobPostStatus;
     penalize: boolean;
     idempotencyKey: string;
+    /** 관리자 강제 취소면 감사 로그를 같은 트랜잭션에 남긴다 (#35 AC4) */
+    audit?: { adminId: string; reason: string };
   }): Promise<{ released: number; alreadyReleased: boolean } | 'STALE'> {
     try {
       return await this.prisma.$transaction(async (tx) => {

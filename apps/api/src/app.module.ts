@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AdminModule } from './admin/admin.module';
 import { AgreementModule } from './agreement/agreement.module';
 import { ApplicationModule } from './application/application.module';
 import { AuthModule } from './auth/auth.module';
@@ -29,6 +30,7 @@ import { RetentionModule } from './retention/retention.module';
     ApplicationModule,
     ExchangeModule,
     NotificationModule,
+    AdminModule,
   ],
 })
 export class AppModule {}
