@@ -1,6 +1,7 @@
 'use client';
 
 import type { AdminJobPostFilter, AdminJobPostSummary } from '@fixer/shared';
+import type { ReactElement } from 'react';
 
 export interface AdminJobPostListProps {
   items: AdminJobPostSummary[];
@@ -17,6 +18,6 @@ export interface AdminJobPostListProps {
  *
  * 필터 상태의 진실은 URL 하나다 (ADR-JOB-4).
  */
-export function AdminJobPostList(_props: AdminJobPostListProps) {
+export function AdminJobPostList(_props: AdminJobPostListProps): ReactElement {
   throw new Error('not implemented');
 }
