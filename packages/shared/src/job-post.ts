@@ -35,6 +35,14 @@ export const JOB_POST_TRANSITIONS = [
   { from: 'OPEN', to: 'CANCELLED' },
   { from: 'OPEN', to: 'EXPIRED' },
   { from: 'CLOSED', to: 'COMPLETED' },
+  /**
+   * 완료 확인 (#23). **`CLOSED`를 거치지 않아도 된다.**
+   *
+   * 정원이 안 찬 공고는 `CLOSED`가 되지 않는다 — #38이 "인원이 찼으면
+   * `CLOSED`, 미달이면 `EXPIRED`"로 정했다. `CLOSED`만 허용하면 3명만 채워
+   * 일을 마친 공고에서 **그 3명이 돈을 못 받는다.**
+   */
+  { from: 'OPEN', to: 'COMPLETED' },
   { from: 'CLOSED', to: 'CANCELLED' },
 ] as const satisfies readonly { from: JobPostStatus; to: JobPostStatus }[];
 

@@ -18,9 +18,12 @@ import {
   applicantListSchema,
   applicationSummarySchema,
   applyRequestSchema,
+  completeJobPostRequestSchema,
+  completionSummarySchema,
   type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationSummary,
+  type CompletionSummary,
 } from '@fixer/shared';
 import { z, ZodError } from 'zod';
 import { ApplicationError, ApplicationService } from './application.service';
@@ -93,6 +96,18 @@ export class ApplicationController {
     }
   }
 
+  /** 구인자가 업무 완료를 확인한다 (#23) */
+  @Post('complete')
+  @HttpCode(HttpStatus.OK)
+  async complete(@Body() body: unknown): Promise<CompletionSummary> {
+    try {
+      const input = completeJobPostRequestSchema.parse(body ?? {});
+      return completionSummarySchema.parse(await this.service.complete(input));
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
   /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */
   @Get()
   async listForEmployer(@Query() query: unknown): Promise<ApplicantList> {
@@ -156,6 +171,8 @@ const MESSAGES: Record<ApplicationErrorCode, string> = {
   [APPLICATION_ERRORS.JOB_POST_NOT_FOUND]: '공고를 찾을 수 없습니다.',
   [APPLICATION_ERRORS.HEADCOUNT_FULL]: '이미 정원이 찼습니다.',
   [APPLICATION_ERRORS.NOT_EMPLOYER]: '이 공고의 구인자가 아닙니다.',
+  [APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION]:
+    '지금 상태에서는 완료 확인을 할 수 없습니다.',
 };
 
 function toHttpError(error: unknown): unknown {

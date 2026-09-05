@@ -57,6 +57,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   await prisma.application.deleteMany();
+  await prisma.pointTransaction.deleteMany();
   await prisma.penalty.deleteMany();
   await prisma.jobPostVersion.deleteMany();
   await prisma.jobPost.deleteMany();
@@ -566,5 +567,258 @@ describe('PrismaAcceptedCounter', () => {
     });
 
     expect(await accepted.countAccepted(jobPostId)).toBe(2);
+  });
+});
+/**
+ * 충전하고 공고 예산을 잠근 상태를 만든다 (#12가 하는 일).
+ *
+ * 완료 확인이 반환할 금액을 **원장에서** 구하므로, `HOLD` 행이 없으면
+ * 반환액이 0이 되어 AC1을 검사할 수 없다.
+ */
+async function seedChargedAndHeld(
+  employerId: string,
+  jobPostId: string,
+  budget: number,
+): Promise<void> {
+  await prisma.pointTransaction.create({
+    data: {
+      userId: employerId,
+      type: 'CHARGE',
+      amount: budget,
+      idempotencyKey: `charge:${jobPostId}`,
+    },
+  });
+  await prisma.pointTransaction.create({
+    data: {
+      userId: employerId,
+      type: 'HOLD',
+      amount: -budget,
+      idempotencyKey: `hold:${jobPostId}:1`,
+      referenceId: jobPostId,
+    },
+  });
+  await prisma.user.update({
+    where: { id: employerId },
+    data: { cachedBalance: 0 },
+  });
+}
+
+/** 그 사람의 원장 합계. **금전 판정의 진실은 여기다** (ADR-PAY-1) */
+async function ledgerSum(userId: string): Promise<number> {
+  const { _sum } = await prisma.pointTransaction.aggregate({
+    where: { userId },
+    _sum: { amount: true },
+  });
+  return _sum.amount ?? 0;
+}
+
+/** 확정 인원 `accepted`명인 공고 하나를 통째로 만든다 */
+async function seedCompletable(seats: {
+  headcount: number;
+  accepted: number;
+  rewardPerPerson?: number;
+}): Promise<{
+  employerId: string;
+  jobPostId: string;
+  workers: string[];
+  applicationIds: string[];
+}> {
+  const rewardPerPerson = seats.rewardPerPerson ?? 10_000;
+  const employerId = await seedUser('boss@example.com');
+  const jobPostId = await seedOpenPost(employerId, 1, {
+    headcount: seats.headcount,
+  });
+  await prisma.jobPost.update({
+    where: { id: jobPostId },
+    data: { rewardPerPerson },
+  });
+  await seedChargedAndHeld(
+    employerId,
+    jobPostId,
+    seats.headcount * rewardPerPerson,
+  );
+
+  const workers: string[] = [];
+  const applicationIds: string[] = [];
+  for (let i = 0; i < seats.accepted; i += 1) {
+    const applicantId = await seedUser(`seeker${i}@example.com`);
+    const row = await service.apply({ applicantId, jobPostId });
+    await service.accept({ employerId, applicationId: row.id });
+    workers.push(applicantId);
+    applicationIds.push(row.id);
+  }
+
+  return { employerId, jobPostId, workers, applicationIds };
+}
+
+describe('complete — 완료 확인 (#23)', () => {
+  it("should increase each worker's balance by the reward per person", async () => {
+    const { employerId, jobPostId, workers } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId, employerId });
+
+    for (const worker of workers) {
+      expect(await ledgerSum(worker)).toBe(10_000);
+    }
+  });
+
+  it('should leave the worker balance unchanged before completion', async () => {
+    const { employerId, jobPostId, workers } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+    const worker = workers[0];
+
+    // 수락만으로는 돈이 넘어가지 않는다.
+    const before = await ledgerSum(worker);
+
+    await service.complete({ jobPostId, employerId });
+
+    // **전환을 본다.** 완료 전 잔액만 재면 `complete`를 부르지 않게 되어,
+    // 구현이 없어도 통과하는 테스트가 된다.
+    expect(before).toBe(0);
+    expect(await ledgerSum(worker)).toBe(10_000);
+  });
+
+  it('should leave the employer holding only the released amount', async () => {
+    const { employerId, jobPostId } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId, employerId });
+
+    // 60,000 충전 → 60,000 잠금 → 3명분 지급, 3명분 반환.
+    expect(await ledgerSum(employerId)).toBe(30_000);
+  });
+
+  it('should write nothing more when the same post is completed twice', async () => {
+    const { employerId, jobPostId } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId, employerId });
+    const after = await prisma.pointTransaction.count();
+
+    // 이미 COMPLETED라 전이표에서 걸린다. 인자 없는 toThrow()는 어떤 에러든
+    // 통과하므로, 막힌 이유까지 못 박는다.
+    await expect(
+      service.complete({ jobPostId, employerId }),
+    ).rejects.toMatchObject({
+      code: APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION,
+    });
+
+    expect(await prisma.pointTransaction.count()).toBe(after);
+    expect(await ledgerSum(employerId)).toBe(30_000);
+  });
+
+  it('should let exactly one of two concurrent completions settle', async () => {
+    const { employerId, jobPostId, workers } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    const results = await Promise.allSettled([
+      service.complete({ jobPostId, employerId }),
+      service.complete({ jobPostId, employerId }),
+    ]);
+
+    const settled = results.filter((r) => r.status === 'fulfilled');
+    expect(settled).toHaveLength(1);
+    // 두 번 지급됐다면 여기가 20,000이 된다.
+    expect(await ledgerSum(workers[0])).toBe(10_000);
+  });
+
+  it('should keep the cached balance equal to the ledger sum for employer and workers', async () => {
+    const { employerId, jobPostId, workers } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId, employerId });
+
+    for (const userId of [employerId, ...workers]) {
+      const row = await prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+      });
+      expect(row.cachedBalance).toBe(await ledgerSum(userId));
+    }
+  });
+
+  /**
+   * **가짜 저장소는 자기가 대입한 값을 되읽는다.** 진짜 UPDATE가 상태를
+   * 정말 옮겼는지는 여기서만 알 수 있다. #18이 `acceptedCount`에 같은
+   * 확인을 두고 있다.
+   */
+  it('should persist the job post as COMPLETED in the database', async () => {
+    const { employerId, jobPostId } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId, employerId });
+
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: jobPostId },
+    });
+    expect(post.status).toBe('COMPLETED');
+    // 신청도 함께 옮겨진다. 공고만 끝나고 신청이 ACCEPTED로 남으면
+    // 그 사람들은 영원히 수락 상태가 된다.
+    const stillAccepted = await prisma.application.count({
+      where: { jobPostId, status: 'ACCEPTED' },
+    });
+    expect(stillAccepted).toBe(0);
+  });
+
+  it('should leave the job post OPEN when the payout writes fail', async () => {
+    const { employerId, jobPostId, applicationIds } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+    // 지급 행의 멱등 키를 미리 선점한다. 두 번째 지급이 유니크 제약에 걸린다.
+    await prisma.pointTransaction.create({
+      data: {
+        userId: employerId,
+        type: 'PAYOUT',
+        amount: 1,
+        idempotencyKey: `payout:${applicationIds[1]}`,
+      },
+    });
+
+    // 멱등 키가 겹쳐 유니크 제약에 걸린다. 이 테스트가 증명하려는 것은
+    // "쓰기가 실패했을 때 전부 되돌아간다"이므로, 실패 이유가 그 제약임을
+    // 못 박아야 다른 이유로 죽는 경우와 구분된다.
+    await expect(
+      service.complete({ jobPostId, employerId }),
+    ).rejects.toMatchObject({ code: 'P2002' });
+
+    // 한 트랜잭션이라면 공고도 신청도 그대로다 (ADR-PAY-4).
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: jobPostId },
+    });
+    expect(post.status).toBe('OPEN');
+    const stillAccepted = await prisma.application.count({
+      where: { jobPostId, status: 'ACCEPTED' },
+    });
+    expect(stillAccepted).toBe(3);
+  });
+
+  it('should throw JOB_POST_NOT_FOUND when the post was soft deleted', async () => {
+    const { employerId, jobPostId } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+    await prisma.jobPost.update({
+      where: { id: jobPostId },
+      data: { deletedAt: new Date() },
+    });
+
+    await expect(
+      service.complete({ jobPostId, employerId }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
   });
 });

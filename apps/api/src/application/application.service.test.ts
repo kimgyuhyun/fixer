@@ -7,6 +7,7 @@ import {
   type ApplicationRecord,
   type ApplicationStore,
   type JobPostReader,
+  type SettlementResult,
 } from './application.service';
 
 const APPLICANT = 'usr_seeker';
@@ -22,6 +23,7 @@ function openPost(overrides: Partial<PostRow> = {}): PostRow {
     version: 1,
     headcount: 2,
     acceptedCount: 0,
+    rewardPerPerson: 10_000,
     ...overrides,
   };
 }
@@ -33,6 +35,16 @@ type PostRow = {
   version: number;
   headcount: number;
   acceptedCount: number;
+  rewardPerPerson: number;
+};
+
+/** 원장 한 줄. 완료 확인이 무엇을 썼는지 세는 데만 쓴다 (#23) */
+type LedgerRow = {
+  userId: string;
+  type: 'HOLD' | 'RELEASE' | 'PAYOUT';
+  amount: number;
+  referenceId: string;
+  idempotencyKey: string;
 };
 
 class FakeJobPosts implements JobPostReader {
@@ -55,9 +67,32 @@ class FakeJobPosts implements JobPostReader {
  */
 class FakeStore implements ApplicationStore {
   readonly rows: ApplicationRecord[] = [];
+  /**
+   * 원장. **`HOLD`는 #12가 이미 써 둔 것으로 친다** — 완료 확인이 반환할
+   * 금액을 예산이 아니라 여기 있는 행의 합에서 구하기 때문이다.
+   */
+  readonly ledger: LedgerRow[] = [];
   private seq = 0;
 
   constructor(private readonly post: PostRow | null = null) {}
+
+  /** 공고 `OPEN` 때 잠긴 돈. 테스트가 시작 상태를 만드는 데 쓴다 */
+  seedHold(amount: number): void {
+    this.ledger.push({
+      userId: this.post?.employerId ?? EMPLOYER,
+      type: 'HOLD',
+      amount: -amount,
+      referenceId: this.post?.id ?? JOB_POST,
+      idempotencyKey: `hold:${this.post?.id ?? JOB_POST}:1`,
+    });
+  }
+
+  /** 그 공고에 잠긴 잔여. `HOLD`는 음수, `RELEASE`는 양수라 합이 곧 잔여다 */
+  lockedFor(jobPostId: string): number {
+    return -this.ledger
+      .filter((r) => r.referenceId === jobPostId)
+      .reduce((sum, r) => sum + r.amount, 0);
+  }
 
   create(input: {
     jobPostId: string;
@@ -151,6 +186,61 @@ class FakeStore implements ApplicationStore {
     row.acceptedAt = input.acceptedAt;
     if (this.post !== null) this.post.acceptedCount += 1;
     return Promise.resolve({ ...row });
+  }
+
+  /**
+   * 완료 확인. **전부-아니면-전무를 흉내 낸다** (#23, ADR-PAY-4).
+   *
+   * 공고 상태가 기대와 다르면 `'STALE'`이고 **원장도 신청도 건드리지 않는다** —
+   * 진짜 트랜잭션이 하는 일이다. 두 번째 호출이 여기서 막히는 것이 AC4다.
+   */
+  completeAndSettle(input: {
+    jobPostId: string;
+    employerId: string;
+    expectedStatus: PostRow['status'];
+    rewardPerPerson: number;
+  }): Promise<SettlementResult | 'STALE'> {
+    const post = this.post;
+    if (post === null || post.id !== input.jobPostId) {
+      return Promise.resolve('STALE');
+    }
+    // 조건부 UPDATE의 WHERE. 우리가 읽은 뒤 누가 상태를 바꿨으면 0행이다.
+    if (post.status !== input.expectedStatus) return Promise.resolve('STALE');
+
+    const accepted = this.rows.filter(
+      (r) => r.jobPostId === input.jobPostId && r.status === 'ACCEPTED',
+    );
+    const locked = this.lockedFor(input.jobPostId);
+    const paidTotal = accepted.length * input.rewardPerPerson;
+
+    post.status = 'COMPLETED';
+    for (const row of accepted) {
+      row.status = 'COMPLETED';
+      this.ledger.push({
+        userId: row.applicantId,
+        type: 'PAYOUT',
+        amount: input.rewardPerPerson,
+        referenceId: input.jobPostId,
+        idempotencyKey: `payout:${row.id}`,
+      });
+    }
+
+    const releasedTotal = locked - paidTotal;
+    if (releasedTotal > 0) {
+      this.ledger.push({
+        userId: input.employerId,
+        type: 'RELEASE',
+        amount: releasedTotal,
+        referenceId: input.jobPostId,
+        idempotencyKey: `complete-release:${input.jobPostId}`,
+      });
+    }
+
+    return Promise.resolve({
+      paidCount: accepted.length,
+      paidTotal,
+      releasedTotal,
+    });
   }
 
   listByJobPost(
@@ -711,5 +801,271 @@ describe('listForEmployer', () => {
         jobPostId: JOB_POST,
       }),
     ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
+  });
+});
+/**
+ * 완료 확인 준비. 정원 `headcount`인 공고에 `accepted`명을 수락시키고,
+ * 공고 `OPEN` 때 잠긴 돈을 원장에 심는다.
+ *
+ * **`applied`는 수락하지 않고 남긴다** — 지원만 한 사람에게 돈이 나가면 안 된다.
+ */
+async function seedForCompletion({
+  headcount,
+  accepted,
+  applied = 0,
+  rewardPerPerson = 10_000,
+  status = 'OPEN',
+}: {
+  headcount: number;
+  accepted: number;
+  applied?: number;
+  rewardPerPerson?: number;
+  status?: PostRow['status'];
+}): Promise<{
+  service: ApplicationService;
+  store: FakeStore;
+  post: PostRow;
+  workers: string[];
+}> {
+  const post = openPost({ headcount, rewardPerPerson });
+  const { service, store } = makeService(post);
+  store.seedHold(headcount * rewardPerPerson);
+
+  const workers: string[] = [];
+  for (let i = 0; i < accepted + applied; i += 1) {
+    const applicantId = `usr_seeker_${i}`;
+    const row = await service.apply({ applicantId, jobPostId: JOB_POST });
+    if (i < accepted) {
+      await service.accept({ employerId: EMPLOYER, applicationId: row.id });
+      workers.push(applicantId);
+    }
+  }
+
+  post.status = status;
+  return { service, store, post, workers };
+}
+
+/** 그 사람에게 나간 지급 행 */
+function payoutsTo(store: FakeStore, userId: string): number[] {
+  return store.ledger
+    .filter((r) => r.type === 'PAYOUT' && r.userId === userId)
+    .map((r) => r.amount);
+}
+
+/** 구인자에게 돌아간 반환 행의 합 */
+function releasedTo(store: FakeStore, userId: string): number {
+  return store.ledger
+    .filter((r) => r.type === 'RELEASE' && r.userId === userId)
+    .reduce((sum, r) => sum + r.amount, 0);
+}
+
+describe('complete', () => {
+  it('should pay each accepted worker the reward per person when 3 of 6 are accepted', async () => {
+    const { service, store, workers } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    for (const worker of workers) {
+      expect(payoutsTo(store, worker)).toEqual([10_000]);
+    }
+  });
+
+  it('should release the 3 unmatched slots to the employer when 3 of 6 are accepted', async () => {
+    const { service, store } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    expect(releasedTo(store, EMPLOYER)).toBe(30_000);
+  });
+
+  it('should move the job post to COMPLETED', async () => {
+    const { service, post } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    expect(post.status).toBe('COMPLETED');
+  });
+
+  it('should move every ACCEPTED application to COMPLETED', async () => {
+    const { service, store } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    const statuses = store.rows.map((r) => r.status);
+    expect(statuses).toEqual(['COMPLETED', 'COMPLETED', 'COMPLETED']);
+  });
+
+  it('should report paidCount 3, paidTotal 30000 and releasedTotal 30000', async () => {
+    const { service } = await seedForCompletion({ headcount: 6, accepted: 3 });
+
+    const summary = await service.complete({
+      jobPostId: JOB_POST,
+      employerId: EMPLOYER,
+    });
+
+    expect(summary).toMatchObject({
+      jobPostId: JOB_POST,
+      status: 'COMPLETED',
+      paidCount: 3,
+      paidTotal: 30_000,
+      releasedTotal: 30_000,
+    });
+  });
+
+  it('should release the whole hold and pay nobody when no one was accepted', async () => {
+    const { service, store } = await seedForCompletion({
+      headcount: 6,
+      accepted: 0,
+    });
+
+    const summary = await service.complete({
+      jobPostId: JOB_POST,
+      employerId: EMPLOYER,
+    });
+
+    expect(summary.paidCount).toBe(0);
+    expect(releasedTo(store, EMPLOYER)).toBe(60_000);
+  });
+
+  it('should release nothing when every seat is filled', async () => {
+    const { service, store } = await seedForCompletion({
+      headcount: 3,
+      accepted: 3,
+    });
+
+    const summary = await service.complete({
+      jobPostId: JOB_POST,
+      employerId: EMPLOYER,
+    });
+
+    expect(summary.releasedTotal).toBe(0);
+    expect(releasedTo(store, EMPLOYER)).toBe(0);
+  });
+
+  it('should not pay an applicant who is still APPLIED', async () => {
+    const { service, store } = await seedForCompletion({
+      headcount: 6,
+      accepted: 2,
+      applied: 1,
+    });
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    // 마지막 사람은 수락되지 않았다. 지원만으로는 돈이 나가지 않는다.
+    expect(payoutsTo(store, 'usr_seeker_2')).toEqual([]);
+  });
+
+  it('should release the locked sum from the ledger, not headcount times reward, when the budget was edited', async () => {
+    const { service, store } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+    // #15가 예산을 줄인 공고. 실제로 잠긴 돈은 50,000뿐이다.
+    store.ledger.push({
+      userId: EMPLOYER,
+      type: 'RELEASE',
+      amount: 10_000,
+      referenceId: JOB_POST,
+      idempotencyKey: 'release:job_1:2',
+    });
+
+    const summary = await service.complete({
+      jobPostId: JOB_POST,
+      employerId: EMPLOYER,
+    });
+
+    // 60,000 − 30,000이 아니라 50,000 − 30,000이다.
+    expect(summary.releasedTotal).toBe(20_000);
+  });
+
+  it('should keep the total of every ledger row it wrote at zero', async () => {
+    const { service, store } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    // 돈은 옮겨질 뿐 생기거나 사라지지 않는다. 구인자의 − 를 한 번 더 쓰면
+    // 여기가 음수가 된다.
+    const total = store.ledger.reduce((sum, r) => sum + r.amount, 0);
+    expect(total).toBe(0);
+  });
+
+  it('should throw JOB_POST_NOT_FOUND when the post does not exist', async () => {
+    const { service } = makeService(null);
+
+    await expect(
+      service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
+  });
+
+  it('should throw APPLICATION_NOT_EMPLOYER when someone else confirms', async () => {
+    const { service } = await seedForCompletion({ headcount: 6, accepted: 3 });
+
+    await expect(
+      service.complete({ jobPostId: JOB_POST, employerId: 'usr_other' }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_EMPLOYER });
+  });
+
+  it('should throw JOB_POST_INVALID_TRANSITION when the post is already COMPLETED', async () => {
+    const { service } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+      status: 'COMPLETED',
+    });
+
+    await expect(
+      service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER }),
+    ).rejects.toMatchObject({
+      code: APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION,
+    });
+  });
+
+  it('should throw JOB_POST_INVALID_TRANSITION when the post was cancelled', async () => {
+    const { service } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+      status: 'CANCELLED',
+    });
+
+    await expect(
+      service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER }),
+    ).rejects.toMatchObject({
+      code: APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION,
+    });
+  });
+
+  it('should write nothing when the status changed under it', async () => {
+    const { service, store, post } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+    const before = store.ledger.length;
+    // 서비스가 공고를 읽은 뒤 다른 경로가 상태를 바꾼 상황을 만든다.
+    const settle = store.completeAndSettle.bind(store);
+    store.completeAndSettle = (input) => {
+      post.status = 'CANCELLED';
+      return settle(input);
+    };
+
+    await expect(
+      service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER }),
+    ).rejects.toMatchObject({
+      code: APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION,
+    });
+    expect(store.ledger).toHaveLength(before);
   });
 });

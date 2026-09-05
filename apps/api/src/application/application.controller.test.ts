@@ -248,3 +248,45 @@ describe('GET /applications', () => {
     expect(statusOf(error)).toBe(403);
   });
 });
+const COMPLETION = {
+  jobPostId: 'job_1',
+  status: 'COMPLETED' as const,
+  paidCount: 3,
+  paidTotal: 30_000,
+  releasedTotal: 30_000,
+};
+
+describe('POST /applications/complete', () => {
+  it('should return the completion summary', async () => {
+    const controller = controllerWith({
+      complete: vi.fn().mockResolvedValue(COMPLETION),
+    });
+
+    const result = await controller.complete({
+      jobPostId: 'job_1',
+      employerId: 'usr_employer',
+    });
+
+    expect(result).toMatchObject({
+      status: 'COMPLETED',
+      paidCount: 3,
+      releasedTotal: 30_000,
+    });
+  });
+
+  it('should answer 409 when the post is already COMPLETED', async () => {
+    const controller = controllerWith({
+      complete: vi
+        .fn()
+        .mockRejectedValue(
+          new ApplicationError(APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION),
+        ),
+    });
+
+    const error = await rejectionOf(
+      controller.complete({ jobPostId: 'job_1', employerId: 'usr_employer' }),
+    );
+
+    expect(statusOf(error)).toBe(409);
+  });
+});
