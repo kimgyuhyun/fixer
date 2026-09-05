@@ -95,10 +95,13 @@ model AdminAuditLog {
 export const USER_ROLES = ['USER', 'ADMIN'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
-/** 관리자 계층이 내는 에러 코드 */
+/**
+ * 관리자 계층이 내는 에러 코드.
+ *
+ * **401은 여기에 없다.** 로그인 여부는 `LOGIN_ERRORS.UNAUTHENTICATED`가 이미
+ * 쓰이고 있다 — 401을 코드 두 개로 내면 화면이 둘 다 처리해야 한다.
+ */
 export const ADMIN_ERRORS = {
-  /** 토큰이 없거나 위조·만료됐다 */
-  UNAUTHENTICATED: 'ADMIN_UNAUTHENTICATED',
   /** 로그인은 됐지만 관리자가 아니다 */
   FORBIDDEN: 'ADMIN_FORBIDDEN',
   /** 사유가 필수인 조치인데 비었다 (§11.6) */
@@ -181,14 +184,21 @@ export interface RoleReader {
 /**
  * 관리자만 통과시킨다. (spec §11.1)
  *
- * 쿠키의 Access 토큰 → `sub` → **DB의 `role`** 순으로 판정한다.
+ * **"누구인가"는 이 가드가 판정하지 않는다.** `LoginService.authenticate`가
+ * #36·`/api/auth/me`와 같은 경로로 이미 하고 있고, 가드는 그 결과에
+ * **`role === ADMIN`만** 덧붙인다.
+ *
+ * 토큰을 직접 검증하지 않는 이유가 있다. `authenticate`는 Access가 만료돼도
+ * Refresh가 살아 있으면 Access를 다시 발급한다 (ADR-AUTH-1). 가드가 Access
+ * 쿠키만 보면 **관리자 화면만 15분마다 튕기는** 화면이 된다.
  */
 @Injectable()
 export class AdminGuard implements CanActivate {
   constructor(
-    private readonly tokens: AccessTokenSigner,
+    private readonly logins: LoginService,
     private readonly roles: RoleReader,
   ) {}
+  /** 재발급된 Access가 있으면 응답 쿠키에 실어 보낸다 (#36과 같다) */
   canActivate(context: ExecutionContext): Promise<boolean>;
 }
 
@@ -221,13 +231,13 @@ class AdminJobPostService {
 ```
 GET  /admin/job-posts?q=&status=&category=&page=
   → 200  { items, total, page, pageSize }
-  → 401  ADMIN_UNAUTHENTICATED
+  → 401  AUTH_UNAUTHENTICATED
   → 403  ADMIN_FORBIDDEN
 
 POST /admin/job-posts/:id/cancel   { reason }
   → 200  { id, status: 'CANCELLED', released, penalized }
   → 400  ADMIN_REASON_REQUIRED         사유가 비었다 (§11.6)
-  → 401  ADMIN_UNAUTHENTICATED         토큰 없음·위조·만료
+  → 401  AUTH_UNAUTHENTICATED          로그인 안 됨 (Access·Refresh 둘 다 없음/만료)
   → 403  ADMIN_FORBIDDEN               role !== ADMIN
   → 404  JOB_POST_NOT_FOUND            없거나 소프트 삭제됐다
   → 409  JOB_POST_INVALID_TRANSITION   DRAFT·COMPLETED·EXPIRED·이미 CANCELLED
@@ -354,7 +364,8 @@ middleware 양쪽"을 요구하는데, **middleware는 로그인 여부까지만
 ### 정상
 
 - [ ] [정상] `AdminGuard` — should allow the request when the access cookie belongs to a user whose role is ADMIN
-- [ ] [정상] `AdminGuard` — should expose the token's sub as the admin principal when it allows the request
+- [ ] [정상] `AdminGuard` — should expose the authenticated user id as the admin principal when it allows the request
+- [ ] [정상] `AdminGuard` — should allow the request and set a renewed access cookie when the access token expired but the refresh token is alive
 - [ ] [정상] `AdminJobPostService.list` — should return title, employerName, categoryName, status and createdAt for every row
 - [ ] [정상] `AdminJobPostService.list` — should include posts of every status when no status filter is given
 - [ ] [정상] `AdminJobPostService.list` — should return only that employer's posts when q matches an employer name
@@ -380,9 +391,9 @@ middleware 양쪽"을 요구하는데, **middleware는 로그인 여부까지만
 
 ### 예외
 
-- [ ] [예외] `AdminGuard` — should throw ADMIN_UNAUTHENTICATED when the request carries no access cookie
-- [ ] [예외] `AdminGuard` — should throw ADMIN_UNAUTHENTICATED when the access cookie is forged or expired
-- [ ] [예외] `AdminGuard` — should throw ADMIN_UNAUTHENTICATED when the token's sub points at a user that no longer exists
+- [ ] [예외] `AdminGuard` — should throw AUTH_UNAUTHENTICATED when the request carries neither an access nor a refresh cookie
+- [ ] [예외] `AdminGuard` — should throw AUTH_UNAUTHENTICATED when the access cookie is forged and no refresh cookie is present
+- [ ] [예외] `AdminGuard` — should throw ADMIN_FORBIDDEN when the authenticated user no longer exists
 - [ ] [예외] `AdminGuard` — should throw ADMIN_FORBIDDEN when the user's role is USER
 - [ ] [예외] `AdminJobPostService.forceCancel` — should throw ADMIN_REASON_REQUIRED when the reason is empty or only whitespace
 - [ ] [예외] `AdminJobPostService.forceCancel` — should throw JOB_POST_NOT_FOUND when the post does not exist or is soft-deleted
@@ -405,14 +416,14 @@ middleware 양쪽"을 요구하는데, **middleware는 로그인 여부까지만
 | **AC3** Given 공고, When 사유를 적고 강제 취소하면, Then `CANCELLED`가 되고 잠긴 포인트가 전액 `RELEASE`된다 | `[정상] forceCancel — should set the post to CANCELLED and release the whole held amount`<br>`[경계] forceCancel — should release the amount actually held in the ledger`<br>`[경계] forceCancel — should release 0 ... when nothing is held`<br>`[경계] forceCancel — should record exactly one RELEASE ... concurrently`<br>`[예외] forceCancel — should throw ADMIN_REASON_REQUIRED` |
 | **AC4** Given 강제 취소, When 감사 로그를 보면, Then 누가·언제·왜가 남아 있다                                | `[정상] forceCancel — should record an AdminAuditLog row carrying the admin id, the reason and the time`<br>`[경계] cancelAndRelease — should leave the post uncancelled when writing the audit log fails`<br>`[예외] forceCancel — should write no audit log when the cancel is rejected`                                                                                              |
 
-**커버리지:** AC 4개 / 시나리오 34개 / 미커버 0개
+**커버리지:** AC 4개 / 시나리오 35개 / 미커버 0개
 
 ### AC에 없는데 넣은 시나리오
 
-| 시나리오                                                       | 왜 넣었나                                                                                                                                                       |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AdminGuard` 예외 4개 · 컨트롤러 403 · `middleware` 리다이렉트 | AC에 권한 문장이 없지만 **가드가 이 이슈의 산출물**이고 #32~#34가 물려받는다. #32의 AC("일반 회원이 관리자 URL로 접근하면 `FORBIDDEN`")가 이 가드를 그대로 쓴다 |
-| `forceCancel` 경고 부여 2개                                    | 판단이 갈렸던 지점. 결정한 규칙을 테스트로 못 박는다                                                                                                            |
-| `forceCancel` 전이 예외 3개 (`CANCELLED`·`COMPLETED`·`CLOSED`) | `ADR-JOB-3`의 전이표를 강제 취소도 그대로 탄다는 것을 고정한다                                                                                                  |
-| `adminJobPostFilterSchema` page 폴백                           | 일반 목록이 이미 "잘못된 page는 오류가 아니라 1"이다. 관리자 목록만 다르면 안 된다                                                                              |
-| `AdminJobPostList` 사유 필수·권한 안내                         | §11.6의 "사유 필수"가 화면에서도 지켜지는지, 403일 때 무엇이 보이는지                                                                                           |
+| 시나리오                                                                  | 왜 넣었나                                                                                                                                                       |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AdminGuard` 정상 1개 · 예외 4개 · 컨트롤러 403 · `middleware` 리다이렉트 | AC에 권한 문장이 없지만 **가드가 이 이슈의 산출물**이고 #32~#34가 물려받는다. #32의 AC("일반 회원이 관리자 URL로 접근하면 `FORBIDDEN`")가 이 가드를 그대로 쓴다 |
+| `forceCancel` 경고 부여 2개                                               | 판단이 갈렸던 지점. 결정한 규칙을 테스트로 못 박는다                                                                                                            |
+| `forceCancel` 전이 예외 3개 (`CANCELLED`·`COMPLETED`·`CLOSED`)            | `ADR-JOB-3`의 전이표를 강제 취소도 그대로 탄다는 것을 고정한다                                                                                                  |
+| `adminJobPostFilterSchema` page 폴백                                      | 일반 목록이 이미 "잘못된 page는 오류가 아니라 1"이다. 관리자 목록만 다르면 안 된다                                                                              |
+| `AdminJobPostList` 사유 필수·권한 안내                                    | §11.6의 "사유 필수"가 화면에서도 지켜지는지, 403일 때 무엇이 보이는지                                                                                           |
