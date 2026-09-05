@@ -38,6 +38,18 @@
 
 ## 수용 중인 예외
 
+> ⚠️ **현재 4건으로 "3건 이하" 규칙을 넘겼다.** (2026-09-05, `/security-review 17`)
+>
+> 넷 중 셋(1~3번)은 **원인이 하나다** — Prisma CLI와 Nest CLI가 개발 도구 묶음을
+> 통째로 끌어오고, `pnpm audit`이 그걸 운영 트리로 센다. 항목이 늘어난 것이지
+> 위험이 늘어난 것은 아니다.
+>
+> 다만 **4번(`qs`)은 성질이 다르다.** 유일하게 `devDependencies`를 거치지 않는
+> 진짜 운영 경로이고, 배포되는 순간 수용 근거가 사라진다. 이 대장을 훑을 때
+> 1~3번을 넘기더라도 **4번은 매번 읽어야 한다.**
+>
+> 규칙을 5건으로 늘리지 않고 그대로 둔다. 넘겼다는 사실 자체가 신호다.
+
 ### 1. `deepmerge-ts` < 8.0.0
 
 | 항목          | 내용                                   |
@@ -111,6 +123,82 @@ mysql2
 
 CLI 전용 의존성이라 마이그레이션·생성 명령을 돌릴 때만 로드된다. 그 명령을 돌리는
 주체는 개발자 본인이므로 외부 입력이 닿지 않는다.
+
+---
+
+### 3. `fast-uri` < 3.2.0
+
+| 항목       | 내용                                              |
+| ---------- | ------------------------------------------------- |
+| **심각도** | high × 4 (host confusion 2건, SSRF 2건)           |
+| **판정**   | ⚪ 수용                                           |
+| **기록일** | 2026-09-05 (`/security-review 17`)                |
+| **재검토** | Nest CLI · Prisma 업데이트 시 또는 **2026-12-05** |
+
+**의존 경로** — 전부 `ajv`를 거친다. 도달하는 곳이 다섯 갈래인데 **모두 빌드·CLI다.**
+
+```
+fast-uri@3.1.5
+├─ ajv@8.18.0 → @angular-devkit/core → @nestjs/schematics → @nestjs/cli   (devDep)
+└─ ajv@8.20.0
+   ├─ @commitlint/config-validator → @commitlint/cli                       (devDep)
+   ├─ schema-utils → webpack / ts-loader                                   (devDep)
+   └─ @prisma/streams-local → @prisma/dev → prisma@7.9.1                   (devDep)
+```
+
+**수용 이유**
+
+`ajv`는 JSON 스키마 검증기고, 여기서는 **Nest CLI의 스키매틱·webpack의 로더 옵션 검증·commitlint의 설정 검증**에 쓰인다. 우리 서버는 런타임 검증에 zod를 쓰며 `ajv`를 부르는 곳이 `apps/api/src`에 0건이다.
+
+마지막 갈래가 `prisma → @prisma/client → @fixer/api (dependencies)`로 이어져 운영 트리처럼 보이는데, **대장 1·2번과 같은 peerDependency 계산 착시다.** `@prisma/dev`는 개발용 도구이고 서버가 쿼리를 처리하는 경로에 없다.
+
+SSRF·host confusion은 **URI를 파싱해 외부로 요청을 보낼 때** 문제가 된다. 빌드 도구가 파싱하는 URI는 우리가 쓴 설정 파일이지 외부 입력이 아니다.
+
+**해소 조건**
+
+- `@nestjs/cli`·`prisma`·`commitlint`가 `ajv`를 `fast-uri >= 3.2.0` 버전으로 올리면 그 버전으로 업데이트한다
+- `ajv`를 운영 코드에서 직접 쓰게 되면 **즉시 재판정한다**
+
+---
+
+### 4. `qs` < 6.15.4 — **다른 셋과 성격이 다르다**
+
+| 항목       | 내용                                            |
+| ---------- | ----------------------------------------------- |
+| **심각도** | moderate × 2                                    |
+| **판정**   | 🟡 **수용하되 운영 경로다.** 배포 전 재판정     |
+| **기록일** | 2026-09-05 (`/security-review 17`)              |
+| **재검토** | **첫 배포 직전** 또는 2026-12-05 (먼저 오는 쪽) |
+
+**의존 경로** — 위 셋과 달리 **`devDependencies`를 한 번도 거치지 않는다.**
+
+```
+qs@6.15.3
+└─ body-parser@2.3.0 / express@5.2.1
+   └─ @nestjs/platform-express@11.2.1
+      └─ @fixer/api (dependencies)
+```
+
+**왜 다른가**
+
+express는 **모든 요청의 쿼리스트링을 `qs`로 파싱한다.** 서버가 떠 있는 동안 외부 입력이 매 요청 이 코드를 지나간다. 대장 1~3번이 "개발 PC를 노리는 것"이라면 이건 사용자를 노릴 수 있는 자리다.
+
+- `array-limit bypass via bracket-key comma parsing`
+- `Denial of Service via Attacker Controlled isBuffer`
+
+DoS 쪽은 **인증 없이도 때릴 수 있다.**
+
+**그런데도 지금 안 고치는 이유**
+
+- 우리가 직접 올릴 수 없다. `express@5.2.1`이 `body-parser`를 통해 고정한다
+- `pnpm overrides`로 강제할 수는 있으나 express 5의 요청 파싱을 건드리는 일이라 회귀 범위가 크다. **의존성 변경은 사람이 판단한다**
+- **배포된 환경이 아직 없다.** 지금은 노출 면이 로컬뿐이다
+
+**해소 조건 — 이건 날짜보다 사건이 먼저다**
+
+- **배포하기 전에 반드시 재판정한다.** 배포되는 순간 "노출 면이 없다"는 수용 근거가 사라진다
+- `express`가 `qs >= 6.15.4`를 물고 오는 버전을 내면 그 버전으로 올린다
+- 그 전에 올려야 하면 `pnpm-workspace.yaml`의 `overrides`로 강제하고, `pnpm test`와 실제 쿼리 파싱(`GET /job-posts?...`, `GET /applications/me?...`)을 확인한다
 
 ---
 

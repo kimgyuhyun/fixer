@@ -3,6 +3,7 @@
 import { jobPostDetailSchema, type JobPostDetail } from '@fixer/shared';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { ApplyPanel } from './ApplyPanel';
 import styles from './page.module.css';
 
 /** 상태를 사람 말로. 코드가 그대로 보이면 무슨 뜻인지 알 수 없다 */
@@ -137,6 +138,8 @@ export function JobPostDetail({ id }: { id: string }) {
         <h2 className={styles.subtitle}>상세 내용</h2>
         <p className={styles.body}>{post.requiredDescription}</p>
       </section>
+
+      <ApplyPanel jobPostId={post.id} />
 
       <Link className={styles.back} href="/job-posts">
         목록으로

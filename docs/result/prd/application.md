@@ -103,6 +103,7 @@ APPLIED ──┬──▶ ACCEPTED ──┬──▶ COMPLETED
           │               └──▶ NO_SHOW
           ├──▶ REJECTED
           ├──▶ WITHDRAWN                            (수락 전 철회, 무패널티)
+          │        └──▶ APPLIED                     (재지원, #17)
           └──▶ PENDING_REACCEPT ──┬──▶ (이전 상태로 복귀)
                                   └──▶ CANCELLED_BY_VERSION_CHANGE
 ```
