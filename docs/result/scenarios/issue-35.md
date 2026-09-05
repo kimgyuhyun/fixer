@@ -4,7 +4,7 @@
 > PRD: `docs/result/prd/job-post.md` · 사양: `spec-fixed.md` §11.1 §11.2 §11.6
 > 담당: B · 선행 #13(공고 목록·필터) · #16(공고 취소) — 둘 다 머지 완료
 > 브랜치 `feat/job-post/issue-35` (base: `main`)
-> 상태: Green 완료 — 시나리오 35개 전부 통과
+> 상태: Green + AC 검증 완료 — 시나리오 39개 전부 통과
 
 ---
 
@@ -407,6 +407,43 @@ middleware 양쪽"을 요구하는데, **middleware는 로그인 여부까지만
 
 ---
 
+## ac-verifier가 채운 갭 (Green 이후 추가)
+
+`@ac-verifier`가 AC1과 AC4를 **부분 충족**으로 판정해 넷을 더했다. 넷 다
+"조각은 옳은데 조각이 이어지는지를 아무도 안 봤다"는 종류의 갭이다.
+
+**AC4의 "누가"가 가장 컸다.** 감사 로그의 `adminId`는 원래
+`쿠키 → LoginService → AdminGuard → CurrentAdmin → 컨트롤러 → 서비스`를
+거쳐 오는데, 기존 테스트는 전부 `adminId`를 손으로 넘겨서 **그 사슬이 한 번도
+함께 실행된 적이 없었다.** 귀속을 증명하지 못하는 감사 로그는 남길 이유가 없다.
+
+이 넷은 구현이 이미 있는 상태에서 추가됐으므로 Red가 성립하지 않는다. 대신
+**각 테스트마다 해당 구현을 일부러 깨뜨려 빨간불을 확인**했다 (그 결과는
+아래에).
+
+| 추가 시나리오  | 구현을 이렇게 깨뜨렸더니                   | 빨간불                             |
+| -------------- | ------------------------------------------ | ---------------------------------- |
+| `roleOf` 통합  | `roleOf`가 항상 `ADMIN`을 준다             | `expected ADMIN to be USER`        |
+| 목록 200       | `list`가 서비스를 안 부르고 빈 목록을 준다 | `expected {items:[]} to match {…}` |
+| 취소 200       | `@HttpCode(OK)`를 뗀다                     | `expected 201 to be 200`           |
+| `adminId` 귀속 | `adminId`를 본문에서 가져온다              | `adminId: 'usr_forged'`            |
+
+### 추가 시나리오
+
+- [x] [정상] `PrismaRoleReader.roleOf` — should return the seeded role from a real Postgres row and null for a user id that does not exist
+- [x] [정상] `AdminJobPostController` — should answer 200 with the list body when an admin calls the list endpoint
+- [x] [정상] `AdminJobPostController` — should answer 200 with the cancel result when an admin posts a valid reason
+- [x] [정상] `AdminJobPostController` — should pass the session user id to forceCancel rather than any value from the request body
+
+### 범위 밖으로 남긴 것
+
+`toHttpError`의 404·409 분기는 테스트로 지나가지 않는다. `@ac-verifier`도
+**AC 어디도 에러 응답 코드를 요구하지 않으므로 판정에 영향이 없다**고 봤다.
+시그니처 문서가 약속한 계약이라 견고성 관점의 가치는 있으나, 이 이슈의 AC
+밖이라 넘긴다.
+
+---
+
 ## AC 대조
 
 | AC                                                                                                           | 커버하는 시나리오                                                                                                                                                                                                                                                                                                                                                                       |
@@ -416,7 +453,7 @@ middleware 양쪽"을 요구하는데, **middleware는 로그인 여부까지만
 | **AC3** Given 공고, When 사유를 적고 강제 취소하면, Then `CANCELLED`가 되고 잠긴 포인트가 전액 `RELEASE`된다 | `[정상] forceCancel — should set the post to CANCELLED and release the whole held amount`<br>`[경계] forceCancel — should release the amount actually held in the ledger`<br>`[경계] forceCancel — should release 0 ... when nothing is held`<br>`[경계] forceCancel — should record exactly one RELEASE ... concurrently`<br>`[예외] forceCancel — should throw ADMIN_REASON_REQUIRED` |
 | **AC4** Given 강제 취소, When 감사 로그를 보면, Then 누가·언제·왜가 남아 있다                                | `[정상] forceCancel — should record an AdminAuditLog row carrying the admin id, the reason and the time`<br>`[경계] cancelAndRelease — should leave the post uncancelled when writing the audit log fails`<br>`[예외] forceCancel — should write no audit log when the cancel is rejected`                                                                                              |
 
-**커버리지:** AC 4개 / 시나리오 35개 / 미커버 0개
+**커버리지:** AC 4개 / 시나리오 39개 (Green 후 4개 추가) / 미커버 0개
 
 ### AC에 없는데 넣은 시나리오
 

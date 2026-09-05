@@ -15,7 +15,10 @@ import {
 } from '../job-post/prisma-job-post.store';
 import type { PrismaService } from '../prisma/prisma.service';
 import { AdminJobPostService } from './admin-job-post.service';
-import { PrismaAdminJobPostStore } from './prisma-admin.store';
+import {
+  PrismaAdminJobPostStore,
+  PrismaRoleReader,
+} from './prisma-admin.store';
 
 /**
  * **검색이 실제로 좁히는지는 진짜 SQL만 안다.** (이슈 #35)
@@ -31,6 +34,7 @@ let prisma: PrismaClient;
 let posts: JobPostService;
 let admin: AdminJobPostService;
 let store: PrismaJobPostStore;
+let roles: PrismaRoleReader;
 
 const REWARD = 50_000;
 const HEADCOUNT = 3;
@@ -54,6 +58,7 @@ beforeAll(async () => {
     new PrismaBalanceReader(as),
     { countAccepted: () => Promise.resolve(0) },
   );
+  roles = new PrismaRoleReader(as);
   admin = new AdminJobPostService(new PrismaAdminJobPostStore(as), store, {
     countAccepted: () => Promise.resolve(0),
   });
@@ -286,5 +291,24 @@ describe('관리자 강제 취소 — 진짜 Postgres에서', () => {
       reason: '허위 공고',
     });
     expect(logs[0]?.createdAt).toBeInstanceOf(Date);
+  });
+});
+
+/**
+ * `@ac-verifier`가 AC1을 부분 충족으로 판정해 더한 것. (Green 이후)
+ *
+ * AC1의 Given이 "관리자"인데, **관리자를 실제로 판별하는 이 함수가 저장소
+ * 전체에서 한 번도 실행된 적이 없었다** — 가드 테스트도 컨트롤러 테스트도
+ * 대역을 꽂는다. `role` 컬럼을 읽는 쿼리가 진짜로 도는지는 여기서만 안다.
+ */
+describe('PrismaRoleReader — 진짜 Postgres에서', () => {
+  it('should return the seeded role from a real Postgres row and null for a user id that does not exist', async () => {
+    const adminId = await seedAdmin();
+    const memberId = await seedEmployer('박구인', 0);
+
+    await expect(roles.roleOf(adminId)).resolves.toBe('ADMIN');
+    // 기본값이 USER다. 가입만 한 사람이 관리자가 되면 안 된다.
+    await expect(roles.roleOf(memberId)).resolves.toBe('USER');
+    await expect(roles.roleOf('usr_does_not_exist')).resolves.toBeNull();
   });
 });
