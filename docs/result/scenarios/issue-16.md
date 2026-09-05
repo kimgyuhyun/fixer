@@ -1,0 +1,180 @@
+# 이슈 #16 — 공고를 취소한다
+
+> 선행 #12 · #28 · 도메인 job-post · 크기 M
+> 브랜치 `feat/job-post/issue-16` (base: `feat/job-post/issue-15`)
+
+---
+
+## 시그니처
+
+### 데이터
+
+`Penalty`를 여기서 만든다. `spec-fixed.md` §5가 정한 모양 그대로다.
+
+```prisma
+model Penalty {
+  id         String        @id @default(cuid())
+  userId     String
+  reason     PenaltyReason
+  jobPostId  String?
+  occurredAt DateTime      @default(now())
+
+  /// 최근 180일 롤링 윈도우 집계가 이 순서로 훑는다 (§5)
+  @@index([userId, occurredAt])
+}
+
+enum PenaltyReason { NO_SHOW LATE_CANCEL SAME_DAY_CANCEL POSTER_CANCEL }
+```
+
+### 서버
+
+```
+POST /job-posts/:id/cancel  →  200  { released, penalized }
+                            →  403  JOB_POST_NOT_OWNED
+                            →  404  JOB_POST_NOT_FOUND
+                            →  409  JOB_POST_INVALID_TRANSITION
+```
+
+---
+
+## 판단이 갈렸던 지점
+
+**잠금 해제는 "남은 만큼"이다.**
+`RELEASE` 금액을 예산에서 다시 계산하면, #15에서 예산을 고친 공고의 숫자가
+어긋난다. **그 공고 id를 참조하는 원장 행들의 합**을 되돌린다 — `ADR-PAY-7`이
+lot 잔여를 원장에서 계산한 것과 같은 판단이다.
+
+**취소와 해제가 한 트랜잭션이다.**
+상태만 바뀌고 돈이 안 풀리면 **아무도 풀어줄 수 없는 돈**이 되고, 돈만
+풀리고 상태가 남으면 예산 없는 공고가 모집 중으로 남는다.
+
+**두 번 취소해도 한 번만 풀린다.**
+멱등 키를 `cancel:{jobPostId}`로 둔다. 전이표가 `CANCELLED → CANCELLED`를
+막지만, 두 요청이 동시에 오면 둘 다 `OPEN`을 읽는다 — 그때 막는 것은 원장의
+유니크 제약이다 (#29에서 같은 것을 겪었다).
+
+**패널티는 수락자가 있을 때만 쌓인다.**
+신청자가 0명이면 아무도 피해를 안 봤다. §4.3이 "구인자 취소 시 구직자 보상은
+없고 `Penalty`가 쌓인다"고 했지만, 그건 약속이 있었을 때의 이야기다.
+
+**수락자 판정은 포트 뒤에 둔다.**
+`Application`(#17)이 아직 없다. #9·#14와 같은 방식으로 포트를 만들고
+구현체는 0을 돌려준다 — 그래서 **지금은 패널티가 실제로 쌓이지 않는다.**
+`Penalty` 테이블과 쌓는 코드는 지금 만들어 두고, #17이 어댑터만 채운다.
+
+**소프트 삭제가 아니라 상태 전환이다.**
+§3.3이 `OPEN → CANCELLED`를 전이표에 뒀다. `deletedAt`은 관리자 삭제용이고,
+구인자 취소는 상태다 — 취소된 공고도 상세로는 볼 수 있어야 한다(#14).
+
+---
+
+## 시나리오
+
+### 신청자 없는 공고 취소 (AC1)
+
+- [x] [정상] `cancel` — should move the post to CANCELLED
+- [x] [정상] `cancel` — should release the whole locked budget
+- [x] [정상] `통합` — should return the whole locked amount to the balance
+- [x] [경계] `cancel` — should release what is actually locked, not the recomputed budget
+- [x] [정상] `cancel` — should report what it released
+
+### 수락자가 있으면 패널티 (AC2)
+
+- [x] [정상] `cancel` — should record a penalty when someone was accepted
+- [x] [경계] `cancel` — should record no penalty when nobody applied
+- [x] [정상] `cancel` — should still cancel and release when a penalty is recorded
+
+### 목록에서 사라지고 DB에는 남는다 (AC3)
+
+- [x] [정상] `cancel` — should drop a cancelled post from the list
+- [x] [정상] `cancel` — should still return a cancelled post from the detail view
+- [x] [경계] `통합` — should keep the row in the database after cancelling
+
+### 남의 공고는 못 취소한다 (AC4)
+
+- [x] [예외] `cancel` — should reject a post owned by another member
+- [x] [예외] `cancel` — should reject a post that cannot be found
+- [x] [예외] `cancel` — should reject a post that is already cancelled
+- [x] [예외] `cancel` — should reject a COMPLETED post
+- [x] [정상] `cancel` — should change nothing when it was rejected
+
+### 두 번 취소 (멱등)
+
+- [x] [경계] `통합` — should release only once when two cancels arrive at the same time
+- [x] [경계] `통합` — should release what is actually locked after an edit changed the budget
+- [x] [경계] `통합` — should record no penalty row when nobody was accepted
+
+### 컨트롤러
+
+- [x] [정상] `POST /job-posts/:id/cancel` — should return what was released
+- [x] [예외] `POST /job-posts/:id/cancel` — should return 403 for another member
+- [x] [예외] `POST /job-posts/:id/cancel` — should return 409 for a post that cannot move to CANCELLED
+- [x] [정상] `POST /job-posts/:id/cancel` — should say whether a penalty was recorded
+- [x] [경계] `POST /job-posts/:id/cancel` — should return 400 when employerId is missing
+- [x] [예외] `POST /job-posts/:id/cancel` — should return 404 for a post that cannot be found
+
+**총 30개** (서비스 14 + 통합 9 + 컨트롤러 6, 겹치는 항목 제외)
+
+### 서버를 띄워 확인한 것
+
+50만 충전 → 15만 예산 공고 등록 → 취소.
+
+| 무엇         | 결과                                       |
+| ------------ | ------------------------------------------ |
+| 등록 후 잔액 | 350,000                                    |
+| 취소         | `released 150000`, `penalized false`       |
+| 취소 후 잔액 | **500,000 — 전액 돌아왔다**                |
+| 목록         | 0건 (사라졌다)                             |
+| 상세         | `CANCELLED` — 여전히 볼 수 있다            |
+| 두 번째 취소 | `409`, 잔액 500,000 그대로 (두 배 안 된다) |
+
+### ac-verifier가 잡은 것 — 저장소가 상태를 안 봤다
+
+`cancelAndRelease`가 `transition('OPEN', 'CANCELLED')`를 **하드코딩**하고
+있었다. 문자열 리터럴이라 검사가 항상 통과하고, `UPDATE`에도 상태 조건이
+없어 **DB 차원의 가드가 사실상 없었다.**
+
+두 가지가 걸렸다.
+
+1. `CLOSED → CANCELLED`는 전이표에 있는데 그 경로를 타는 테스트가 하나도 없었다
+   — 하드코딩된 `'OPEN'` 덕에 우연히 동작하고 있었다
+2. 서비스의 조회와 저장소의 쓰기는 다른 트랜잭션이라, 그 사이에 상태가
+   바뀌면 **`COMPLETED` 공고를 `CANCELLED`로 덮어쓸 수 있었다**
+
+읽은 시점의 상태를 저장소에 넘기고 `WHERE status = ?`에 건다. 0건이면
+아무것도 안 바뀌고 `'STALE'`로 되돌아온다 — 조건부 UPDATE와 같은 방식이다.
+
+- [x] [경계] `통합` — should cancel a CLOSED post against the real database
+- [x] [경계] `통합` — should not overwrite a post whose status changed after it was read
+- [x] [예외] `통합` — should report a stale status as an invalid transition
+- [x] [경계] `통합` — should always report penalized false while the accepted counter is stubbed
+
+마지막 항목은 **AC2가 지금 동작하지 않는다는 사실을 고정한다.** #17이
+어댑터를 채우면 그 테스트가 빨개지고, 그때 함께 고치라는 신호가 된다.
+
+### 지금은 경고가 실제로 안 쌓인다
+
+`Penalty` 테이블과 쌓는 코드는 만들었지만, 수락자 판정 포트가 아직 0을
+돌려주므로 `penalized`는 늘 `false`다. **#17이 어댑터를 채워야 AC2가
+실제로 동작한다** — #14의 확정 인원과 같은 자리다.
+
+---
+
+## AC 대조
+
+| AC                           | 시나리오   |
+| ---------------------------- | ---------- |
+| 1 · CANCELLED + 전액 RELEASE | 취소 5개   |
+| 2 · 수락자 있으면 Penalty    | 패널티 3개 |
+| 3 · 목록에서 사라지고 남는다 | 목록 3개   |
+| 4 · 남의 공고는 FORBIDDEN    | 거절 5개   |
+
+---
+
+## 이번 범위 밖
+
+| 것                         | 어디로                                        |
+| -------------------------- | --------------------------------------------- |
+| 진짜 수락자 판정           | **#17** — 지금은 포트가 0을 돌려준다          |
+| 신청 상태 `WITHDRAWN` 전환 | #17                                           |
+| 180일 5건 제재 판정        | 제재 이슈. `Penalty` 테이블과 인덱스는 여기서 |

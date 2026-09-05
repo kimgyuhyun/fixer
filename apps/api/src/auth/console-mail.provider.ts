@@ -31,4 +31,12 @@ export class ConsoleMailProvider implements MailProvider {
     await Promise.resolve();
     this.logger.log(`[개발용] ${email} 인증 코드: ${code}`);
   }
+
+  async sendPasswordResetLink(email: string, token: string): Promise<void> {
+    await Promise.resolve();
+    // 개발 중에는 링크를 로그에 찍는다. 실제 발송은 Resend(#37)가 맡는다.
+    this.logger.log(
+      `[개발용] ${email} 재설정 링크: /password-reset/confirm?token=${token}`,
+    );
+  }
 }

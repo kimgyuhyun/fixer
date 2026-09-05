@@ -297,6 +297,57 @@ describe('signup', () => {
     );
   });
 
+  it('should throw AUTH_REACTIVATION_AVAILABLE when the email belongs to a deactivated account', async () => {
+    // 새 계정을 만들면 경고 4건 쌓인 사람의 탈퇴·재가입 세탁이 성공한다 (#10).
+    const { store } = createUserStore([
+      {
+        ...existingUser(),
+        deactivatedAt: new Date('2026-08-20T00:00:00.000Z'),
+      },
+    ]);
+    const service = serviceWith({ users: store });
+
+    const error = await rejectionOf(
+      service.signup({ email: EMAIL, password: PASSWORD, name: NAME }),
+    );
+
+    expect((error as SignupError).code).toBe(
+      SIGNUP_ERRORS.REACTIVATION_AVAILABLE,
+    );
+  });
+
+  it('should not create a new member when the email belongs to a deactivated account', async () => {
+    const { store, rows } = createUserStore([
+      {
+        ...existingUser(),
+        deactivatedAt: new Date('2026-08-20T00:00:00.000Z'),
+      },
+    ]);
+    const service = serviceWith({ users: store });
+
+    await rejectionOf(
+      service.signup({ email: EMAIL, password: PASSWORD, name: NAME }),
+    );
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it('should still throw MEMBER_EMAIL_ALREADY_EXISTS when the account is active', async () => {
+    // 활성 계정에 재활성화를 권하면 안 된다. 되살릴 것이 없다.
+    const { store } = createUserStore([
+      { ...existingUser(), deactivatedAt: null },
+    ]);
+    const service = serviceWith({ users: store });
+
+    const error = await rejectionOf(
+      service.signup({ email: EMAIL, password: PASSWORD, name: NAME }),
+    );
+
+    expect((error as SignupError).code).toBe(
+      SIGNUP_ERRORS.EMAIL_ALREADY_EXISTS,
+    );
+  });
+
   it('should throw AUTH_EMAIL_NOT_VERIFIED before MEMBER_EMAIL_ALREADY_EXISTS when both apply', async () => {
     // 인증하지 않은 사람에게 "이미 가입된 이메일"이라고 알려주면
     // 아무나 이메일만 넣어보고 가입 여부를 알아낼 수 있다.

@@ -104,6 +104,21 @@ describe('POST /auth/signup', () => {
     expect(bodyOf(error).errorCode).toBe(SIGNUP_ERRORS.EMAIL_ALREADY_EXISTS);
   });
 
+  it('should return 409 with AUTH_REACTIVATION_AVAILABLE for a deactivated account', async () => {
+    // 중복과 같은 409지만 코드가 다르다. 상태만 보면 웹이 재활성화
+    // 안내를 띄울지 "이미 가입된 이메일"을 띄울지 가릴 수 없다. (#10)
+    const controller = controllerWith({
+      signup: () =>
+        Promise.reject(new SignupError(SIGNUP_ERRORS.REACTIVATION_AVAILABLE)),
+    });
+
+    const error = await rejectionOf(controller.signup(VALID_BODY));
+
+    expect((error as HttpException).getStatus()).toBe(HttpStatus.CONFLICT);
+    expect(bodyOf(error).errorCode).toBe(SIGNUP_ERRORS.REACTIVATION_AVAILABLE);
+    expect(bodyOf(error).message).toContain('재활성화');
+  });
+
   it('should let an unknown error through so it becomes 500', async () => {
     // 여기서 삼키면 원인 모를 400이 되어 디버깅이 어려워진다.
     const unknown = new Error('DB가 죽었다');

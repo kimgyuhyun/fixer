@@ -30,6 +30,59 @@ model User {
   name         String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  /// 표시용 캐시. **진실의 원천은 원장이다** (ADR-PAY-1).
+  cachedBalance Int     @default(0)
+  /// 비활성화 시각. **상태 컬럼을 만들지 않는다** — 이것 하나로 판정한다 (ADR-AUTH-3).
+  deactivatedAt DateTime?
+  /// 개인정보 파기 시각. (#39)
+  ///
+  /// 상태 컬럼이 아니라 **시각 기록**이라 ADR-AUTH-3의 기각 사유에 걸리지
+  /// 않는다. 이게 없으면 배치가 어제 파기한 계정을 오늘 또 훑는다.
+  purgedAt      DateTime?
+
+  /// 로그인 세션들. (#4)
+  refreshTokens     RefreshToken[]
+  passwordResets    PasswordReset[]
+  pointTransactions PointTransaction[]
+  addresses         UserAddress[]
+  agreements        Agreement[]
+  payments          Payment[]
+  jobPosts          JobPost[]
+  penalties         Penalty[]
+  exchangeAccount   ExchangeAccount?
+
+  /// 파기 배치가 "비활성화됐고 아직 파기 안 된" 행만 훑는다 (#39)
+  @@index([deactivatedAt, purgedAt])
+}
+
+/// 회원의 주소. (이슈 #3, ADR-AUTH-2)
+///
+/// 회원당 여러 행을 허용하고 라벨로 구분한다. 그래서 userId에 유니크를 걸지 않는다.
+/// 통 문자열 컬럼을 두지 않고 분해해서 담는다 — 관리자 지역 필터가 시/도 →
+/// 시/군/구 두 단계로 좁히기 때문이다(`spec-fixed.md` §11).
+model UserAddress {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 여러 주소를 구분하는 이름. 정하지 않으면 "기본"
+  label        String
+  /// 5자리 새 우편번호 (카카오 zonecode)
+  postalCode   String
+  roadAddress  String
+  jibunAddress String
+  /// 관리자 지역 필터 1단계 (spec-fixed §11)
+  sido         String
+  /// 관리자 지역 필터 2단계. 세종특별자치시처럼 없는 지역은 빈 문자열
+  sigungu      String
+  /// 좌표 변환 실패를 저장 실패로 만들지 않는다 (AC3)
+  lat          Float?
+  lng          Float?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  /// 관리자 지역 필터가 시/도 → 시/군/구 두 단계로 좁힌다
+  @@index([sido, sigungu])
 }
 
 /// 이메일 인증 코드 발급 이력. (이슈 #1, ADR-AUTH-4)
@@ -51,4 +104,291 @@ model EmailVerification {
 
   // 쿨다운(최근 1건)과 시간당 발송 수(최근 1시간) 판정에 함께 쓰인다.
   @@index([email, createdAt])
+}
+
+/// 로그인 세션 하나. (이슈 #4, ADR-AUTH-1)
+///
+/// 로그인할 때마다 행을 추가한다. 회원당 여러 행이 쌓인다 — 휴대폰과 PC에
+/// 동시에 로그인할 수 있어야 하기 때문이다. 회전(rotation)하지 않으므로
+/// Access를 갱신해도 이 행은 그대로 있다.
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  /// 평문 저장 금지. 조회 키라서 유니크는 userId가 아니라 여기에 건다.
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// 전체 무효화(deleteMany(userId))와 만료 행 정리에 쓰인다.
+  @@index([userId])
+}
+
+/// 비밀번호 재설정 링크 토큰. 발급마다 행을 쌓는다 (ADR-AUTH-4와 같은 방식).
+model PasswordReset {
+  id         String    @id @default(cuid())
+  userId     String
+  /// 평문 저장 금지. 유출돼도 토큰을 알 수 없어야 한다.
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  /// 사용된 시각. 1회용이므로 값이 있으면 재사용 불가.
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+/// 포인트 증감 내역. **잔액은 이 표의 합이다** (spec-fixed §6.1).
+model PointTransaction {
+  id              String               @id @default(cuid())
+  userId          String
+  type            PointTransactionType
+  /// 부호까지 담는다. HOLD는 음수, RELEASE는 양수. 합계가 곧 잔액이다.
+  amount          Int
+  /// 웹훅 중복 수신 방어. **DB 제약이 최후 방어선이다** (ADR-PAY-3).
+  idempotencyKey  String               @unique
+  /// 어느 결제 건에서 나왔나. FIFO 소진과 환불 대상 선택에 쓴다 (ADR-PAY-7).
+  sourcePaymentId String?
+  /// 무엇 때문에 생긴 행인가 (공고 id, 환전 요청 id 등). 추적용.
+  referenceId     String?
+  createdAt       DateTime             @default(now())
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([sourcePaymentId])
+}
+
+enum PointTransactionType {
+  CHARGE
+  HOLD
+  RELEASE
+  PAYOUT
+  EXCHANGE_REQUEST
+  EXCHANGE_REVERT
+  REFUND
+}
+
+/// 동의서 템플릿. 파일은 git으로, 메타데이터는 여기로 (ADR-AGR-4).
+model AgreementTemplate {
+  version      Int      @id
+  fileKey      String
+  sha256       String
+  /// 서명이 들어갈 사각형(PDF 좌표). 여기서 좌표를 통제한다 (ADR-AGR-1).
+  signatureBox Json
+  isActive     Boolean  @default(false)
+  activatedAt  DateTime @default(now())
+
+  @@index([isActive])
+}
+
+/// 서명이 병합된 최종 PDF와 그 메타데이터 (spec-fixed §2.3).
+model Agreement {
+  id              String   @id @default(cuid())
+  userId          String
+  templateVersion Int
+  /// 상대경로만 저장한다. 절대경로 금지 (§2.3).
+  filePath        String
+  /// 파기 후에도 남길 값 (§9).
+  sha256          String
+  agreedAt        DateTime @default(now())
+  ip              String
+  userAgent       String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, agreedAt])
+}
+
+/// 결제 건 하나. (이슈 #28)
+///
+/// 원장만으로는 **어느 결제 건이 얼마 남았는지**를 알 수 없는데, ADR-PAY-7의
+/// FIFO 환불이 그 값을 필요로 한다(#29). 그래서 결제 건을 따로 들고 있는다.
+model Payment {
+  /// 포트원이 준 결제 건 식별자. **우리가 만들지 않는다** (ADR-PAY-3).
+  id             String        @id
+  userId         String
+  /// 결제 시작 때 **서버가 정한** 금액. 확정 때 포트원이 준 값과 대조한다.
+  amount         Int
+  status         PaymentStatus @default(PENDING)
+  /// 카드 취소 기한. **값은 지금 비워 둔다** — 실결제 전환 때 채운다.
+  ///
+  /// lot 잔여는 컬럼으로 두지 않는다. 원장에서 계산한다 (ADR-PAY-7) —
+  /// 숫자가 두 벌이면 어긋났을 때 어느 쪽이 맞는지 판단할 근거가 없다.
+  refundableUntil DateTime?
+  createdAt      DateTime      @default(now())
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// FIFO 소진이 오래된 것부터 훑는다 (ADR-PAY-7)
+  @@index([userId, createdAt])
+}
+
+enum PaymentStatus {
+  /// 결제창을 띄웠고 아직 확정되지 않았다
+  PENDING
+  /// 포트원이 PAID라고 했고 금액도 맞았다
+  PAID
+  /// 전액 취소됐다
+  CANCELLED
+}
+
+/// 공고 카테고리. 관리자 화면 없이 seed로만 관리한다 (spec-fixed §3.1).
+model Category {
+  id              String  @id @default(cuid())
+  name            String
+  slug            String  @unique
+  sortOrder       Int
+  /// 상세 내용 입력란에 뜨는 안내 문구. 문구 수정에 재배포가 필요 없다.
+  placeholderText String
+  isActive        Boolean @default(true)
+
+  jobPosts JobPost[]
+
+  // 목록은 "활성만 정렬순"으로만 읽는다. 그 한 가지 접근을 위한 인덱스다.
+  @@index([isActive, sortOrder])
+}
+
+/// 공고. (이슈 #12, `spec-fixed.md` §3)
+model JobPost {
+  id         String        @id @default(cuid())
+  employerId String
+  categoryId String
+  title      String
+  status     JobPostStatus @default(DRAFT)
+  /// 필수항목 6개가 바뀔 때만 오른다 (§3.4). 시작값 1.
+  version    Int           @default(1)
+
+  // ── 필수항목 6개. 이 값들이 version을 올린다 (§3.4) ──
+  /// 기본값은 가입 주소. **서버가 채운다** — 화면이 채우면 옛 값을 보낼 수 있다.
+  workAddress         String
+  /// 지역 필터 1단계 (#13). 문자열을 파싱하지 않고 분해해서 담는다 (ADR-AUTH-2와 같은 이유)
+  workSido            String  @default("")
+  /// 지역 필터 2단계. 세종특별자치시처럼 없는 지역은 빈 문자열
+  workSigungu         String  @default("")
+  workStartAt         DateTime
+  workEndAt           DateTime
+  headcount           Int
+  /// 1인당 보상금(포인트). 예산 = headcount × 이 값
+  rewardPerPerson     Int
+  requiredDescription String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  /// 물리 삭제 없음 (§3.3). 상태와 이 값으로 관리한다.
+  deletedAt DateTime?
+
+  employer User             @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  category Category         @relation(fields: [categoryId], references: [id])
+  versions JobPostVersion[]
+
+  /// 목록은 "OPEN을 최신순으로"만 읽는다 (ADR-JOB-5)
+  @@index([status, createdAt])
+  /// 지역 필터가 시/도 → 시/군/구 두 단계로 좁힌다 (#13)
+  @@index([workSido, workSigungu, status])
+  @@index([employerId])
+  @@index([categoryId])
+}
+
+/// 공고 버전 스냅샷. (ADR-JOB-1)
+///
+/// 버전마다 **필수항목 6개 전부를 정규 컬럼으로** 남긴다. diff JSON이면
+/// 중간 하나가 틀어질 때 그 이후 모든 복원이 틀어지는데, `appliedVersion`은
+/// 화면용 숫자가 아니라 분쟁 시 근거가 되는 계약 내용이다.
+model JobPostVersion {
+  id        String @id @default(cuid())
+  jobPostId String
+  version   Int
+
+  workAddress         String
+  workStartAt         DateTime
+  workEndAt           DateTime
+  headcount           Int
+  rewardPerPerson     Int
+  requiredDescription String
+
+  createdAt DateTime @default(now())
+  jobPost   JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+
+  /// 계약 복원이 `WHERE jobPostId = ? AND version = ?` 한 줄이어야 한다
+  @@unique([jobPostId, version])
+}
+
+enum JobPostStatus {
+  /// 작성 중. 포인트 잠금 전
+  DRAFT
+  /// 모집 중. 포인트 HOLD 완료
+  OPEN
+  /// 모집 마감 (정원 충족 또는 시작 시각 도달)
+  CLOSED
+  /// 업무 완료 확인됨. PAYOUT 실행됨
+  COMPLETED
+  /// 구인자 취소
+  CANCELLED
+  /// 미달 상태로 시작 시각 경과
+  EXPIRED
+}
+
+/// 제재 기록 1건. (`spec-fixed.md` §5)
+///
+/// **레코드를 지우지 않는다** — 분쟁 대응 근거이기 때문이다. 제재 판정은
+/// 최근 180일 롤링 윈도우를 쿼리로 세는 것이고 별도 배치가 없다.
+model Penalty {
+  id         String        @id @default(cuid())
+  userId     String
+  reason     PenaltyReason
+  /// 어느 공고에서 생겼나. 공고와 무관한 제재도 있을 수 있어 nullable이다
+  jobPostId  String?
+  occurredAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// 180일 롤링 윈도우 집계가 이 순서로 훑는다 (§5)
+  @@index([userId, occurredAt])
+}
+
+enum PenaltyReason {
+  /// 무단 불참
+  NO_SHOW
+  /// 무상 취소 창(수락 +2시간)을 넘긴 취소
+  LATE_CANCEL
+  /// 근무 당일 취소
+  SAME_DAY_CANCEL
+  /// 구인자가 수락자가 있는 공고를 취소했다
+  POSTER_CANCEL
+}
+
+/// 환전받을 계좌. (이슈 #30, `spec-fixed.md` §6.4.1)
+///
+/// **계좌번호는 암호화해서 담는다** (ADR-PAY-6). 평문으로 두면 DB 백업 하나가
+/// 새는 순간 전원의 계좌가 샌다.
+model ExchangeAccount {
+  id       String @id @default(cuid())
+  /// 회원당 한 계좌. 여러 개면 환전 요청마다 어느 계좌인지 정해야 하는데
+  /// 그 단계는 §6.4에 없다.
+  userId   String @unique
+  bankCode String
+
+  /// `iv:authTag:ciphertext` 한 컬럼. 셋으로 쪼개면 하나만 지워질 수 있다.
+  accountNumberEncrypted String
+  /// 마스킹 표시용 뒤 4자리. **평문이지만 이것만으로는 계좌를 쓸 수 없다** —
+  /// 목록을 그릴 때마다 복호화하면 전 회원의 계좌번호가 메모리에 올라온다.
+  accountNumberLast4     String
+  holderName             String
+
+  verificationStatus AccountVerificationStatus @default(PENDING)
+  /// 왜 거절됐나. 없으면 사용자가 무엇을 고쳐야 하는지 모른다
+  rejectedReason     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AccountVerificationStatus {
+  /// 아직 검증 전
+  PENDING
+  /// 검증 통과. stub 모드는 형식만 보고 즉시 이 상태가 된다 (§6.4.2)
+  VERIFIED
+  /// 형식이 틀렸거나 실명 대조에 실패했다
+  REJECTED
 }

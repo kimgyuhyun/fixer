@@ -28,15 +28,60 @@ const READY: Feature[] = [
     summary: '이메일로 6자리 코드를 받아 10분 안에 검증한다.',
     href: '/signup/verify-email',
   },
+  {
+    issue: 2,
+    title: '가입',
+    summary: '인증된 이메일에 비밀번호와 이름을 붙여 계정을 만든다.',
+    href: '/signup/account',
+  },
+  {
+    issue: 3,
+    title: '주소 등록',
+    summary: '우편번호 팝업으로 주소를 고르고 좌표까지 저장한다.',
+    href: '/signup/address',
+  },
+  {
+    issue: 7,
+    title: '동의서 서명',
+    summary: '동의서를 읽고 서명하면 서명이 병합된 PDF가 저장된다.',
+    href: '/signup/agreement',
+  },
+  {
+    issue: 8,
+    title: '내 동의서 보기',
+    summary: '서명한 동의서를 다시 열어 본다. 남의 것은 못 본다.',
+    href: '/my/agreement',
+  },
+  {
+    issue: 28,
+    title: '포인트 충전',
+    summary: '금액을 고르면 서버가 금액을 대조하고 원장에 충전을 남긴다.',
+    href: '/points',
+  },
+  {
+    issue: 30,
+    title: '환전 계좌',
+    summary: '계좌를 등록하면 암호화되어 저장되고 뒤 4자리만 보인다.',
+    href: '/my/account',
+  },
+  {
+    issue: 12,
+    title: '공고 등록·목록',
+    summary: '공고를 올리면 예산이 잠기고 목록에 뜬다.',
+    href: '/job-posts',
+  },
+  {
+    issue: 11,
+    title: '공고 카테고리 안내',
+    summary: '카테고리를 고르면 그 업종에서 적어야 할 것이 안내된다.',
+    href: '/job-posts/new',
+  },
 ];
 
 /** 아직 만들지 않은 것. 이 화면이 "무엇이 없는지"까지 말하게 한다. */
 const PLANNED: Feature[] = [
-  { issue: 2, title: '가입', summary: '인증된 이메일로 계정을 만든다.' },
-  { issue: 3, title: '주소 등록', summary: '주소를 검색해서 등록한다.' },
   { issue: 4, title: '로그인', summary: '로그인하고 내 정보를 본다.' },
   { issue: 6, title: '비밀번호 재설정', summary: '비밀번호를 다시 정한다.' },
-  { issue: 12, title: '공고 등록', summary: '공고를 올리면 목록에 뜬다.' },
 ];
 
 export default function Home() {

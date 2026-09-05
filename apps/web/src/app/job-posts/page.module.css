@@ -1,0 +1,234 @@
+/*
+ * 이슈 #12 · 공고 목록.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ * 보상금은 tabular-nums로 자릿수를 맞춘다 — 목록에서 눈이 매번 다시 세지
+ * 않게 하려는 것이다.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.header {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.newLink {
+  padding: var(--space-2) var(--space-3);
+
+  font-weight: 600;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.newLink:hover {
+  border-color: var(--color-primary);
+}
+
+.total {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  padding: var(--space-3);
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.cardTitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.address {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+
+  font-size: 0.875rem;
+}
+
+/* 좁은 화면에서는 라벨 위, 값 아래. 넓어지면 한 줄로 붙인다. */
+.metaRow {
+  display: grid;
+  grid-template-columns: 4rem 1fr;
+  gap: var(--space-2);
+}
+
+.metaRow dt {
+  color: var(--color-text-muted);
+}
+
+.reward {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.empty {
+  padding: var(--space-5);
+
+  color: var(--color-text-muted);
+  text-align: center;
+
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+
+.error {
+  padding: var(--space-2);
+
+  color: var(--color-danger);
+  font-size: 0.875rem;
+
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius);
+}
+
+/* ── 이슈 #13에서 더한 것 ── */
+
+/* 좁은 화면에서는 한 줄에 하나, 넓어지면 넷 */
+.filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+@media (min-width: 36rem) {
+  .filters {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.filterField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.filterLabel {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.filterInput {
+  width: 100%;
+  padding: var(--space-2);
+
+  color: var(--color-text);
+  font: inherit;
+
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.filterInput:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  padding: var(--space-1) var(--space-2);
+
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8125rem;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--color-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* 화면에서만 감춘다. 읽어주는 도구에는 남는다 */
+.srOnly {
+  position: absolute;
+
+  overflow: hidden;
+  clip-path: inset(50%);
+
+  width: 1px;
+  height: 1px;
+
+  white-space: nowrap;
+}
+
+.pager {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: center;
+
+  padding: var(--space-3) 0;
+}
+
+.pagerButton {
+  padding: var(--space-2) var(--space-3);
+
+  color: var(--color-text);
+  font: inherit;
+
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.pagerButton:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.pagerNow {
+  font-variant-numeric: tabular-nums;
+}

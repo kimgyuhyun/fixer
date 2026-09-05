@@ -99,6 +99,11 @@ export const SIGNUP_ERRORS = {
   EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
   /** 그 이메일로 이미 회원이 있다 */
   EMAIL_ALREADY_EXISTS: 'MEMBER_EMAIL_ALREADY_EXISTS',
+  /**
+   * 그 이메일이 **비활성화된** 계정의 것이다. 새 계정을 만들지 않고
+   * 재활성화를 권한다 (#10). 새로 만들면 경고 이력이 세탁된다.
+   */
+  REACTIVATION_AVAILABLE: 'AUTH_REACTIVATION_AVAILABLE',
 } as const;
 
 export type SignupErrorCode =
@@ -124,16 +129,23 @@ export function utf8ByteLength(value: string): number {
   return bytes;
 }
 
+/**
+ * 비밀번호 규칙. 가입(#2)과 재설정(#6)이 **같은 것**을 쓴다.
+ *
+ * 따로 두면 한쪽만 바뀌어 "가입은 되는데 재설정은 안 되는" 비밀번호가 생긴다.
+ */
+export const passwordSchema = z
+  .string({ error: '비밀번호를 입력해 주세요.' })
+  .min(SIGNUP_RULES.passwordMinLength, {
+    error: `비밀번호는 ${SIGNUP_RULES.passwordMinLength}자 이상이어야 합니다.`,
+  })
+  .refine((value) => utf8ByteLength(value) <= SIGNUP_RULES.passwordMaxBytes, {
+    error: `비밀번호가 너무 깁니다. (최대 ${SIGNUP_RULES.passwordMaxBytes}바이트)`,
+  });
+
 export const signupRequestSchema = z.object({
   email: z.email({ error: '이메일 형식이 올바르지 않습니다.' }),
-  password: z
-    .string({ error: '비밀번호를 입력해 주세요.' })
-    .min(SIGNUP_RULES.passwordMinLength, {
-      error: `비밀번호는 ${SIGNUP_RULES.passwordMinLength}자 이상이어야 합니다.`,
-    })
-    .refine((value) => utf8ByteLength(value) <= SIGNUP_RULES.passwordMaxBytes, {
-      error: `비밀번호가 너무 깁니다. (최대 ${SIGNUP_RULES.passwordMaxBytes}바이트)`,
-    }),
+  password: passwordSchema,
   name: z
     .string({ error: '이름을 입력해 주세요.' })
     .trim()
@@ -152,3 +164,153 @@ export const signedUpSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 export type SignedUp = z.infer<typeof signedUpSchema>;
+
+/**
+ * 재활성화 요청. (#10)
+ *
+ * 이름을 받지 않는다 — 되살리는 것은 그 사람이지 그 이름이 아니다.
+ * 비밀번호는 **새로 받는다**: 가입 화면에서 방금 입력한 것이 자기
+ * 비밀번호가 될 거라고 생각하기 때문이다.
+ */
+export const reactivateRequestSchema = z.object({
+  email: z.email({ error: '이메일 형식이 올바르지 않습니다.' }),
+  password: passwordSchema,
+});
+export type ReactivateRequest = z.infer<typeof reactivateRequestSchema>;
+
+/** 재활성화가 내는 실패 코드 */
+export const REACTIVATION_ERRORS = {
+  /** 이메일 인증을 마치지 않았다 */
+  EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
+  /** 되살릴 비활성 계정이 없다 — 이미 활성이거나 아예 없다 */
+  NOT_DEACTIVATED: 'AUTH_MEMBER_NOT_DEACTIVATED',
+} as const;
+
+export type ReactivationErrorCode =
+  (typeof REACTIVATION_ERRORS)[keyof typeof REACTIVATION_ERRORS];
+
+/**
+ * 로그인 토큰 규칙. (이슈 #4, spec-fixed §2.5)
+ *
+ * 이 값들은 사양에서 이미 확정됐다. 여기서 다시 정하지 않는다.
+ */
+export const AUTH_TOKEN_RULES = {
+  /** Access 토큰(JWT)의 수명 */
+  accessTokenMinutes: 15,
+  /** Refresh 토큰의 수명 */
+  refreshTokenDays: 14,
+} as const;
+
+/**
+ * 토큰을 담는 쿠키 이름.
+ *
+ * 웹 미들웨어(#5)와 API가 같은 문자열을 봐야 하므로 shared에 둔다.
+ */
+export const AUTH_COOKIES = {
+  access: 'fixer_access',
+  refresh: 'fixer_refresh',
+} as const;
+
+/**
+ * 로그인·인증이 내는 에러 코드.
+ */
+/** 비밀번호 재설정 규칙 (spec-fixed §2.4) */
+export const PASSWORD_RESET_RULES = {
+  /** 링크 토큰의 수명 */
+  expiryMinutes: 30,
+} as const;
+
+/** 재설정이 내는 에러 코드 */
+export const PASSWORD_RESET_ERRORS = {
+  /**
+   * 토큰이 없거나, 이미 썼거나, 만료됐다.
+   *
+   * 셋을 구분해서 알려주지 않는다. 구분하면 토큰을 넣어보며 어떤 상태인지
+   * 알아낼 수 있고, 사용자가 할 일은 어느 쪽이든 "다시 요청하기"로 같다.
+   */
+  TOKEN_INVALID: 'AUTH_RESET_TOKEN_INVALID',
+} as const;
+
+export type PasswordResetErrorCode =
+  (typeof PASSWORD_RESET_ERRORS)[keyof typeof PASSWORD_RESET_ERRORS];
+
+/** 재설정 메일 요청 */
+export const passwordResetRequestSchema = z.object({
+  email: z.email({ error: '이메일 형식이 올바르지 않습니다.' }),
+});
+export type PasswordResetRequest = z.infer<typeof passwordResetRequestSchema>;
+
+/** 새 비밀번호 설정. 비밀번호 규칙은 가입(#2)과 같은 것을 쓴다 */
+export const passwordResetConfirmSchema = z.object({
+  token: z.string().min(1, { error: '토큰이 필요합니다.' }),
+  newPassword: passwordSchema,
+});
+export type PasswordResetConfirm = z.infer<typeof passwordResetConfirmSchema>;
+
+export const LOGIN_ERRORS = {
+  /**
+   * 이메일이 없거나 비밀번호가 틀렸다.
+   *
+   * 둘을 구분해서 알려주지 않는다. 구분하면 이메일만 넣어보고 가입 여부를
+   * 알아낼 수 있다.
+   */
+  INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
+  /** 유효한 Access도, 살아 있는 Refresh도 없다 */
+  UNAUTHENTICATED: 'AUTH_UNAUTHENTICATED',
+  /**
+   * 비활성화된 계정이다. 비밀번호는 맞았으므로 401이 아니라 403이다 —
+   * 401을 주면 사용자가 비밀번호를 다시 입력한다.
+   */
+  ACCOUNT_DEACTIVATED: 'AUTH_ACCOUNT_DEACTIVATED',
+} as const;
+
+export type LoginErrorCode = (typeof LOGIN_ERRORS)[keyof typeof LOGIN_ERRORS];
+
+export const loginRequestSchema = z.object({
+  email: z.email({ error: '이메일 형식이 올바르지 않습니다.' }),
+  password: z
+    .string({ error: '비밀번호를 입력해 주세요.' })
+    .min(1, { error: '비밀번호를 입력해 주세요.' }),
+});
+export type LoginRequest = z.infer<typeof loginRequestSchema>;
+
+/** 로그인 성공 응답. 토큰은 본문이 아니라 httpOnly 쿠키로만 나간다 */
+export const signedInSchema = z.object({
+  id: z.string(),
+  email: z.email(),
+  name: z.string(),
+});
+export type SignedIn = z.infer<typeof signedInSchema>;
+
+/** 마이페이지가 읽는 내 정보 */
+export const myProfileSchema = z.object({
+  id: z.string(),
+  email: z.email(),
+  name: z.string(),
+  /**
+   * 주소는 #3(주소 등록)이 채운다. 그전까지 항상 null이다.
+   *
+   * 자리를 아예 비워두지 않는 이유는, 나중에 #3이 응답 모양을 바꾸면 웹이
+   * 함께 깨지기 때문이다. 자리만 만들어 두고 채우는 것은 #3에 맡긴다.
+   */
+  address: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type MyProfile = z.infer<typeof myProfileSchema>;
+
+/** 탈퇴 보류 사유 (`spec-fixed.md` §2.6) */
+export const WITHDRAWAL_BLOCKERS = {
+  ACTIVE_CONTRACT: '진행 중인 일거리가 끝난 뒤 탈퇴할 수 있습니다',
+  OPEN_JOB_POST: '등록한 공고를 마감한 뒤 탈퇴할 수 있습니다',
+  POSITIVE_BALANCE: '남은 포인트를 환전한 뒤 탈퇴할 수 있습니다',
+} as const;
+
+export type WithdrawalBlocker =
+  (typeof WITHDRAWAL_BLOCKERS)[keyof typeof WITHDRAWAL_BLOCKERS];
+
+/** 탈퇴가 막혔을 때 내는 코드 */
+export const WITHDRAWAL_ERRORS = {
+  BLOCKED: 'AUTH_WITHDRAWAL_BLOCKED',
+  /** 그 id의 회원이 없다. 토큰은 살아 있는데 행이 사라진 경우다 */
+  NOT_FOUND: 'AUTH_MEMBER_NOT_FOUND',
+} as const;

@@ -1,12 +1,32 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AccessTokenSigner } from './access-token';
 import { ConsoleMailProvider } from './console-mail.provider';
+import { LoginController } from './login.controller';
+import { LoginService } from './login.service';
+import { PrismaRefreshTokenStore } from './prisma-refresh-token.store';
+import { PrismaPointLedgerStore } from '../point/prisma-point-ledger.store';
 import { EmailVerificationController } from './email-verification.controller';
 import { EmailVerificationService } from './email-verification.service';
+import { KakaoLocalGeocoder } from './kakao-local.geocoder';
 import { PrismaEmailVerificationStore } from './prisma-email-verification.store';
+import { PasswordResetController } from './password-reset.controller';
+import { PasswordResetService } from './password-reset.service';
+import { PrismaPasswordResetStore } from './prisma-password-reset.store';
+import {
+  PrismaMemberChecker,
+  PrismaUserAddressStore,
+} from './prisma-user-address.store';
 import { PrismaUserStore } from './prisma-user.store';
+import { ReactivationController } from './reactivation.controller';
+import { ReactivationService } from './reactivation.service';
+import { WithdrawalController } from './withdrawal.controller';
+import { WithdrawalService } from './withdrawal.service';
 import { SignupController } from './signup.controller';
 import { SignupService } from './signup.service';
+import { UserAddressController } from './user-address.controller';
+import { UserAddressService } from './user-address.service';
 
 /**
  * 서비스는 포트(인터페이스)만 알고 구현체는 여기서 꽂는다.
@@ -14,11 +34,83 @@ import { SignupService } from './signup.service';
  */
 @Module({
   imports: [PrismaModule],
-  controllers: [EmailVerificationController, SignupController],
+  controllers: [
+    EmailVerificationController,
+    SignupController,
+    LoginController,
+    PasswordResetController,
+    WithdrawalController,
+    ReactivationController,
+    UserAddressController,
+  ],
   providers: [
     PrismaEmailVerificationStore,
     PrismaUserStore,
+    PrismaRefreshTokenStore,
+    PrismaPasswordResetStore,
+    PrismaPointLedgerStore,
+    PrismaUserAddressStore,
+    PrismaMemberChecker,
     ConsoleMailProvider,
+    KakaoLocalGeocoder,
+    {
+      // 서명 비밀키는 코드에 두지 않는다. 없으면 켜지지 않게 한다 —
+      // 기본값을 주면 그 값으로 서명된 토큰을 누구나 만들 수 있다.
+      provide: AccessTokenSigner,
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('AUTH_JWT_SECRET');
+        if (!secret) {
+          throw new Error(
+            'AUTH_JWT_SECRET이 없습니다. 저장소 루트의 .env를 확인하세요 (.env.example 참고).',
+          );
+        }
+        return new AccessTokenSigner({ secret });
+      },
+      inject: [ConfigService],
+    },
+    {
+      provide: LoginService,
+      useFactory: (
+        users: PrismaUserStore,
+        refreshTokens: PrismaRefreshTokenStore,
+        accessTokens: AccessTokenSigner,
+      ) => new LoginService(users, refreshTokens, accessTokens),
+      inject: [PrismaUserStore, PrismaRefreshTokenStore, AccessTokenSigner],
+    },
+    {
+      provide: PasswordResetService,
+      useFactory: (
+        users: PrismaUserStore,
+        resets: PrismaPasswordResetStore,
+        refreshTokens: PrismaRefreshTokenStore,
+        mail: ConsoleMailProvider,
+      ) => new PasswordResetService(users, resets, refreshTokens, mail),
+      inject: [
+        PrismaUserStore,
+        PrismaPasswordResetStore,
+        PrismaRefreshTokenStore,
+        ConsoleMailProvider,
+      ],
+    },
+    {
+      provide: WithdrawalService,
+      // 진행 중 계약(#17)과 본인 공고(#12)는 아직 모델이 없다. 포트를
+      // 지금 만들고 구현체는 false를 돌려준다 — 그 이슈가 들어오면 채운다.
+      useFactory: (
+        users: PrismaUserStore,
+        refreshTokens: PrismaRefreshTokenStore,
+        ledger: PrismaPointLedgerStore,
+      ) =>
+        new WithdrawalService(users, refreshTokens, ledger, {
+          hasActiveContract: () => Promise.resolve(false),
+          hasOpenJobPost: () => Promise.resolve(false),
+        }),
+      inject: [
+        PrismaUserStore,
+        PrismaRefreshTokenStore,
+        PrismaPointLedgerStore,
+      ],
+    },
     {
       provide: EmailVerificationService,
       useFactory: (
@@ -36,7 +128,35 @@ import { SignupService } from './signup.service';
       ) => new SignupService(users, verification),
       inject: [PrismaUserStore, PrismaEmailVerificationStore],
     },
+    {
+      provide: ReactivationService,
+      // 인증 확인은 가입과 **다른 포트**를 쓴다. 가입의 isVerified는
+      // "언젠가 인증했다"라서 되살리기에는 너무 넓다 (reactivation.service.ts).
+      useFactory: (
+        users: PrismaUserStore,
+        verification: PrismaEmailVerificationStore,
+      ) => new ReactivationService(users, verification),
+      inject: [PrismaUserStore, PrismaEmailVerificationStore],
+    },
+    {
+      provide: UserAddressService,
+      // 좌표는 카카오 로컬에서 얻는다. 못 얻어도 주소는 저장된다(#3 AC3).
+      useFactory: (
+        addresses: PrismaUserAddressStore,
+        members: PrismaMemberChecker,
+        geocoder: KakaoLocalGeocoder,
+      ) => new UserAddressService(addresses, members, geocoder),
+      inject: [PrismaUserAddressStore, PrismaMemberChecker, KakaoLocalGeocoder],
+    },
   ],
-  exports: [EmailVerificationService, SignupService],
+  exports: [
+    EmailVerificationService,
+    SignupService,
+    LoginService,
+    PasswordResetService,
+    WithdrawalService,
+    ReactivationService,
+    UserAddressService,
+  ],
 })
 export class AuthModule {}

@@ -108,3 +108,85 @@ describe('SignupAccountPage', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('탈퇴한 계정의 이메일로 가입할 때 (#10)', () => {
+  it('should ask whether to reactivate instead of showing a plain error', async () => {
+    mockFetchOnce(409, {
+      errorCode: 'AUTH_REACTIVATION_AVAILABLE',
+      message: '탈퇴한 계정입니다. 재활성화하시겠습니까?',
+    });
+    render(<SignupAccountPage />);
+
+    await fillAndSubmit(PASSWORD);
+
+    expect(
+      await screen.findByRole('heading', { name: '재활성화하시겠습니까?' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should send the newly typed password to /api/auth/reactivate when confirmed', async () => {
+    // 옛 비밀번호를 유지하면 바로 다음 로그인에서 틀린다.
+    mockFetchOnce(409, { errorCode: 'AUTH_REACTIVATION_AVAILABLE' });
+    render(<SignupAccountPage />);
+    await fillAndSubmit(PASSWORD);
+    await screen.findByRole('button', { name: '재활성화하기' });
+
+    const fetchMock = mockFetchOnce(200, createdBody());
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: '재활성화하기' }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/reactivate',
+      expect.objectContaining({
+        body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+      }),
+    );
+  });
+
+  it('should show the completion screen after reactivating', async () => {
+    mockFetchOnce(409, { errorCode: 'AUTH_REACTIVATION_AVAILABLE' });
+    render(<SignupAccountPage />);
+    await fillAndSubmit(PASSWORD);
+    await screen.findByRole('button', { name: '재활성화하기' });
+
+    mockFetchOnce(200, createdBody());
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: '재활성화하기' }));
+
+    expect(
+      await screen.findByRole('heading', { name: '가입이 완료되었습니다' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should go back to the form when cancelled', async () => {
+    mockFetchOnce(409, { errorCode: 'AUTH_REACTIVATION_AVAILABLE' });
+    render(<SignupAccountPage />);
+    await fillAndSubmit(PASSWORD);
+    await screen.findByRole('button', { name: '취소' });
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '취소' }));
+
+    expect(
+      screen.getByRole('button', { name: '가입하기' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should still show a plain error for an active duplicate email', async () => {
+    mockFetchOnce(409, {
+      errorCode: 'MEMBER_EMAIL_ALREADY_EXISTS',
+      message: '이미 가입된 이메일입니다.',
+    });
+    render(<SignupAccountPage />);
+
+    await fillAndSubmit(PASSWORD);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '이미 가입된 이메일입니다.',
+    );
+    expect(
+      screen.queryByRole('heading', { name: '재활성화하시겠습니까?' }),
+    ).not.toBeInTheDocument();
+  });
+});

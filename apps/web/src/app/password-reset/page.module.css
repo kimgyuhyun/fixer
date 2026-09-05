@@ -1,0 +1,135 @@
+/*
+ * 이슈 #4 · 로그인 화면.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만,
+ * 터치 목표 최소 44px, 입력 글자는 1rem 이상(iOS 확대 방지).
+ * #1·#2의 폼과 같은 규격을 쓴다.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  /* 모바일에서는 화면을 채우고, 넓어지면 읽기 좋은 폭에서 멈춘다. */
+  width: 100%;
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input {
+  /* 44px는 터치 목표 최소 크기. 1rem 미만이면 iOS가 포커스 시 화면을 확대한다. */
+  min-height: 2.75rem;
+  width: 100%;
+  padding: var(--space-2);
+  font-size: 1rem;
+
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* 칸별 오류는 그 칸 바로 아래에 붙는다. 어느 칸이 비었는지 즉시 보이게. */
+.fieldError {
+  color: var(--color-danger);
+  font-size: 0.8125rem;
+}
+
+/* 자격 거절은 폼 전체에 대한 오류다. 어느 칸이 틀렸는지 가리키지 않는다. */
+.error {
+  padding: var(--space-2);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius);
+  color: var(--color-danger);
+  font-size: 0.875rem;
+}
+
+.submit,
+.secondary {
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.submit {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submit:not(:disabled):hover,
+.secondary:hover {
+  opacity: 0.88;
+}
+
+.submit:focus-visible,
+.secondary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* 재설정 요청 안내와 설명. 로그인 화면에는 없던 것만 더한다 */
+.lead {
+  margin: 0 0 1.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.notice {
+  margin: 0 0 1.5rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
