@@ -2,6 +2,10 @@ import { ConfigService } from '@nestjs/config';
 import { ACCOUNT_ERRORS } from '@fixer/shared';
 import { describe, expect, it } from 'vitest';
 import { EnvAccountCipher, type AccountCipher } from './account-cipher';
+import type {
+  NotificationPublisher,
+  PublishNotificationInput,
+} from '../notification/notification.service';
 import {
   AccountError,
   ExchangeAccountService,
@@ -39,19 +43,32 @@ class FakeStore implements ExchangeAccountStore {
   }
 }
 
+/** 발행된 알림을 그대로 모아 두는 가짜 포트 (#36) */
+class SpyPublisher implements NotificationPublisher {
+  published: PublishNotificationInput[] = [];
+
+  publish(input: PublishNotificationInput): Promise<void> {
+    this.published.push(input);
+    return Promise.resolve();
+  }
+}
+
 function setup(): {
   service: ExchangeAccountService;
   store: FakeStore;
   crypto: AccountCipher;
+  notifications: SpyPublisher;
 } {
   const store = new FakeStore();
   const crypto = cipher();
+  const notifications = new SpyPublisher();
   const service = new ExchangeAccountService(
     store,
     crypto,
     new StubAccountVerifier(),
+    notifications,
   );
-  return { service, store, crypto };
+  return { service, store, crypto, notifications };
 }
 
 async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
@@ -323,5 +340,34 @@ describe('revealForPayout — 송금할 때만 꺼낸다', () => {
     const error = await rejectionOf(service.revealForPayout('usr_none'));
 
     expect(codeOf(error)).toBe(ACCOUNT_ERRORS.NOT_REGISTERED);
+  });
+});
+
+/**
+ * #30이 "검증 완료 알림이 안 간다"로 남겨 둔 절반. (#36에서 닫는다 —
+ * `handoff-a-to-b.md` 3-2)
+ */
+describe('검증 완료 알림 (#30 마무리)', () => {
+  it('should publish an ACCOUNT_VERIFIED notification when the account passes verification', async () => {
+    const { service, notifications } = setup();
+
+    await service.register(USER, VALID);
+
+    expect(notifications.published).toHaveLength(1);
+    expect(notifications.published[0]).toMatchObject({
+      userId: USER,
+      type: 'ACCOUNT_VERIFIED',
+      linkUrl: '/my/account',
+    });
+  });
+
+  it('should not publish anything when verification rejects the account', async () => {
+    const { service, notifications } = setup();
+
+    await rejectionOf(
+      service.register(USER, { ...VALID, accountNumber: '123' }),
+    );
+
+    expect(notifications.published).toEqual([]);
   });
 });

@@ -11,6 +11,7 @@ import {
   type RegisterAccountRequest,
 } from '@fixer/shared';
 import type { AccountCipher } from './account-cipher';
+import type { NotificationPublisher } from '../notification/notification.service';
 
 /** 계좌가 던지는 도메인 에러 */
 export class AccountError extends Error {
@@ -89,6 +90,13 @@ export class ExchangeAccountService {
     private readonly store: ExchangeAccountStore,
     private readonly cipher: AccountCipher,
     private readonly verifier: AccountVerifier,
+    /**
+     * 검증 완료를 알린다. (#30이 남긴 숙제 — `handoff-a-to-b.md` 3-2)
+     *
+     * 포트라서 이 서비스는 인앱인지 메일인지 모른다. #37이 메일을 더해도
+     * 여기는 그대로다.
+     */
+    private readonly notifications: NotificationPublisher,
   ) {}
 
   async register(
@@ -121,6 +129,16 @@ export class ExchangeAccountService {
       holderName: parsed.holderName,
       verificationStatus: verified.status,
       rejectedReason: null,
+    });
+
+    // 저장된 뒤에 알린다. 먼저 알리면 저장이 실패했을 때 "됐다"는 알림만
+    // 남는다. 발행은 던지지 않으므로 이 줄이 등록을 되돌리는 일은 없다.
+    await this.notifications.publish({
+      userId,
+      type: 'ACCOUNT_VERIFIED',
+      title: '계좌 검증이 끝났습니다',
+      body: '등록한 계좌로 환전을 신청할 수 있습니다.',
+      linkUrl: '/my/account',
     });
 
     return toMasked(saved);

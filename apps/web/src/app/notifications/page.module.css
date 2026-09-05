@@ -1,0 +1,76 @@
+/*
+ * 이슈 #36 · 알림 목록.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ * 표가 아니라 목록이라 정렬 규약 대신 세로 나열을 쓴다.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  width: 100%;
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.empty,
+.error {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+}
+
+.error {
+  color: var(--color-danger);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item,
+.itemUnread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+
+  width: 100%;
+  /* 터치 목표 최소 44px */
+  min-height: 44px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 안 읽은 것을 왼쪽 띠로 구분한다. 색 하나만으로는 구분이 약하다 */
+.itemUnread {
+  border-left: 3px solid var(--color-primary);
+}
+
+.itemTitle {
+  font-weight: 600;
+}
+
+.itemBody {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}

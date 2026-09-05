@@ -51,6 +51,7 @@ model User {
   penalties         Penalty[]
   exchangeAccount   ExchangeAccount?
   applications      Application[]
+  notifications     Notification[]
 
   /// 파기 배치가 "비활성화됐고 아직 파기 안 된" 행만 훑는다 (#39)
   @@index([deactivatedAt, purgedAt])
@@ -445,4 +446,44 @@ enum ApplicationStatus {
   CANCELLED_BY_VERSION_CHANGE
   /// 무단 불참. Penalty 1건 (#24)
   NO_SHOW
+}
+
+/// 인앱 알림 한 건. (이슈 #36, `spec-fixed.md` §8)
+///
+/// 문구를 발행 시점에 굳혀서 담는다. 공고 제목이 나중에 바뀌어도 그때 보낸
+/// 알림은 그때 문구 그대로여야 하기 때문이다 (ADR-NOT-3).
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type    NotificationType
+  title   String
+  body    String
+  /// 클릭하면 갈 앱 내부 경로. 예: `/my/account`
+  linkUrl String
+
+  /// null이면 미읽음. 상태 컬럼을 따로 두지 않는 것은 ADR-AUTH-3과 같은 이유다.
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  /// 미읽음 카운트가 이 인덱스로 끝난다 (ADR-NOT-5)
+  @@index([userId, readAt])
+  /// 목록은 최신순
+  @@index([userId, createdAt])
+}
+
+/// 알림 종류. `packages/shared/src/notification.ts`의 목록과 같아야 한다.
+///
+/// 발행자가 아직 없는 셋도 미리 넣는다 — #19·#33·#34가 각자 마이그레이션을
+/// 하나씩 더 만드는 것보다 싸다.
+enum NotificationType {
+  /// 계좌 검증 완료 (#30)
+  ACCOUNT_VERIFIED
+  /// 지원 거절 (#19)
+  APPLICATION_REJECTED
+  /// 제재 조기 해제 (#33)
+  SUSPENSION_RELEASED
+  /// 환전 반려 (#34)
+  EXCHANGE_REJECTED
 }

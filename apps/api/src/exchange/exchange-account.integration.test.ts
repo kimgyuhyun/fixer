@@ -44,6 +44,9 @@ beforeAll(async () => {
       get: () => 'integration-master-key',
     } as unknown as ConfigService),
     new StubAccountVerifier(),
+    // 이 파일이 보는 것은 "평문이 DB에 없다"이지 알림이 아니다. 발행은
+    // 흘려보낸다 — 알림 쪽은 notification.integration.test.ts가 본다.
+    { publish: () => Promise.resolve() },
   );
 }, 180_000);
 
