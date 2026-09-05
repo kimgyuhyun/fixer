@@ -8,6 +8,7 @@ import type {
 import {
   holdKeyFor,
   transition,
+  type AcceptedCounter,
   type BalanceReader,
   type JobPostRecord,
   type JobPostStore,
@@ -374,6 +375,25 @@ export class PrismaBalanceReader implements BalanceReader {
       _sum: { amount: true },
     });
     return _sum.amount ?? 0;
+  }
+}
+
+/**
+ * 확정 인원. **`JobPost.acceptedCount` 컬럼을 읽는다** (#18, `ADR-APP-1`).
+ *
+ * 행을 세지 않는 이유는 정원을 막는 조건부 UPDATE가 그 컬럼을 보기 때문이다.
+ * 여기서 행을 세면 화면에 보이는 수와 정원을 막는 수가 갈릴 수 있다.
+ */
+@Injectable()
+export class PrismaAcceptedCounter implements AcceptedCounter {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async countAccepted(jobPostId: string): Promise<number> {
+    const post = await this.prisma.jobPost.findUnique({
+      where: { id: jobPostId },
+      select: { acceptedCount: true },
+    });
+    return post?.acceptedCount ?? 0;
   }
 }
 

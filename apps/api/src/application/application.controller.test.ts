@@ -152,3 +152,99 @@ describe('GET /applications/me', () => {
     expect(statusOf(error)).toBe(404);
   });
 });
+
+describe('POST /applications/:id/accept', () => {
+  it('should respond 200 with status ACCEPTED', async () => {
+    const controller = controllerWith({
+      accept: vi.fn().mockResolvedValue({
+        ...SUMMARY,
+        status: 'ACCEPTED',
+        acceptedAt: '2026-09-05T01:00:00.000Z',
+      }),
+    });
+
+    const result = await controller.accept('app_1', {
+      employerId: 'usr_employer',
+    });
+
+    expect(result).toMatchObject({ id: 'app_1', status: 'ACCEPTED' });
+  });
+
+  // 없다고 하지 않는다. 이 공고의 구인자가 아니라는 사실만 말한다.
+  it('should respond 403 when the error code is APPLICATION_NOT_EMPLOYER', async () => {
+    const controller = controllerWith({
+      accept: vi
+        .fn()
+        .mockRejectedValue(
+          new ApplicationError(APPLICATION_ERRORS.NOT_EMPLOYER),
+        ),
+    });
+
+    const error = await rejectionOf(
+      controller.accept('app_1', { employerId: 'usr_남' }),
+    );
+
+    expect(statusOf(error)).toBe(403);
+  });
+
+  it('should respond 409 when the error code is APPLICATION_HEADCOUNT_FULL', async () => {
+    const controller = controllerWith({
+      accept: vi
+        .fn()
+        .mockRejectedValue(
+          new ApplicationError(APPLICATION_ERRORS.HEADCOUNT_FULL),
+        ),
+    });
+
+    const error = await rejectionOf(
+      controller.accept('app_1', { employerId: 'usr_employer' }),
+    );
+
+    expect(statusOf(error)).toBe(409);
+  });
+
+  // 없을 때 500이 나면 원인을 화면에서 알 수 없다.
+  it('should respond 400 when the body has no employerId', async () => {
+    const controller = controllerWith({ accept: vi.fn() });
+
+    const error = await rejectionOf(controller.accept('app_1', {}));
+
+    expect(statusOf(error)).toBe(400);
+  });
+});
+
+describe('GET /applications', () => {
+  it('should respond 200 with the applicant list', async () => {
+    const controller = controllerWith({
+      listForEmployer: vi.fn().mockResolvedValue({
+        jobPostId: 'job_1',
+        headcount: 3,
+        acceptedCount: 1,
+        applicants: [],
+      }),
+    });
+
+    const result = await controller.listForEmployer({
+      jobPostId: 'job_1',
+      employerId: 'usr_employer',
+    });
+
+    expect(result).toMatchObject({ headcount: 3, acceptedCount: 1 });
+  });
+
+  it('should respond 403 when the caller does not own the job post', async () => {
+    const controller = controllerWith({
+      listForEmployer: vi
+        .fn()
+        .mockRejectedValue(
+          new ApplicationError(APPLICATION_ERRORS.NOT_EMPLOYER),
+        ),
+    });
+
+    const error = await rejectionOf(
+      controller.listForEmployer({ jobPostId: 'job_1', employerId: 'usr_남' }),
+    );
+
+    expect(statusOf(error)).toBe(403);
+  });
+});

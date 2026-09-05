@@ -86,6 +86,10 @@ export const APPLICATION_ERRORS = {
   INVALID_TRANSITION: 'APPLICATION_INVALID_TRANSITION',
   /** 그런 공고가 없다. **job-post의 코드를 재사용한다** */
   JOB_POST_NOT_FOUND: 'JOB_POST_NOT_FOUND',
+  /** 정원이 찼다 (#18 AC3 — 이슈에 적힌 문자열 그대로) */
+  HEADCOUNT_FULL: 'APPLICATION_HEADCOUNT_FULL',
+  /** 그 공고의 구인자가 아니다 (#18) */
+  NOT_EMPLOYER: 'APPLICATION_NOT_EMPLOYER',
 } as const;
 
 export type ApplicationErrorCode =
@@ -109,5 +113,68 @@ export const applicationSummarySchema = z.object({
    */
   appliedVersion: z.number().int().min(1),
   createdAt: z.iso.datetime(),
+  /**
+   * 수락 시각 (#18 AC1). 아직 수락 전이면 null.
+   *
+   * 기본값을 둔 이유는 #17이 만든 응답 객체를 고치지 않고도 이 스키마를
+   * 통과시키기 위해서다. **#20의 무상 취소 창(수락 +2시간)이 이 값으로 판정한다.**
+   */
+  acceptedAt: z.iso.datetime().nullable().default(null),
 });
 export type ApplicationSummary = z.infer<typeof applicationSummarySchema>;
+
+/** 수락 요청. 회원 식별은 #17과 같이 아직 본문으로 받는다 */
+export const acceptApplicationRequestSchema = z.object({
+  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
+});
+export type AcceptApplicationRequest = z.infer<
+  typeof acceptApplicationRequestSchema
+>;
+
+/** 표본이 이보다 적으면 평균을 감춘다 (`spec-fixed.md` §7) */
+export const RATING_MIN_SAMPLES = 3;
+
+/**
+ * 평점 표시 문구. 표본이 모자라면 `'신규'`, 아니면 평균 (#18 AC2).
+ *
+ * **별 1개 받고 평점 1.0으로 낙인찍히는 것을 막는다** (§7). #26이 실제 별점을
+ * 채우면 이 함수를 그대로 쓴다 — 규칙이 화면마다 따로 있으면 한쪽만 고쳐진다.
+ */
+export function formatRating(average: number | null, count: number): string {
+  if (average === null || count < RATING_MIN_SAMPLES) return '신규';
+  return average.toFixed(1);
+}
+
+/** 구인자가 보는 지원자 한 명 (#18) */
+export const applicantItemSchema = z.object({
+  applicationId: z.string(),
+  applicantId: z.string(),
+  applicantName: z.string(),
+  status: z.enum(APPLICATION_STATUSES),
+  appliedVersion: z.number().int().min(1),
+  createdAt: z.iso.datetime(),
+  acceptedAt: z.iso.datetime().nullable(),
+  /** 구직자 평점 평균. 표본이 없으면 null (AC2) */
+  ratingAsWorker: z.number().nullable(),
+  /**
+   * 표본 수. **화면이 "신규" 판정에 쓴다** — 평균만 주면 3건 미만인지
+   * 알 수 없어 판정할 수 없다.
+   */
+  ratingCount: z.number().int().min(0),
+});
+export type ApplicantItem = z.infer<typeof applicantItemSchema>;
+
+/** 지원자 목록. **정원 상태를 함께 준다** — 화면이 "3 / 6"을 그린다 */
+export const applicantListSchema = z.object({
+  jobPostId: z.string(),
+  headcount: z.number().int().min(1),
+  acceptedCount: z.number().int().min(0),
+  applicants: z.array(applicantItemSchema),
+});
+export type ApplicantList = z.infer<typeof applicantListSchema>;
+
+/** 구인자에게 보이는 상태. #19가 `REJECTED`를 더한다 */
+export const EMPLOYER_VISIBLE_STATUSES = [
+  'APPLIED',
+  'ACCEPTED',
+] as const satisfies readonly ApplicationStatus[];

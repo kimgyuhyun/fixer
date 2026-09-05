@@ -1,0 +1,93 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  padding: var(--space-3);
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input {
+  padding: var(--space-2);
+
+  font: inherit;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.seats {
+  font-weight: 700;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  margin: 0;
+  padding: 0;
+
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+
+  padding: var(--space-2);
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+/* 이름은 가변 텍스트라 왼쪽에 붙이고 남는 폭을 가져간다 */
+.name {
+  flex: 1;
+  font-weight: 600;
+}
+
+/* 평점은 형식이 일정한 자료다 */
+.rating {
+  min-width: 3rem;
+  text-align: center;
+}
+
+.status {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.accept {
+  /* 터치 목표 최소 44px */
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+
+  background: var(--color-primary);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.accept:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.error {
+  color: var(--color-danger);
+  font-size: 0.875rem;
+}
