@@ -241,9 +241,16 @@ APPLIED ──┬──▶ ACCEPTED ──┬──▶ COMPLETED
           │               └──▶ NO_SHOW
           ├──▶ REJECTED
           ├──▶ WITHDRAWN                            (수락 전 철회, 무패널티)
+          │        └──▶ APPLIED                     (재지원)
           └──▶ PENDING_REACCEPT ──┬──▶ (이전 상태로 복귀)
                                   └──▶ CANCELLED_BY_VERSION_CHANGE
 ```
+
+**재지원 (`WITHDRAWN → APPLIED`).** 철회한 사람은 같은 공고에 다시 지원할 수 있다. 잘못 눌러 철회한 사람이 그 공고에 영영 못 들어가는 것을 막기 위해서다.
+
+§4.5의 유니크 제약이 있으므로 **새 행을 만들지 않고 있던 행을 되살린다.** 되살릴 때 `appliedVersion`을 그 시점의 공고 버전으로 **다시 찍는다** — 철회한 뒤 공고가 바뀌었는데 옛 버전이 남으면 그 사람은 본 적 없는 조건에 동의한 것이 된다.
+
+> 이 줄은 이슈 #17에서 추가됐다. 원래는 `WITHDRAWN`에서 나가는 전이가 없었다.
 
 ### 4.3 취소 규칙 (planner.md "2시간" 해석 확정)
 

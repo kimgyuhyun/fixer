@@ -50,6 +50,7 @@ model User {
   jobPosts          JobPost[]
   penalties         Penalty[]
   exchangeAccount   ExchangeAccount?
+  applications      Application[]
 
   /// 파기 배치가 "비활성화됐고 아직 파기 안 된" 행만 훑는다 (#39)
   @@index([deactivatedAt, purgedAt])
@@ -280,6 +281,7 @@ model JobPost {
   employer User             @relation(fields: [employerId], references: [id], onDelete: Cascade)
   category Category         @relation(fields: [categoryId], references: [id])
   versions JobPostVersion[]
+  applications Application[]
 
   /// 목록은 "OPEN을 최신순으로"만 읽는다 (ADR-JOB-5)
   @@index([status, createdAt])
@@ -391,4 +393,56 @@ enum AccountVerificationStatus {
   VERIFIED
   /// 형식이 틀렸거나 실명 대조에 실패했다
   REJECTED
+}
+
+/// 신청 1건. (이슈 #17, `spec-fixed.md` §4)
+///
+/// 이 테이블이 "누가 누구와 무엇을 약속했는가"의 진실을 갖는다. #17은 그중
+/// 약속이 생기는 순간(`APPLIED`)과 수락 전에 무르는 순간(`WITHDRAWN`)까지다.
+model Application {
+  id          String            @id @default(cuid())
+  jobPostId   String
+  applicantId String
+  status      ApplicationStatus @default(APPLIED)
+  /// 지원 시점의 공고 버전 (AC1).
+  ///
+  /// **화면용 숫자가 아니다** — #21이 "내가 동의한 조건이 그 뒤에 바뀌었나"를
+  /// 이 값으로 판정한다. 재지원할 때 다시 찍는 이유도 그래서다.
+  appliedVersion Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  jobPost   JobPost @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  applicant User    @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+
+  /// 중복 신청 방지 (§4.5). **경합에서 실제로 이기는 것은 이 제약이다.**
+  /// 철회 후 재지원이 새 행이 아니라 되살리기인 것도 이 제약 때문이다.
+  @@unique([jobPostId, applicantId])
+  /// 구인자의 지원자 목록이 이 순서로 훑는다 (#18)
+  @@index([jobPostId, status])
+  /// 구직자의 "내 신청" 목록
+  @@index([applicantId, status])
+}
+
+enum ApplicationStatus {
+  /// 지원함. 아직 수락 전이라 자유롭게 철회할 수 있다
+  APPLIED
+  /// 구인자가 승인했다. 이 순간이 계약 체결
+  ACCEPTED
+  /// 구인자가 거절했다 (#19)
+  REJECTED
+  /// 수락 전에 본인이 철회했다. 무패널티 (#17)
+  WITHDRAWN
+  /// 공고 버전이 올라 재확인이 필요하다 (#21)
+  PENDING_REACCEPT
+  /// 업무 완료 확인됨. PAYOUT 실행됨 (#23)
+  COMPLETED
+  /// 무상 취소 창(수락 +2시간) 안의 취소 (#20)
+  CANCELLED_FREE
+  /// 창을 넘긴 취소. Penalty 1건 (#20)
+  CANCELLED_PENALTY
+  /// 바뀐 조건을 거절했다. 본인 잘못이 아니라 무패널티 (#22)
+  CANCELLED_BY_VERSION_CHANGE
+  /// 무단 불참. Penalty 1건 (#24)
+  NO_SHOW
 }
