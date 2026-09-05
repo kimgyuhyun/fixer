@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { hash } from 'bcrypt';
 import { config as loadEnv } from 'dotenv';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { SIGNUP_RULES } from '@fixer/shared';
 import { PrismaClient } from '../src/generated/prisma/client';
 
 // 환경변수는 저장소 루트의 .env 하나로만 관리한다.
@@ -130,9 +132,44 @@ async function main() {
       });
     }
     console.log(`카테고리 ${CATEGORIES.length}건을 seed했습니다.`);
+
+    await seedAdmin(prisma);
   } finally {
     await prisma.$disconnect();
   }
+}
+
+/**
+ * 최초 관리자. (`spec-fixed.md` §11.1, 이슈 #35)
+ *
+ * **화면에서 관리자를 만드는 기능은 두지 않는다.** 그래서 관리자가 생기는
+ * 경로가 여기 하나뿐이고, 이게 없으면 관리자 화면에 도달할 방법이 없다.
+ *
+ * 비밀번호를 코드에 박지 않는다. 박으면 저장소를 읽은 누구나 관리자로
+ * 로그인할 수 있고 그 값이 그대로 배포된다. 환경변수가 없으면 **관리자를
+ * 만들지 않는다** — 그럴듯한 기본값을 주는 것보다 없는 편이 안전하다.
+ */
+async function seedAdmin(prisma: PrismaClient): Promise<void> {
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+
+  if (!email || !password) {
+    console.log(
+      'ADMIN_EMAIL / ADMIN_PASSWORD가 없어 관리자를 만들지 않았습니다. (.env.example 참고)',
+    );
+    return;
+  }
+
+  const passwordHash = await hash(password, SIGNUP_RULES.bcryptCostFactor);
+  await prisma.user.upsert({
+    where: { email },
+    // 이미 있으면 **등급만** 올린다. 비밀번호를 덮어쓰면 관리자가 바꾼
+    // 비밀번호가 seed를 다시 돌릴 때마다 되돌아간다.
+    update: { role: 'ADMIN' },
+    create: { email, passwordHash, name: '관리자', role: 'ADMIN' },
+  });
+  // 이메일은 찍지 않는다. seed 로그가 개인정보를 남길 이유가 없다.
+  console.log('관리자 계정을 seed했습니다.');
 }
 
 void main();

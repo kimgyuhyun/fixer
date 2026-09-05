@@ -67,3 +67,12 @@ describe('middleware', () => {
     );
   });
 });
+
+describe('middleware — 관리자 경로 (#35)', () => {
+  it('should redirect to /login when /admin/job-posts is opened without the access cookie', () => {
+    const response = middleware(requestFor('/admin/job-posts'));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toContain('/login');
+  });
+});
