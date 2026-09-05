@@ -128,10 +128,13 @@ pnpm build && pnpm typecheck && pnpm lint && pnpm test
 pnpm --filter @fixer/web test:e2e
 ```
 
-**Playwright가 설치돼 있지 않으면** (`apps/web/playwright.config.ts`가 없으면) 멈추고 알린다. 둘 중 하나를 고르게 한다.
+**Playwright가 설치돼 있지 않으면** (`apps/web/playwright.config.ts`가 없으면) **멈추지 않는다.** PR 본문의 "확인한 것"에 `E2E 미실행 (Playwright 미설정)`을 적고 진행한다. 조용히 넘어가지 않되, 사람을 기다리지도 않는다.
 
-- `/e2e-write {도메인}`으로 E2E를 먼저 만든다
-- **E2E 없이 진행한다** — 이 경우 PR 본문의 "확인한 것"에 `E2E 미실행`을 명시한다. 조용히 넘어가지 않는다
+**설정이 없는 것과 실패한 것은 다르다.** 없는 것은 아직 안 만든 상태고, 실패는 사용자가 그 흐름을 실제로 못 간다는 신호다. 앞은 적어 두고 넘어가지만 뒤는 5번에서 막는다.
+
+여기서 사람에게 물으면 `/tdd-auto-loop`이 답할 사람이 없어 멈춘다. 그러면 이슈마다 브랜치만 쌓이고 PR이 하나도 안 생긴다.
+
+E2E를 먼저 만들고 싶으면 `/e2e-write {도메인}`으로 만든 뒤 다시 온다.
 
 **Docker Desktop이 꺼져 있으면** API가 DB에 붙지 못해 `webServer` 대기에서 멈춘다. 켜라고 안내한다.
 
