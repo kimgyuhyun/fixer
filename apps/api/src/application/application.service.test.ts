@@ -814,7 +814,7 @@ async function seedForCompletion({
   accepted,
   applied = 0,
   rewardPerPerson = 10_000,
-  status = 'OPEN' as PostRow['status'],
+  status = 'OPEN',
 }: {
   headcount: number;
   accepted: number;

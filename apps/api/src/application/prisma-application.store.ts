@@ -15,9 +15,6 @@ import type {
 /** Prisma가 유니크 제약 위반에 쓰는 코드 */
 const UNIQUE_VIOLATION = 'P2002';
 
-/** `$transaction` 콜백이 받는 클라이언트 */
-type TransactionClient = Prisma.TransactionClient;
-
 /**
  * 신청 저장소.
  *
@@ -219,7 +216,7 @@ export class PrismaApplicationStore implements ApplicationStore {
    * (`ADR-PAY-1`). 잔액 검증이 없는 이유는 **더하기만 하기 때문**이다.
    */
   private async credit(
-    tx: TransactionClient,
+    tx: Prisma.TransactionClient,
     row: {
       userId: string;
       type: 'PAYOUT' | 'RELEASE';

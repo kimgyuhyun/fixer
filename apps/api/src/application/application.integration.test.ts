@@ -670,7 +670,7 @@ describe('complete — 완료 확인 (#23)', () => {
       headcount: 6,
       accepted: 3,
     });
-    const worker = workers[0] as string;
+    const worker = workers[0];
 
     // 수락만으로는 돈이 넘어가지 않는다.
     const before = await ledgerSum(worker);
@@ -704,7 +704,13 @@ describe('complete — 완료 확인 (#23)', () => {
     await service.complete({ jobPostId, employerId });
     const after = await prisma.pointTransaction.count();
 
-    await expect(service.complete({ jobPostId, employerId })).rejects.toThrow();
+    // 이미 COMPLETED라 전이표에서 걸린다. 인자 없는 toThrow()는 어떤 에러든
+    // 통과하므로, 막힌 이유까지 못 박는다.
+    await expect(
+      service.complete({ jobPostId, employerId }),
+    ).rejects.toMatchObject({
+      code: APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION,
+    });
 
     expect(await prisma.pointTransaction.count()).toBe(after);
     expect(await ledgerSum(employerId)).toBe(30_000);
@@ -724,7 +730,7 @@ describe('complete — 완료 확인 (#23)', () => {
     const settled = results.filter((r) => r.status === 'fulfilled');
     expect(settled).toHaveLength(1);
     // 두 번 지급됐다면 여기가 20,000이 된다.
-    expect(await ledgerSum(workers[0] as string)).toBe(10_000);
+    expect(await ledgerSum(workers[0])).toBe(10_000);
   });
 
   it('should keep the cached balance equal to the ledger sum for employer and workers', async () => {
@@ -779,11 +785,16 @@ describe('complete — 완료 확인 (#23)', () => {
         userId: employerId,
         type: 'PAYOUT',
         amount: 1,
-        idempotencyKey: `payout:${applicationIds[1] as string}`,
+        idempotencyKey: `payout:${applicationIds[1]}`,
       },
     });
 
-    await expect(service.complete({ jobPostId, employerId })).rejects.toThrow();
+    // 멱등 키가 겹쳐 유니크 제약에 걸린다. 이 테스트가 증명하려는 것은
+    // "쓰기가 실패했을 때 전부 되돌아간다"이므로, 실패 이유가 그 제약임을
+    // 못 박아야 다른 이유로 죽는 경우와 구분된다.
+    await expect(
+      service.complete({ jobPostId, employerId }),
+    ).rejects.toMatchObject({ code: 'P2002' });
 
     // 한 트랜잭션이라면 공고도 신청도 그대로다 (ADR-PAY-4).
     const post = await prisma.jobPost.findUniqueOrThrow({
