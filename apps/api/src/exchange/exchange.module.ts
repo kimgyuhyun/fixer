@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NotificationModule } from '../notification/notification.module';
+import { NotificationService } from '../notification/notification.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EnvAccountCipher } from './account-cipher';
 import { ExchangeAccountController } from './exchange-account.controller';
@@ -17,7 +19,7 @@ import { PrismaExchangeAccountStore } from './prisma-exchange-account.store';
  * 키 관리를 강화할 때는 `EnvAccountCipher`를 KMS 구현체로 바꿔 끼운다.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, NotificationModule],
   controllers: [ExchangeAccountController],
   providers: [
     PrismaExchangeAccountStore,
@@ -33,11 +35,14 @@ import { PrismaExchangeAccountStore } from './prisma-exchange-account.store';
         store: PrismaExchangeAccountStore,
         cipher: EnvAccountCipher,
         verifier: StubAccountVerifier,
-      ) => new ExchangeAccountService(store, cipher, verifier),
+        // 포트로 받는다. 이 서비스는 알림이 인앱인지 메일인지 모른다 (#36).
+        notifications: NotificationService,
+      ) => new ExchangeAccountService(store, cipher, verifier, notifications),
       inject: [
         PrismaExchangeAccountStore,
         EnvAccountCipher,
         StubAccountVerifier,
+        NotificationService,
       ],
     },
   ],

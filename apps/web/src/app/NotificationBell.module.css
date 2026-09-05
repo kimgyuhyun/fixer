@@ -1,0 +1,34 @@
+/*
+ * 이슈 #36 · 헤더 알림 벨.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ */
+
+.bell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+
+  /* 터치 목표 최소 44px */
+  min-height: 44px;
+  padding: 0 var(--space-2);
+
+  color: var(--color-text);
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius);
+
+  background: var(--color-danger);
+  color: var(--color-bg);
+  font-size: 0.75rem;
+  font-weight: 700;
+}

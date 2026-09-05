@@ -1,0 +1,15 @@
+/*
+ * 이슈 #36 · 전역 헤더.
+ *
+ * 지금 담는 것은 알림 벨 하나뿐이다. 로고·네비게이션은 이 이슈의 범위가
+ * 아니라 넣지 않는다.
+ */
+
+.header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
