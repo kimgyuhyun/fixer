@@ -21,6 +21,7 @@ import {
   type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationSummary,
+  type CompletionSummary,
 } from '@fixer/shared';
 import { z, ZodError } from 'zod';
 import { ApplicationError, ApplicationService } from './application.service';
@@ -91,6 +92,13 @@ export class ApplicationController {
     } catch (error) {
       throw toHttpError(error);
     }
+  }
+
+  /** 구인자가 업무 완료를 확인한다 (#23) */
+  @Post('complete')
+  @HttpCode(HttpStatus.OK)
+  complete(@Body() _body: unknown): Promise<CompletionSummary> {
+    throw new Error('not implemented');
   }
 
   /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */

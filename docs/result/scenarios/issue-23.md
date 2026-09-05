@@ -161,6 +161,7 @@ interface SettlementResult {
 - [ ] [정상] `complete` — should move the job post to COMPLETED
 - [ ] [정상] `complete` — should move every ACCEPTED application to COMPLETED
 - [ ] [정상] `complete` — should report paidCount 3, paidTotal 30000 and releasedTotal 30000
+- [ ] [정상] `POST /applications/complete` — should return the completion summary
 - [ ] [정상] `ApplicantList` — should show the 완료 확인 button to the employer
 - [ ] [정상] `ApplicantList` — should reload the list after the completion succeeds
 
@@ -179,6 +180,7 @@ interface SettlementResult {
 - [ ] [예외] `complete` — should throw JOB_POST_INVALID_TRANSITION when the post is already COMPLETED
 - [ ] [예외] `complete` — should throw JOB_POST_INVALID_TRANSITION when the post was cancelled
 - [ ] [예외] `complete` — should write nothing when the status changed under it
+- [ ] [예외] `POST /applications/complete` — should answer 409 when the post is already COMPLETED
 
 ### 통합 (Testcontainers)
 
@@ -203,7 +205,11 @@ interface SettlementResult {
 | 4   | 이미 완료된 공고를 또 확인해도 지급이 두 번 되지 않는다 | `[예외] already COMPLETED` · `[예외] write nothing when the status changed` · `[통합] nothing more when completed twice` · `[통합] exactly one of two concurrent`                                                                                                                                 |
 | 5   | 완료 확인 전에는 구직자 잔액이 아직 늘지 않았다         | `[통합] leave the worker balance unchanged before completion`                                                                                                                                                                                                                                     |
 
-**커버리지: AC 5개 전부 커버 / 시나리오 25개 / 미커버 0개**
+**커버리지: AC 5개 전부 커버 / 시나리오 27개 / 미커버 0개**
+
+> **컨트롤러 2개는 Red 도중에 더했다.** 화면 테스트는 `fetch`를 목으로 잡으므로
+> `/api/applications/complete`라는 경로를 **웹 쪽에서만** 고정한다. 서버가 다른
+> 경로로 열려 있어도 아무도 못 잡아, 수직 슬라이스가 안 이어진 채 초록불이 된다.
 
 > **AC1의 산술은 통합 테스트가 지킨다.** 서비스 단위 테스트의 가짜 저장소는
 > 지급·반환 계산을 스스로 하므로, 그 테스트들이 검증하는 것은 **배선**(주인
