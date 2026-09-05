@@ -743,6 +743,31 @@ describe('complete — 완료 확인 (#23)', () => {
     }
   });
 
+  /**
+   * **가짜 저장소는 자기가 대입한 값을 되읽는다.** 진짜 UPDATE가 상태를
+   * 정말 옮겼는지는 여기서만 알 수 있다. #18이 `acceptedCount`에 같은
+   * 확인을 두고 있다.
+   */
+  it('should persist the job post as COMPLETED in the database', async () => {
+    const { employerId, jobPostId } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId, employerId });
+
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: jobPostId },
+    });
+    expect(post.status).toBe('COMPLETED');
+    // 신청도 함께 옮겨진다. 공고만 끝나고 신청이 ACCEPTED로 남으면
+    // 그 사람들은 영원히 수락 상태가 된다.
+    const stillAccepted = await prisma.application.count({
+      where: { jobPostId, status: 'ACCEPTED' },
+    });
+    expect(stillAccepted).toBe(0);
+  });
+
   it('should leave the job post OPEN when the payout writes fail', async () => {
     const { employerId, jobPostId, applicationIds } = await seedCompletable({
       headcount: 6,
