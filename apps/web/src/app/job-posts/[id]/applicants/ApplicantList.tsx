@@ -84,6 +84,32 @@ export function ApplicantList({
     }
   }
 
+  /**
+   * 업무 완료를 확인한다 (#23). 확정 인원분이 지급되고 나머지는 돌아온다.
+   *
+   * **시스템은 일이 끝났는지 알 방법이 없다** — 출퇴근 체크도 GPS도 없어서
+   * 구인자의 확인이 유일한 신호다 (`ADR-APP-5`).
+   */
+  async function complete(): Promise<void> {
+    setError(null);
+    try {
+      const res = await fetch('/api/applications/complete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jobPostId, employerId }),
+      });
+      if (!res.ok) {
+        setError(messageOf(await res.json()));
+        return;
+      }
+      // 완료 확인은 신청 상태를 통째로 바꾼다. 다시 읽지 않으면 화면에
+      // "수락됨"이 남는다.
+      await load();
+    } catch {
+      setError('요청을 처리하지 못했습니다.');
+    }
+  }
+
   const full = list !== null && list.acceptedCount >= list.headcount;
 
   return (
@@ -126,6 +152,16 @@ export function ApplicantList({
           </li>
         ))}
       </ul>
+
+      {list !== null && (
+        <button
+          className={styles.complete}
+          type="button"
+          onClick={() => void complete()}
+        >
+          완료 확인
+        </button>
+      )}
 
       {error !== null && (
         <p className={styles.error} role="alert">

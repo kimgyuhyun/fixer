@@ -156,42 +156,42 @@ interface SettlementResult {
 
 ### 정상
 
-- [ ] [정상] `complete` — should pay each accepted worker the reward per person when 3 of 6 are accepted
-- [ ] [정상] `complete` — should release the 3 unmatched slots to the employer when 3 of 6 are accepted
-- [ ] [정상] `complete` — should move the job post to COMPLETED
-- [ ] [정상] `complete` — should move every ACCEPTED application to COMPLETED
-- [ ] [정상] `complete` — should report paidCount 3, paidTotal 30000 and releasedTotal 30000
-- [ ] [정상] `POST /applications/complete` — should return the completion summary
-- [ ] [정상] `ApplicantList` — should show the 완료 확인 button to the employer
-- [ ] [정상] `ApplicantList` — should reload the list after the completion succeeds
+- [x] [정상] `complete` — should pay each accepted worker the reward per person when 3 of 6 are accepted
+- [x] [정상] `complete` — should release the 3 unmatched slots to the employer when 3 of 6 are accepted
+- [x] [정상] `complete` — should move the job post to COMPLETED
+- [x] [정상] `complete` — should move every ACCEPTED application to COMPLETED
+- [x] [정상] `complete` — should report paidCount 3, paidTotal 30000 and releasedTotal 30000
+- [x] [정상] `POST /applications/complete` — should return the completion summary
+- [x] [정상] `ApplicantList` — should show the 완료 확인 button to the employer
+- [x] [정상] `ApplicantList` — should reload the list after the completion succeeds
 
 ### 경계
 
-- [ ] [경계] `complete` — should release the whole hold and pay nobody when no one was accepted
-- [ ] [경계] `complete` — should release nothing when every seat is filled
-- [ ] [경계] `complete` — should not pay an applicant who is still APPLIED
-- [ ] [경계] `complete` — should release the locked sum from the ledger, not headcount times reward, when the budget was edited
-- [ ] [경계] `complete` — should keep the total of every ledger row it wrote at zero
+- [x] [경계] `complete` — should release the whole hold and pay nobody when no one was accepted
+- [x] [경계] `complete` — should release nothing when every seat is filled
+- [x] [경계] `complete` — should not pay an applicant who is still APPLIED
+- [x] [경계] `complete` — should release the locked sum from the ledger, not headcount times reward, when the budget was edited
+- [x] [경계] `complete` — should keep the total of every ledger row it wrote at zero
 
 ### 예외
 
-- [ ] [예외] `complete` — should throw JOB_POST_NOT_FOUND when the post does not exist
-- [ ] [예외] `complete` — should throw APPLICATION_NOT_EMPLOYER when someone else confirms
-- [ ] [예외] `complete` — should throw JOB_POST_INVALID_TRANSITION when the post is already COMPLETED
-- [ ] [예외] `complete` — should throw JOB_POST_INVALID_TRANSITION when the post was cancelled
-- [ ] [예외] `complete` — should write nothing when the status changed under it
-- [ ] [예외] `POST /applications/complete` — should answer 409 when the post is already COMPLETED
+- [x] [예외] `complete` — should throw JOB_POST_NOT_FOUND when the post does not exist
+- [x] [예외] `complete` — should throw APPLICATION_NOT_EMPLOYER when someone else confirms
+- [x] [예외] `complete` — should throw JOB_POST_INVALID_TRANSITION when the post is already COMPLETED
+- [x] [예외] `complete` — should throw JOB_POST_INVALID_TRANSITION when the post was cancelled
+- [x] [예외] `complete` — should write nothing when the status changed under it
+- [x] [예외] `POST /applications/complete` — should answer 409 when the post is already COMPLETED
 
 ### 통합 (Testcontainers)
 
-- [ ] [통합] `completeAndSettle` — should increase each worker's balance by the reward per person
-- [ ] [통합] `completeAndSettle` — should leave the worker balance unchanged before completion
-- [ ] [통합] `completeAndSettle` — should leave the employer holding only the released amount
-- [ ] [통합] `completeAndSettle` — should write nothing more when the same post is completed twice
-- [ ] [통합] `completeAndSettle` — should let exactly one of two concurrent completions settle
-- [ ] [통합] `completeAndSettle` — should keep the cached balance equal to the ledger sum for employer and workers
-- [ ] [통합] `completeAndSettle` — should leave the job post OPEN when the payout writes fail
-- [ ] [통합] `complete` — should throw JOB_POST_NOT_FOUND when the post was soft deleted
+- [x] [통합] `completeAndSettle` — should increase each worker's balance by the reward per person
+- [x] [통합] `completeAndSettle` — should leave the worker balance unchanged before completion
+- [x] [통합] `completeAndSettle` — should leave the employer holding only the released amount
+- [x] [통합] `completeAndSettle` — should write nothing more when the same post is completed twice
+- [x] [통합] `completeAndSettle` — should let exactly one of two concurrent completions settle
+- [x] [통합] `completeAndSettle` — should keep the cached balance equal to the ledger sum for employer and workers
+- [x] [통합] `completeAndSettle` — should leave the job post OPEN when the payout writes fail
+- [x] [통합] `complete` — should throw JOB_POST_NOT_FOUND when the post was soft deleted
 
 ---
 

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ApplicationStatus, JobPostStatus } from '@fixer/shared';
 import type {
@@ -13,6 +14,9 @@ import type {
 
 /** Prisma가 유니크 제약 위반에 쓰는 코드 */
 const UNIQUE_VIOLATION = 'P2002';
+
+/** `$transaction` 콜백이 받는 클라이언트 */
+type TransactionClient = Prisma.TransactionClient;
 
 /**
  * 신청 저장소.
@@ -143,13 +147,93 @@ export class PrismaApplicationStore implements ApplicationStore {
     }
   }
 
-  completeAndSettle(_input: {
+  async completeAndSettle(input: {
     jobPostId: string;
     employerId: string;
     expectedStatus: JobPostStatus;
     rewardPerPerson: number;
   }): Promise<SettlementResult | 'STALE'> {
-    throw new Error('not implemented');
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // **공고 전환이 먼저다.** 조건부 UPDATE 한 문장이 원자적이라, 동시에
+        // 두 번 확인해도 여기서 하나만 살아남는다 (§4.4와 같은 패턴).
+        const moved = await tx.jobPost.updateMany({
+          where: { id: input.jobPostId, status: input.expectedStatus },
+          data: { status: 'COMPLETED' },
+        });
+        if (moved.count === 0) throw new StaleStatus();
+
+        // 실제로 잠긴 금액. 예산을 다시 계산하지 않는다 — #15가 예산을 고친
+        // 공고는 예산과 실제 잠금이 다르다 (`cancelAndRelease`와 같은 판단).
+        const { _sum } = await tx.pointTransaction.aggregate({
+          where: { referenceId: input.jobPostId },
+          _sum: { amount: true },
+        });
+        const locked = -(_sum.amount ?? 0);
+
+        const accepted = await tx.application.findMany({
+          where: { jobPostId: input.jobPostId, status: 'ACCEPTED' },
+          select: { id: true, applicantId: true },
+        });
+        await tx.application.updateMany({
+          where: { jobPostId: input.jobPostId, status: 'ACCEPTED' },
+          data: { status: 'COMPLETED' },
+        });
+
+        // **구인자의 − 행은 쓰지 않는다.** HOLD가 공고 OPEN 때 이미 뺐다.
+        for (const row of accepted) {
+          await this.credit(tx, {
+            userId: row.applicantId,
+            type: 'PAYOUT',
+            amount: input.rewardPerPerson,
+            idempotencyKey: `payout:${row.id}`,
+            referenceId: input.jobPostId,
+          });
+        }
+
+        const paidTotal = accepted.length * input.rewardPerPerson;
+        const releasedTotal = locked - paidTotal;
+        if (releasedTotal > 0) {
+          await this.credit(tx, {
+            userId: input.employerId,
+            type: 'RELEASE',
+            amount: releasedTotal,
+            idempotencyKey: `complete-release:${input.jobPostId}`,
+            referenceId: input.jobPostId,
+          });
+        }
+
+        return { paidCount: accepted.length, paidTotal, releasedTotal };
+      });
+    } catch (error) {
+      // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.
+      if (error instanceof StaleStatus) return 'STALE';
+      throw error;
+    }
+  }
+
+  /**
+   * 원장에 한 줄 쓰고 캐시를 함께 올린다.
+   *
+   * 둘이 같은 트랜잭션에 있어야 캐시와 원장 합계가 어긋나지 않는다
+   * (`ADR-PAY-1`). 잔액 검증이 없는 이유는 **더하기만 하기 때문**이다.
+   */
+  private async credit(
+    tx: TransactionClient,
+    row: {
+      userId: string;
+      type: 'PAYOUT' | 'RELEASE';
+      amount: number;
+      idempotencyKey: string;
+      referenceId: string;
+    },
+  ): Promise<void> {
+    await tx.pointTransaction.create({ data: row });
+    await tx.$executeRaw`
+      UPDATE "User"
+      SET "cachedBalance" = "cachedBalance" + ${row.amount}
+      WHERE id = ${row.userId}
+    `;
   }
 
   async listByJobPost(

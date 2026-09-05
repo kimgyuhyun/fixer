@@ -18,6 +18,8 @@ import {
   applicantListSchema,
   applicationSummarySchema,
   applyRequestSchema,
+  completeJobPostRequestSchema,
+  completionSummarySchema,
   type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationSummary,
@@ -97,8 +99,13 @@ export class ApplicationController {
   /** 구인자가 업무 완료를 확인한다 (#23) */
   @Post('complete')
   @HttpCode(HttpStatus.OK)
-  complete(@Body() _body: unknown): Promise<CompletionSummary> {
-    throw new Error('not implemented');
+  async complete(@Body() body: unknown): Promise<CompletionSummary> {
+    try {
+      const input = completeJobPostRequestSchema.parse(body ?? {});
+      return completionSummarySchema.parse(await this.service.complete(input));
+    } catch (error) {
+      throw toHttpError(error);
+    }
   }
 
   /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */

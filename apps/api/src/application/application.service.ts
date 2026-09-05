@@ -4,6 +4,8 @@ import {
   EMPLOYER_VISIBLE_STATUSES,
   applyRequestSchema,
   canApplicationTransition,
+  canTransition,
+  completeJobPostRequestSchema,
   type ApplicantItem,
   type ApplicantList,
   type ApplicationErrorCode,
@@ -266,8 +268,36 @@ export class ApplicationService {
    * **시스템은 일이 끝났는지 알 방법이 없다** — 출퇴근 체크도 GPS도 없으므로
    * 구인자의 확인이 유일한 신호다.
    */
-  complete(_input: CompleteJobPostRequest): Promise<CompletionSummary> {
-    throw new Error('not implemented');
+  async complete(input: CompleteJobPostRequest): Promise<CompletionSummary> {
+    const parsed = completeJobPostRequestSchema.parse(input);
+    const post = await this.mustOwn(parsed.jobPostId, parsed.employerId);
+
+    // 표에 없는 전이는 거부된다. 이미 완료된 공고를 또 확인하는 것이 여기서
+    // 걸린다 — **1차 방어다.** 우리가 읽은 뒤 바뀐 경우는 저장소가 잡는다.
+    if (!canTransition(post.status, 'COMPLETED')) {
+      throw new ApplicationError(
+        APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION,
+        { from: post.status, to: 'COMPLETED' },
+      );
+    }
+
+    const settled = await this.store.completeAndSettle({
+      jobPostId: post.id,
+      employerId: post.employerId,
+      expectedStatus: post.status,
+      rewardPerPerson: post.rewardPerPerson,
+    });
+
+    if (settled === 'STALE') {
+      // 조건부 UPDATE가 0행을 셌다. 우리가 읽은 뒤 다른 경로가 상태를 바꿨고,
+      // **아무것도 커밋되지 않았다.**
+      throw new ApplicationError(
+        APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION,
+        { from: post.status, to: 'COMPLETED' },
+      );
+    }
+
+    return { jobPostId: post.id, status: 'COMPLETED', ...settled };
   }
 
   /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */
