@@ -274,6 +274,14 @@ model JobPost {
   rewardPerPerson     Int
   requiredDescription String
 
+  /// 확정 인원. **비정규화 카운터다** (ADR-APP-1, #18).
+  ///
+  /// 행을 세지 않고 이 값을 조건부 UPDATE로 올린다 —
+  /// `WHERE acceptedCount < headcount`가 원자적이라 별도 락 없이 정원 초과가
+  /// 막힌다 (§4.4). 행을 세는 방식은 두 트랜잭션이 똑같은 수를 보고 둘 다
+  /// 통과하는 그 틈을 못 막는다.
+  acceptedCount Int @default(0)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   /// 물리 삭제 없음 (§3.3). 상태와 이 값으로 관리한다.
@@ -410,6 +418,10 @@ model Application {
   /// **화면용 숫자가 아니다** — #21이 "내가 동의한 조건이 그 뒤에 바뀌었나"를
   /// 이 값으로 판정한다. 재지원할 때 다시 찍는 이유도 그래서다.
   appliedVersion Int
+  /// 수락 시각 (#18 AC1). 아직 수락 전이면 null.
+  ///
+  /// **#20의 무상 취소 창(수락 +2시간)이 이 값을 기준으로 판정한다.**
+  acceptedAt     DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

@@ -14,13 +14,27 @@ import {
 } from '@nestjs/common';
 import {
   APPLICATION_ERRORS,
+  acceptApplicationRequestSchema,
+  applicantListSchema,
   applicationSummarySchema,
   applyRequestSchema,
+  type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationSummary,
 } from '@fixer/shared';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { ApplicationError, ApplicationService } from './application.service';
+
+/**
+ * 지원자 목록 조회 파라미터.
+ *
+ * 화면이 쿼리 문자열을 직접 만들어 보내므로 공유 타입이 필요 없다 —
+ * 여기서만 쓰는 모양이라 `packages/shared`에 두지 않는다.
+ */
+const employerListQuerySchema = z.object({
+  jobPostId: z.string().min(1, { error: '공고를 알 수 없습니다.' }),
+  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
+});
 
 /**
  * 신청의 HTTP 경계. (이슈 #17)
@@ -56,6 +70,36 @@ export class ApplicationController {
           applicantId: applicantIdOf(body),
           applicationId: id,
         }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
+  /** 구인자가 지원자 한 명을 수락한다. **이 순간이 계약 체결** (#18) */
+  @Post(':id/accept')
+  @HttpCode(HttpStatus.OK)
+  async accept(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ApplicationSummary> {
+    try {
+      const { employerId } = acceptApplicationRequestSchema.parse(body ?? {});
+      return applicationSummarySchema.parse(
+        await this.service.accept({ employerId, applicationId: id }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
+  /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */
+  @Get()
+  async listForEmployer(@Query() query: unknown): Promise<ApplicantList> {
+    try {
+      const parsed = employerListQuerySchema.parse(query ?? {});
+      return applicantListSchema.parse(
+        await this.service.listForEmployer(parsed),
       );
     } catch (error) {
       throw toHttpError(error);
@@ -110,6 +154,8 @@ const MESSAGES: Record<ApplicationErrorCode, string> = {
   [APPLICATION_ERRORS.NOT_OWNED]: '본인의 신청이 아닙니다.',
   [APPLICATION_ERRORS.INVALID_TRANSITION]: '지금 상태에서는 할 수 없습니다.',
   [APPLICATION_ERRORS.JOB_POST_NOT_FOUND]: '공고를 찾을 수 없습니다.',
+  [APPLICATION_ERRORS.HEADCOUNT_FULL]: '이미 정원이 찼습니다.',
+  [APPLICATION_ERRORS.NOT_EMPLOYER]: '이 공고의 구인자가 아닙니다.',
 };
 
 function toHttpError(error: unknown): unknown {
@@ -133,7 +179,8 @@ function toHttpError(error: unknown): unknown {
 
     if (
       error.code === APPLICATION_ERRORS.OWN_JOB_POST ||
-      error.code === APPLICATION_ERRORS.NOT_OWNED
+      error.code === APPLICATION_ERRORS.NOT_OWNED ||
+      error.code === APPLICATION_ERRORS.NOT_EMPLOYER
     ) {
       // 없다고 하지 않는다. 지원할 수 없는 이유만 말한다.
       return new ForbiddenException(body);

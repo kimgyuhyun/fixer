@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import {
   APPLICATION_ERRORS,
+  EMPLOYER_VISIBLE_STATUSES,
   applyRequestSchema,
   canApplicationTransition,
+  type ApplicantItem,
+  type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationStatus,
   type ApplicationSummary,
@@ -29,6 +32,8 @@ export interface ApplicationRecord {
   applicantId: string;
   status: ApplicationStatus;
   appliedVersion: number;
+  /** 수락 시각 (#18 AC1). 아직 수락 전이면 null */
+  acceptedAt: Date | null;
   createdAt: Date;
 }
 
@@ -82,6 +87,55 @@ export interface ApplicationStore {
     applicationId: string;
     appliedVersion: number;
   }): Promise<ApplicationRecord | 'STALE'>;
+
+  /**
+   * 수락을 **한 트랜잭션으로** 확정한다 (#18, `ADR-APP-1`).
+   *
+   * 두 문장이 모두 1행을 갱신했을 때만 커밋한다 (§4.4).
+   *
+   * 1. `Application SET ACCEPTED, acceptedAt WHERE id=? AND status='APPLIED'`
+   * 2. `JobPost SET acceptedCount+1 WHERE id=? AND acceptedCount < headcount`
+   *
+   * **신청 갱신이 먼저다.** 카운터를 먼저 올리면, 정원이 찬 공고에서 이미
+   * 수락된 신청을 또 수락했을 때 "정원이 찼다"고 답하게 된다 — 실제 이유는
+   * 중복 수락인데. 순서를 바꾸면 두 실패가 서로 구분된다.
+   *
+   * `'STALE'` = `APPLIED`가 아니다 (중복 수락·철회됨).
+   * `'FULL'` = 정원이 찼다. **둘 다 아무것도 커밋하지 않는다.**
+   */
+  accept(input: {
+    applicationId: string;
+    jobPostId: string;
+    acceptedAt: Date;
+  }): Promise<ApplicationRecord | 'STALE' | 'FULL'>;
+
+  /** 구인자의 지원자 목록. 오래 지원한 순 (선착순 표시지 선착순 수락은 아니다) */
+  listByJobPost(
+    jobPostId: string,
+    statuses: readonly ApplicationStatus[],
+  ): Promise<ApplicationRecord[]>;
+}
+
+/**
+ * 지원자의 이름과 평점을 묻는 포트.
+ *
+ * `Rating`(#26)이 아직 없다. #12의 `AcceptedCounter`와 같은 방식으로 포트를
+ * 지금 만들고, 어댑터는 이름만 진짜로 읽고 평점은 표본 0으로 돌려준다 —
+ * **전원 "신규"가 보이는 것이 화면이 안 나오는 것보다 낫다.** #26이 어댑터만 채운다.
+ */
+export interface ApplicantProfileReader {
+  profilesOf(
+    applicantIds: readonly string[],
+  ): Promise<Map<string, ApplicantProfile>>;
+}
+
+/** 지원자 한 명의 표시용 정보 */
+export interface ApplicantProfile {
+  name: string;
+  /** 구직자 평점 평균. 표본이 없으면 null */
+  ratingAsWorker: number | null;
+  /** 표본 수. 3건 미만이면 화면이 "신규"로 그린다 (§7) */
+  ratingCount: number;
 }
 
 /**
@@ -92,26 +146,123 @@ export interface ApplicationStore {
  */
 export interface JobPostReader {
   /** 소프트 삭제된 공고는 **못 찾은 것으로 다룬다** (#14) */
-  findForApplication(jobPostId: string): Promise<{
-    id: string;
-    employerId: string;
-    status: JobPostStatus;
-    version: number;
-  } | null>;
+  findForApplication(jobPostId: string): Promise<JobPostForApplication | null>;
+}
+
+/** 신청 판정에 필요한 공고 정보. #17의 셋에 #18이 둘을 더했다 */
+export interface JobPostForApplication {
+  id: string;
+  employerId: string;
+  status: JobPostStatus;
+  version: number;
+  /** 정원 (#18). 목록이 "3 / 6"을 그리는 데도 쓴다 */
+  headcount: number;
+  /** 확정 인원 (#18). 정원이 찼는지는 저장소의 조건부 UPDATE가 최종 판정한다 */
+  acceptedCount: number;
 }
 
 /**
- * 지원과 철회. (이슈 #17, `spec-fixed.md` §4)
+ * 지원·철회와 수락. (이슈 #17·#18, `spec-fixed.md` §4)
  *
- * 이 도메인이 "누가 누구와 무엇을 약속했는가"의 진실을 갖는다. #17은 그중
- * **약속이 생기는 순간과 수락 전에 무르는 순간**까지만 다룬다.
+ * 이 도메인이 "누가 누구와 무엇을 약속했는가"의 진실을 갖는다. 지금 다루는
+ * 것은 **약속이 생기는 순간(#17), 수락 전에 무르는 순간(#17), 그리고 약속이
+ * 체결되는 순간(#18)**까지다. 취소는 #20이 무상 취소 창을 정한 뒤에 온다.
  */
 @Injectable()
 export class ApplicationService {
   constructor(
     private readonly store: ApplicationStore,
     private readonly jobPosts: JobPostReader,
+    private readonly profiles: ApplicantProfileReader,
   ) {}
+
+  /** 구인자가 지원자 한 명을 수락한다. **이 순간이 계약 체결** (#18) */
+  async accept(input: {
+    employerId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    const current = await this.store.findById(input.applicationId);
+    if (current === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
+    }
+
+    const post = await this.mustOwn(current.jobPostId, input.employerId);
+    if (post.status !== 'OPEN') {
+      // 취소된 공고는 RELEASE로 돈이 이미 풀렸다. 지급할 돈이 없는 계약이 된다.
+      throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_OPEN, {
+        status: post.status,
+      });
+    }
+
+    // 표에 없는 전이는 거부된다. 중복 수락(`ACCEPTED → ACCEPTED`)이 여기서 걸린다.
+    transition(current.status, 'ACCEPTED');
+
+    const accepted = await this.store.accept({
+      applicationId: current.id,
+      jobPostId: post.id,
+      acceptedAt: new Date(),
+    });
+
+    if (accepted === 'STALE') {
+      // 우리가 읽은 뒤 상태가 바뀌었다. 같은 신청을 동시에 수락한 쪽이 이겼다.
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: 'ACCEPTED',
+      });
+    }
+    if (accepted === 'FULL') {
+      // 조건부 UPDATE가 0행을 셌다. **정원 판정의 진실은 여기다** (§4.4) —
+      // 위에서 읽은 acceptedCount는 그 사이 이미 낡았을 수 있다.
+      throw new ApplicationError(APPLICATION_ERRORS.HEADCOUNT_FULL, {
+        headcount: post.headcount,
+      });
+    }
+
+    return toSummary(accepted);
+  }
+
+  /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */
+  async listForEmployer(input: {
+    employerId: string;
+    jobPostId: string;
+  }): Promise<ApplicantList> {
+    const post = await this.mustOwn(input.jobPostId, input.employerId);
+
+    const rows = await this.store.listByJobPost(
+      post.id,
+      EMPLOYER_VISIBLE_STATUSES,
+    );
+    const profiles = await this.profiles.profilesOf(
+      rows.map((row) => row.applicantId),
+    );
+
+    return {
+      jobPostId: post.id,
+      headcount: post.headcount,
+      acceptedCount: post.acceptedCount,
+      applicants: rows.map((row) => toApplicantItem(row, profiles)),
+    };
+  }
+
+  /**
+   * 그 공고를 이 사람이 올렸는지 확인하고 공고를 돌려준다.
+   *
+   * 수락과 목록이 같은 확인을 한다. 없으면 **id만 알면 남의 공고에 사람을
+   * 확정시킬 수 있다** — 돈이 잠긴 쪽은 그 공고 주인이다.
+   */
+  private async mustOwn(
+    jobPostId: string,
+    employerId: string,
+  ): Promise<JobPostForApplication> {
+    const post = await this.jobPosts.findForApplication(jobPostId);
+    if (post === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_FOUND);
+    }
+    if (post.employerId !== employerId) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_EMPLOYER);
+    }
+    return post;
+  }
 
   async apply(input: ApplyRequest): Promise<ApplicationSummary> {
     // 검증이 가장 먼저다. 형식이 틀린 요청은 저장소를 건드리지 않는다.
@@ -243,6 +394,30 @@ export function transition(
   return to;
 }
 
+/**
+ * 신청 한 건을 목록 항목으로. 이름과 평점이 프로필에서 온다.
+ *
+ * 프로필이 없는 경우는 `Application.applicantId`가 `onDelete: Cascade`라
+ * 실제로는 생기지 않지만, 없을 때 화면이 안 나오는 것보다 빈 이름이 낫다.
+ */
+function toApplicantItem(
+  row: ApplicationRecord,
+  profiles: Map<string, ApplicantProfile>,
+): ApplicantItem {
+  const profile = profiles.get(row.applicantId);
+  return {
+    applicationId: row.id,
+    applicantId: row.applicantId,
+    applicantName: profile?.name ?? '',
+    status: row.status,
+    appliedVersion: row.appliedVersion,
+    createdAt: row.createdAt.toISOString(),
+    acceptedAt: row.acceptedAt?.toISOString() ?? null,
+    ratingAsWorker: profile?.ratingAsWorker ?? null,
+    ratingCount: profile?.ratingCount ?? 0,
+  };
+}
+
 function toSummary(row: ApplicationRecord): ApplicationSummary {
   return {
     id: row.id,
@@ -251,5 +426,6 @@ function toSummary(row: ApplicationRecord): ApplicationSummary {
     status: row.status,
     appliedVersion: row.appliedVersion,
     createdAt: row.createdAt.toISOString(),
+    acceptedAt: row.acceptedAt?.toISOString() ?? null,
   };
 }
