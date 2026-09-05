@@ -85,12 +85,3 @@ export const forceCancelRequestSchema = z.object({
 });
 
 export type ForceCancelRequest = z.infer<typeof forceCancelRequestSchema>;
-
-/**
- * 필터를 URL 쿼리스트링으로. 빈 값과 `page=1`은 넣지 않는다 (ADR-JOB-4).
- *
- * 일반 목록의 `filterToQuery`와 같은 규칙이다.
- */
-export function adminFilterToQuery(_filter: AdminJobPostFilter): string {
-  throw new Error('not implemented');
-}
