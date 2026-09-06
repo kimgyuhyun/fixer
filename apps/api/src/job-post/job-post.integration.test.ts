@@ -13,6 +13,7 @@ import {
   PrismaJobPostStore,
   PrismaMemberAddressReader,
 } from './prisma-job-post.store';
+import { lockedAmountFor } from '../point/job-post-lock';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -634,5 +635,40 @@ describe('공고 취소 — 상태 가드 (#16, ac-verifier가 잡은 것)', () 
 
     expect(result.penalized).toBe(false);
     expect(await prisma.penalty.count()).toBe(0);
+  });
+});
+
+describe('공고 잠금 잔여 — 취소 경로 (#53)', () => {
+  it("should leave the job post's locked amount at 0 after the cancellation", async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+    expect(await lockedAmountFor(prisma, created.id)).toBe(BUDGET);
+
+    await service.cancel({ employerId, jobPostId: created.id });
+
+    expect(await lockedAmountFor(prisma, created.id)).toBe(0);
+  });
+
+  it('should release the same amount when a CHARGE row carries the same referenceId', async () => {
+    // 충전은 잠금 흐름이 아니다. 취소가 예전 식을 그대로 쓰고 있으면
+    // 되돌리는 금액이 이 7,000원만큼 줄어든다.
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(1_000_000);
+    const created = await service.create(employerId, request(categoryId));
+    await prisma.pointTransaction.create({
+      data: {
+        userId: employerId,
+        type: 'CHARGE',
+        amount: 7_000,
+        idempotencyKey: `charge:extra:${created.id}`,
+        referenceId: created.id,
+      },
+    });
+
+    const result = await service.cancel({ employerId, jobPostId: created.id });
+
+    expect(result.released).toBe(BUDGET);
+    expect(await balanceOf(employerId)).toBe(1_007_000);
   });
 });

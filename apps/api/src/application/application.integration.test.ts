@@ -14,6 +14,7 @@ import {
   PrismaJobPostReader,
 } from './prisma-application.store';
 import { PrismaAcceptedCounter } from '../job-post/prisma-job-post.store';
+import { lockedAmountFor } from '../point/job-post-lock';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -820,5 +821,59 @@ describe('complete — 완료 확인 (#23)', () => {
     await expect(
       service.complete({ jobPostId, employerId }),
     ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
+  });
+});
+
+describe('공고 잠금 잔여 — 완료 경로 (#53)', () => {
+  it("should leave the job post's locked amount at 0 after the completion is confirmed", async () => {
+    const { employerId, jobPostId } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+    expect(await lockedAmountFor(prisma, jobPostId)).toBe(60_000);
+
+    await service.complete({ jobPostId, employerId });
+
+    // 60,000 잠금 → 3명에게 30,000 지급 → 30,000 반환. 남은 잠금은 없다.
+    expect(await lockedAmountFor(prisma, jobPostId)).toBe(0);
+  });
+
+  it('should leave the locked amount at 0 when every seat was filled and no RELEASE row is written', async () => {
+    // 정원이 다 차면 되돌릴 것이 없어 RELEASE 행 자체가 안 생긴다.
+    const { employerId, jobPostId } = await seedCompletable({
+      headcount: 3,
+      accepted: 3,
+    });
+
+    await service.complete({ jobPostId, employerId });
+
+    expect(
+      await prisma.pointTransaction.count({
+        where: { referenceId: jobPostId, type: 'RELEASE' },
+      }),
+    ).toBe(0);
+    expect(await lockedAmountFor(prisma, jobPostId)).toBe(0);
+  });
+
+  it('should return the employer the same amount when a CHARGE row carries the same referenceId', async () => {
+    // 완료가 예전 식을 그대로 쓰고 있으면 잠금을 7,000원 적게 보고,
+    // 그만큼 구인자에게 덜 돌려준다.
+    const { employerId, jobPostId } = await seedCompletable({
+      headcount: 6,
+      accepted: 3,
+    });
+    await prisma.pointTransaction.create({
+      data: {
+        userId: employerId,
+        type: 'CHARGE',
+        amount: 7_000,
+        idempotencyKey: `charge:extra:${jobPostId}`,
+        referenceId: jobPostId,
+      },
+    });
+
+    await service.complete({ jobPostId, employerId });
+
+    expect(await ledgerSum(employerId)).toBe(37_000);
   });
 });
