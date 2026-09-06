@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 import { HttpException } from '@nestjs/common';
-import { EXCHANGE_ERRORS } from '@fixer/shared';
+import { EXCHANGE_ERRORS, POINT_ERRORS } from '@fixer/shared';
 import { describe, expect, it, vi } from 'vitest';
+import { PointError } from '../point/point-ledger.service';
 import { ExchangeRequestController } from './exchange-request.controller';
 import {
   ExchangeError,
@@ -100,5 +101,24 @@ describe('POST /exchange-requests', () => {
     expect(bodyOf(missing).errorCode).toBe('VALIDATION_FAILED');
     expect(statusOf(fractional)).toBe(400);
     expect(bodyOf(fractional).errorCode).toBe('VALIDATION_FAILED');
+  });
+});
+
+// 성숙한 포인트는 있지만 잔액이 잠긴 경우다. 새 코드를 만들지 않고 #27의
+// 것을 그대로 쓰므로 컨트롤러가 그 에러도 옮길 줄 알아야 한다.
+describe('POST /exchange-requests — 잔액이 잠겼을 때', () => {
+  it('should respond 409 with POINT_INSUFFICIENT_BALANCE', async () => {
+    const controller = controllerWith({
+      request: vi
+        .fn()
+        .mockRejectedValue(new PointError(POINT_ERRORS.INSUFFICIENT_BALANCE)),
+    });
+
+    const error = await rejectionOf(
+      controller.request({ userId: 'usr_worker', amount: 10_000 }),
+    );
+
+    expect(statusOf(error)).toBe(409);
+    expect(bodyOf(error).errorCode).toBe(POINT_ERRORS.INSUFFICIENT_BALANCE);
   });
 });

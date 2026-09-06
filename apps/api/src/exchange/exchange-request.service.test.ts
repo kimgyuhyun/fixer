@@ -228,3 +228,18 @@ describe('request', () => {
     expect(accounts.reads).toBe(0);
   });
 });
+
+// 서비스가 센 뒤 같은 회원의 다른 요청이 먼저 커밋한 경우다. 경합 테스트는
+// 저장소를 직접 부르므로 이 매핑을 지나지 않는다.
+describe('request — 저장소가 늦게 거절할 때', () => {
+  it('should throw EXCHANGE_NOT_MATURED when the store rejects the write after another request has committed', async () => {
+    const { service, store } = setup();
+    store.result = 'NOT_MATURED';
+
+    const error = await rejectionOf(
+      service.request({ userId: USER, amount: 10_000 }),
+    );
+
+    expect(codeOf(error)).toBe(EXCHANGE_ERRORS.NOT_MATURED);
+  });
+});

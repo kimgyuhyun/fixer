@@ -240,6 +240,8 @@ enum ExchangeRequestStatus {
 - [x] [예외] `POST /exchange-requests` — should respond 400 with `EXCHANGE_BELOW_MIN_AMOUNT`
 - [x] [예외] `POST /exchange-requests` — should respond 409 with `EXCHANGE_ACCOUNT_NOT_VERIFIED`
 - [x] [예외] `POST /exchange-requests` — should respond 400 with `VALIDATION_FAILED` when amount is missing or not an integer
+- [x] [예외] `request` — should throw `EXCHANGE_NOT_MATURED` when the store rejects the write after another request has committed
+- [x] [예외] `POST /exchange-requests` — should respond 409 with `POINT_INSUFFICIENT_BALANCE`
 
 ---
 
@@ -255,15 +257,21 @@ enum ExchangeRequestStatus {
 
 ### AC에 없는데 추가한 시나리오
 
-| 시나리오                                               | 왜 넣었나                                                                                            |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `maturedBalanceOf` — 이미 쓴 `EXCHANGE_REQUEST`를 뺀다 | 안 빼면 **같은 포인트를 여러 번 환전할 수 있다.** AC1만 통과시키면 이 구멍이 열린 채로 초록불이 된다 |
-| `maturedBalanceOf` — `EXCHANGE_REVERT`를 다시 더한다   | 반려된 금액이 영영 환전 불가로 굳는 것을 막는다 (§6.4.1 5번)                                         |
-| `create` — 동시 요청 2건 중 하나만 성공                | 성숙액은 컬럼이 아니라 조건부 UPDATE의 보호를 못 받는다. 문장으로 못 박지 않으면 Green에서 사라진다  |
-| `create` — 실패 시 요청 행도 원장 행도 안 남는다       | `ADR-PAY-4`의 한 트랜잭션 결정을 검증한다                                                            |
-| `request` — 성숙액은 되나 잔액이 잠겨 있다             | 구인자이면서 구직자인 회원에게 실제로 생기는 경로다                                                  |
-| `checkExchangeAmount` — 4005는 최소금액이 이긴다       | 판정 순서를 못 박는다. 안 정하면 테스트가 구현을 따라간다                                            |
-| `request` — 4000원이면 계좌를 읽지 않는다              | 입력값이 전제조건보다 먼저라는 순서를 못 박는다                                                      |
-| `POST /exchange-requests` 3건                          | HTTP 상태 코드 매핑(400/409)은 서비스 테스트가 못 잡는다                                             |
+| 시나리오                                                     | 왜 넣었나                                                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `maturedBalanceOf` — 이미 쓴 `EXCHANGE_REQUEST`를 뺀다       | 안 빼면 **같은 포인트를 여러 번 환전할 수 있다.** AC1만 통과시키면 이 구멍이 열린 채로 초록불이 된다   |
+| `maturedBalanceOf` — `EXCHANGE_REVERT`를 다시 더한다         | 반려된 금액이 영영 환전 불가로 굳는 것을 막는다 (§6.4.1 5번)                                           |
+| `create` — 동시 요청 2건 중 하나만 성공                      | 성숙액은 컬럼이 아니라 조건부 UPDATE의 보호를 못 받는다. 문장으로 못 박지 않으면 Green에서 사라진다    |
+| `create` — 실패 시 요청 행도 원장 행도 안 남는다             | `ADR-PAY-4`의 한 트랜잭션 결정을 검증한다                                                              |
+| `request` — 성숙액은 되나 잔액이 잠겨 있다                   | 구인자이면서 구직자인 회원에게 실제로 생기는 경로다                                                    |
+| `checkExchangeAmount` — 4005는 최소금액이 이긴다             | 판정 순서를 못 박는다. 안 정하면 테스트가 구현을 따라간다                                              |
+| `request` — 4000원이면 계좌를 읽지 않는다                    | 입력값이 전제조건보다 먼저라는 순서를 못 박는다                                                        |
+| `POST /exchange-requests` 3건                                | HTTP 상태 코드 매핑(400/409)은 서비스 테스트가 못 잡는다                                               |
+| `request` — 저장소가 늦게 `'NOT_MATURED'`를 돌려준 경우      | Green 뒤 커버리지가 잡았다. 경합 테스트가 저장소를 직접 불러 **서비스의 매핑 한 줄이 검증되지 않았다** |
+| `POST /exchange-requests` — 409 `POINT_INSUFFICIENT_BALANCE` | 같은 이유. 승인된 에러 표 5번인데 시나리오가 없어 8줄이 미검증이었다                                   |
 
-**커버리지:** AC 5개 / 시나리오 25개 / 미커버 0개
+**커버리지:** AC 5개 / 시나리오 27개 / 미커버 0개
+
+> 뒤의 2개는 Green을 마친 뒤 커버리지 측정에서 발견해 추가했다. 구현이 이미
+> 있었으므로 **매핑을 잠시 지워 빨간불을 확인하고 되돌리는** 방식으로 테스트가
+> 실제로 무언가를 지키는지 증명했다.
