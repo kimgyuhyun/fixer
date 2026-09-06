@@ -224,8 +224,8 @@ planner.md에서 명시적으로 요구한 동작. **별도 이슈로 뺀 이유
 - [ ] Given 필터 여러 개, When 칩 하나를 지우면, Then 그 조건만 풀리고 나머지는 유지된다
 - [ ] Given 조건에 맞는 공고가 없을 때, Then 빈 상태 안내가 뜬다
 - [ ] Given 21개 공고와 페이지당 20개, When 2페이지로 가면, Then 나머지 1개가 보인다
-- [ ] Given 21개 공고, When 목록을 보면, Then **"총 21건"** 이 표시된다 *(ADR-JOB-5 오프셋 페이징)*
-- [ ] Given 필터를 두 번 바꾼 뒤, When 뒤로가기를 누르면, Then 이전 필터 상태로 돌아간다 *(ADR-JOB-4 URL 단일 진실)*
+- [ ] Given 21개 공고, When 목록을 보면, Then **"총 21건"** 이 표시된다 _(ADR-JOB-5 오프셋 페이징)_
+- [ ] Given 필터를 두 번 바꾼 뒤, When 뒤로가기를 누르면, Then 이전 필터 상태로 돌아간다 _(ADR-JOB-4 URL 단일 진실)_
 
 ---
 
@@ -246,7 +246,7 @@ planner.md에서 명시적으로 요구한 동작. **별도 이슈로 뺀 이유
 `ADR-JOB-1` **확정: 전체 스냅샷 테이블**(`JobPostVersion`). 착수 가능.
 
 - [ ] Given `version=1` 공고, When 보상금을 고치면, Then `version=2`가 되고 이력에 이전 값이 남는다
-- [ ] Given `version=3`인 공고, When v2를 조회하면, Then **그 시점의 필수항목 6개 전문**이 나온다 *(ADR-JOB-1 계약 복원)*
+- [ ] Given `version=3`인 공고, When v2를 조회하면, Then **그 시점의 필수항목 6개 전문**이 나온다 _(ADR-JOB-1 계약 복원)_
 - [ ] Given `version=1` 공고, When 제목만 고치면, Then **`version`은 1 그대로다**
 - [ ] Given 필수항목 6개 각각, When 하나씩 고치면, Then 매번 `version`이 오른다
 - [ ] Given 필수항목을 고쳤다가 원래 값으로 되돌리면, Then 값이 같으므로 `version`이 오르지 않는다
@@ -446,7 +446,7 @@ planner.md에서 명시적으로 요구한 동작. **별도 이슈로 뺀 이유
 
 ## #31 환전을 요청한다
 
-**담당** A · **선행** #23, #30 · **크기** M · **PRD** point-money
+**담당** B · **선행** #23, #30 · **크기** M · **PRD** point-money
 
 - [ ] Given 지급받은 지 7일 지난 포인트 20000, When 10000을 환전 요청하면, Then `REQUESTED`가 생기고 `EXCHANGE_REQUEST`로 잔액이 줄어든다
 - [ ] Given 4000원 요청, When 제출하면, Then `EXCHANGE_BELOW_MIN_AMOUNT`로 막힌다

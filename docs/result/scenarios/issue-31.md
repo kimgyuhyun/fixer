@@ -2,7 +2,7 @@
 
 > GitHub: https://github.com/kimgyuhyun/fixer/issues/31
 > PRD: `docs/result/prd/point-money.md`
-> 담당: A 최동훈
+> 담당: B 김규현
 > 상태: 시그니처 확정 / 시나리오 도출 완료
 
 ---
