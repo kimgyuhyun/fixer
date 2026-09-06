@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { lockedAmountFor } from '../point/job-post-lock';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ADMIN_ACTIONS,
@@ -256,8 +257,8 @@ export class PrismaJobPostStore implements JobPostStore {
   /**
    * 취소하고 잠긴 돈을 되돌린다. **한 트랜잭션이다** (#16).
    *
-   * 되돌리는 금액을 예산에서 다시 계산하지 않는다. **그 공고를 참조하는
-   * 원장 행들의 합**을 쓴다 — #15에서 예산을 고친 공고는 예산과 실제 잠금이
+   * 되돌리는 금액을 예산에서 다시 계산하지 않는다. **`lockedAmountFor`가
+   * 정의한 잠금 잔여**를 쓴다 — #15에서 예산을 고친 공고는 예산과 실제 잠금이
    * 다를 수 있고, `ADR-PAY-7`이 lot 잔여에서 내린 것과 같은 판단이다.
    */
   async cancelAndRelease(input: {
@@ -271,12 +272,8 @@ export class PrismaJobPostStore implements JobPostStore {
   }): Promise<{ released: number; alreadyReleased: boolean } | 'STALE'> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // 실제로 잠긴 금액. HOLD는 음수, RELEASE는 양수라 합이 곧 잔여다.
-        const { _sum } = await tx.pointTransaction.aggregate({
-          where: { referenceId: input.jobPostId },
-          _sum: { amount: true },
-        });
-        const released = -(_sum.amount ?? 0);
+        // 실제로 잠긴 금액. **정의는 `lockedAmountFor` 한 곳에만 있다** (#53).
+        const released = await lockedAmountFor(tx, input.jobPostId);
 
         // **상태를 `WHERE`에 건다.** 서비스가 읽은 뒤 누군가 상태를 바꿨으면
         // 0건이 되어 아무것도 안 바뀐다 — 조건부 UPDATE와 같은 방식이다.
