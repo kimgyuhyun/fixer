@@ -56,6 +56,7 @@ model User {
   jobPosts          JobPost[]
   penalties         Penalty[]
   exchangeAccount   ExchangeAccount?
+  exchangeRequests  ExchangeRequest[]
   applications      Application[]
   notifications     Notification[]
   adminAuditLogs    AdminAuditLog[]
@@ -442,6 +443,38 @@ enum AccountVerificationStatus {
   /// 검증 통과. stub 모드는 형식만 보고 즉시 이 상태가 된다 (§6.4.2)
   VERIFIED
   /// 형식이 틀렸거나 실명 대조에 실패했다
+  REJECTED
+}
+
+/// 환전 요청 1건. (이슈 #31, `spec-fixed.md` §6.4.1)
+///
+/// 이 행과 `EXCHANGE_REQUEST` 원장 행이 **한 트랜잭션으로 함께 생긴다**
+/// (`ADR-PAY-4`). 나뉘면 요청은 남았는데 포인트가 안 빠진 상태가 되고,
+/// 관리자가 그 요청을 승인하면 없는 돈이 나간다.
+model ExchangeRequest {
+  id     String                @id @default(cuid())
+  userId String
+  /// 요청한 금액. 원장 행은 이 값의 음수다
+  amount Int
+  status ExchangeRequestStatus @default(REQUESTED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  /// 관리자 환전 목록이 상태로 거른다 (§11.5)
+  @@index([status, createdAt])
+}
+
+enum ExchangeRequestStatus {
+  /// 요청됨. #31이 만드는 것은 여기까지다
+  REQUESTED
+  /// 관리자가 승인했다
+  APPROVED
+  /// 이체까지 끝났다
+  COMPLETED
+  /// 반려. `EXCHANGE_REVERT`로 포인트가 원복된다 (§6.4.1)
   REJECTED
 }
 
