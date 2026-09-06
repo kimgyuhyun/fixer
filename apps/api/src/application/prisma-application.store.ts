@@ -161,8 +161,7 @@ export class PrismaApplicationStore implements ApplicationStore {
         });
         if (moved.count === 0) throw new StaleStatus();
 
-        // 실제로 잠긴 금액. 예산을 다시 계산하지 않는다 — #15가 예산을 고친
-        // 공고는 예산과 실제 잠금이 다르다 (`cancelAndRelease`와 같은 판단).
+        // 실제로 잠긴 금액. **정의는 `lockedAmountFor` 한 곳에만 있다** (#53).
         const locked = await lockedAmountFor(tx, input.jobPostId);
 
         const accepted = await tx.application.findMany({

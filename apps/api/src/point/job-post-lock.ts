@@ -8,7 +8,7 @@ import type { Prisma } from '../generated/prisma/client';
  * (`PAYOUT은 구직자 + 행만 쓴다 (#23)`) 지급분은 `HOLD`가 만든 잠금에서
  * 곧바로 빠져나간다.
  */
-export const LOCK_FLOW_TYPES = ['HOLD', 'RELEASE', 'PAYOUT'] as const;
+const LOCK_FLOW_TYPES = ['HOLD', 'RELEASE', 'PAYOUT'] as const;
 
 /**
  * 그 공고에 아직 잠겨 있는 금액.
