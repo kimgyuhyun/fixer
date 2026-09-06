@@ -66,6 +66,16 @@ export type ExchangeRequestSummary = z.infer<
 >;
 
 /**
+ * 이 시각 이전에 지급된 포인트만 환전할 수 있다 (§6.4.1).
+ *
+ * **서비스와 저장소가 같은 함수를 부른다.** 두 곳이 각자 계산하면 한쪽만
+ * 고쳤을 때 1차 방어와 최종 판정이 서로 다른 기준을 쓰게 된다.
+ */
+export function maturityCutoff(now: Date = new Date()): Date {
+  return new Date(now.getTime() - EXCHANGE_MATURITY_DAYS * 24 * 60 * 60 * 1000);
+}
+
+/**
  * 금액 규칙. #30의 `checkAccountFormat`과 같은 자리다.
  *
  * **최소금액이 단위보다 먼저다.** 4,005원처럼 둘 다 걸리는 값에서 어느 쪽이

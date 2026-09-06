@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
   EXCHANGE_ERRORS,
-  EXCHANGE_MATURITY_DAYS,
   POINT_ERRORS,
   checkExchangeAmount,
+  maturityCutoff,
   requestExchangeSchema,
   type ExchangeErrorCode,
   type ExchangeRequestStatus,
@@ -87,7 +87,7 @@ export class ExchangeRequestService {
     // **1차 방어다.** 우리가 읽은 뒤 다른 요청이 먼저 쓴 경우는 저장소가 잡는다.
     const matured = await this.matured.maturedBalanceOf(
       parsed.userId,
-      maturedBefore(),
+      maturityCutoff(),
     );
     if (matured < parsed.amount) {
       throw new ExchangeError(EXCHANGE_ERRORS.NOT_MATURED);
@@ -116,9 +116,4 @@ export class ExchangeRequestService {
       requestedAt: created.createdAt.toISOString(),
     };
   }
-}
-
-/** 이 시각 이전에 지급된 것만 환전할 수 있다 (§6.4.1) */
-function maturedBefore(): Date {
-  return new Date(Date.now() - EXCHANGE_MATURITY_DAYS * 24 * 60 * 60 * 1000);
 }

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EXCHANGE_MATURITY_DAYS } from '@fixer/shared';
+import { maturityCutoff } from '@fixer/shared';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -46,7 +46,7 @@ export class PrismaExchangeRequestStore
 
         // 서비스가 이미 한 번 셌지만 그 사이 다른 요청이 커밋했을 수 있다.
         // **진실은 여기다** — 위 UPDATE가 잠근 뒤에 센 값이기 때문이다.
-        const matured = await maturedSum(tx, input.userId, maturedBefore());
+        const matured = await maturedSum(tx, input.userId, maturityCutoff());
         if (matured < input.amount) {
           throw new Rejected('NOT_MATURED');
         }
@@ -91,7 +91,7 @@ export class PrismaExchangeRequestStore
  * 그냥 빼면 된다. **안 빼면 같은 포인트를 몇 번이고 환전할 수 있다.**
  */
 async function maturedSum(
-  client: Pick<PrismaService, 'pointTransaction'> | Prisma.TransactionClient,
+  client: Prisma.TransactionClient,
   userId: string,
   maturedBefore: Date,
 ): Promise<number> {
@@ -106,11 +106,6 @@ async function maturedSum(
     _sum: { amount: true },
   });
   return _sum.amount ?? 0;
-}
-
-/** 이 시각 이전에 지급된 것만 환전할 수 있다 (§6.4.1) */
-function maturedBefore(): Date {
-  return new Date(Date.now() - EXCHANGE_MATURITY_DAYS * 24 * 60 * 60 * 1000);
 }
 
 /** 트랜잭션을 되돌리기 위한 내부 신호. 밖으로 새지 않는다 */
