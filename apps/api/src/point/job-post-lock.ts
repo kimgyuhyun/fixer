@@ -17,9 +17,16 @@ export const LOCK_FLOW_TYPES = ['HOLD', 'RELEASE', 'PAYOUT'] as const;
  * 다르다 (`ADR-PAY-7`이 lot 잔여에서 내린 것과 같은 판단). 호출부의 트랜잭션
  * 안에서 읽어야 하므로 `tx`를 받는다.
  */
-export function lockedAmountFor(
+export async function lockedAmountFor(
   tx: Prisma.TransactionClient,
   jobPostId: string,
 ): Promise<number> {
-  throw new Error('not implemented');
+  const { _sum } = await tx.pointTransaction.aggregate({
+    where: { referenceId: jobPostId, type: { in: [...LOCK_FLOW_TYPES] } },
+    _sum: { amount: true },
+  });
+  // 부호를 뒤집는다. 잠그는 행이 음수라 합이 곧 **남은 잠금의 음수**다.
+  // `-x`가 아니라 `0 - x`인 이유: 합이 0일 때 `-0`이 나오면 `Object.is`가
+  // 0과 다르다고 본다. 다 끝난 공고의 잠금은 `-0`이 아니라 0이어야 한다.
+  return 0 - (_sum.amount ?? 0);
 }

@@ -124,24 +124,24 @@ const locked = await lockedAmountFor(tx, input.jobPostId);
 
 ### 정상
 
-- [ ] [정상] `lockedAmountFor` — should return the whole held budget when only the HOLD row exists
-- [ ] [정상] `lockedAmountFor` — should return the remainder when part of the hold was already released
-- [ ] [정상] `lockedAmountFor` — should return 0 for a settled post because PAYOUT rows also leave the lock
-- [ ] [정상] `completeAndSettle` — should leave the job post's locked amount at 0 after the completion is confirmed
-- [ ] [정상] `cancelAndRelease` — should leave the job post's locked amount at 0 after the cancellation
+- [x] [정상] `lockedAmountFor` — should return the whole held budget when only the HOLD row exists
+- [x] [정상] `lockedAmountFor` — should return the remainder when part of the hold was already released
+- [x] [정상] `lockedAmountFor` — should return 0 for a settled post because PAYOUT rows also leave the lock
+- [x] [정상] `completeAndSettle` — should leave the job post's locked amount at 0 after the completion is confirmed
+- [x] [정상] `cancelAndRelease` — should leave the job post's locked amount at 0 after the cancellation
 
 ### 경계
 
-- [ ] [경계] `lockedAmountFor` — should return 0 when the job post has no ledger row at all
-- [ ] [경계] `lockedAmountFor` — should ignore a CHARGE row that carries the same referenceId
-- [ ] [경계] `lockedAmountFor` — should ignore rows that reference a different job post
-- [ ] [경계] `completeAndSettle` — should leave the locked amount at 0 when every seat was filled and no RELEASE row is written
-- [ ] [경계] `cancelAndRelease` — should release the same amount when a CHARGE row carries the same referenceId
-- [ ] [경계] `completeAndSettle` — should return the employer the same amount when a CHARGE row carries the same referenceId
+- [x] [경계] `lockedAmountFor` — should return 0 when the job post has no ledger row at all
+- [x] [경계] `lockedAmountFor` — should ignore a CHARGE row that carries the same referenceId
+- [x] [경계] `lockedAmountFor` — should ignore rows that reference a different job post
+- [x] [경계] `completeAndSettle` — should leave the locked amount at 0 when every seat was filled and no RELEASE row is written
+- [x] [경계] `cancelAndRelease` — should release the same amount when a CHARGE row carries the same referenceId
+- [x] [경계] `completeAndSettle` — should return the employer the same amount when a CHARGE row carries the same referenceId
 
 ### 예외
 
-- [ ] [예외] `lockedAmountFor` — should return the negative sum as-is instead of throwing when releases exceed holds
+- [x] [예외] `lockedAmountFor` — should return the negative sum as-is instead of throwing when releases exceed holds
 
 ### 마지막 세 개가 왜 필요한가
 

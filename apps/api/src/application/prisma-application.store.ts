@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client';
+import { lockedAmountFor } from '../point/job-post-lock';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ApplicationStatus, JobPostStatus } from '@fixer/shared';
 import type {
@@ -162,11 +163,7 @@ export class PrismaApplicationStore implements ApplicationStore {
 
         // 실제로 잠긴 금액. 예산을 다시 계산하지 않는다 — #15가 예산을 고친
         // 공고는 예산과 실제 잠금이 다르다 (`cancelAndRelease`와 같은 판단).
-        const { _sum } = await tx.pointTransaction.aggregate({
-          where: { referenceId: input.jobPostId },
-          _sum: { amount: true },
-        });
-        const locked = -(_sum.amount ?? 0);
+        const locked = await lockedAmountFor(tx, input.jobPostId);
 
         const accepted = await tx.application.findMany({
           where: { jobPostId: input.jobPostId, status: 'ACCEPTED' },
