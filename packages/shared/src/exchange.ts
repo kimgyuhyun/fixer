@@ -74,5 +74,11 @@ export type ExchangeRequestSummary = z.infer<
 export function checkExchangeAmount(
   amount: number,
 ): { ok: true } | { ok: false; code: ExchangeErrorCode } {
-  throw new Error('not implemented');
+  if (amount < EXCHANGE_MIN_AMOUNT) {
+    return { ok: false, code: EXCHANGE_ERRORS.BELOW_MIN_AMOUNT };
+  }
+  if (amount % EXCHANGE_AMOUNT_UNIT !== 0) {
+    return { ok: false, code: EXCHANGE_ERRORS.INVALID_UNIT };
+  }
+  return { ok: true };
 }

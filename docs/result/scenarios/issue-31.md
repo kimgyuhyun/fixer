@@ -209,37 +209,37 @@ enum ExchangeRequestStatus {
 
 ### 정상
 
-- [ ] [정상] `request` — should create a REQUESTED request and append a -10000 `EXCHANGE_REQUEST` entry when 20000 matured points exist and 10000 is requested
-- [ ] [정상] `request` — should return the id, amount, status and requestedAt of the stored request
-- [ ] [정상] `create` — should point the ledger entry at the request through referenceId when both rows are written
-- [ ] [정상] `POST /exchange-requests` — should respond 201 with the summary when every gate passes
+- [x] [정상] `request` — should create a REQUESTED request and append a -10000 `EXCHANGE_REQUEST` entry when 20000 matured points exist and 10000 is requested
+- [x] [정상] `request` — should return the id, amount, status and requestedAt of the stored request
+- [x] [정상] `create` — should point the ledger entry at the request through referenceId when both rows are written
+- [x] [정상] `POST /exchange-requests` — should respond 201 with the summary when every gate passes
 
 ### 경계
 
-- [ ] [경계] `checkExchangeAmount` — should accept exactly 5000
-- [ ] [경계] `checkExchangeAmount` — should reject 4990 with `EXCHANGE_BELOW_MIN_AMOUNT`
-- [ ] [경계] `checkExchangeAmount` — should reject 4005 with `EXCHANGE_BELOW_MIN_AMOUNT` when both the minimum and the unit are violated
-- [ ] [경계] `request` — should accept when the matured amount equals the requested amount exactly
-- [ ] [경계] `maturedBalanceOf` — should include a payout made exactly 7 days ago
-- [ ] [경계] `maturedBalanceOf` — should exclude a payout made 1 second short of 7 days
-- [ ] [경계] `maturedBalanceOf` — should subtract earlier `EXCHANGE_REQUEST` amounts so the same points cannot be exchanged twice
-- [ ] [경계] `maturedBalanceOf` — should add `EXCHANGE_REVERT` amounts back so a rejected request becomes exchangeable again
-- [ ] [경계] `create` — should let only one of two concurrent requests succeed when the matured amount covers only one
+- [x] [경계] `checkExchangeAmount` — should accept exactly 5000
+- [x] [경계] `checkExchangeAmount` — should reject 4990 with `EXCHANGE_BELOW_MIN_AMOUNT`
+- [x] [경계] `checkExchangeAmount` — should reject 4005 with `EXCHANGE_BELOW_MIN_AMOUNT` when both the minimum and the unit are violated
+- [x] [경계] `request` — should accept when the matured amount equals the requested amount exactly
+- [x] [경계] `maturedBalanceOf` — should include a payout made exactly 7 days ago
+- [x] [경계] `maturedBalanceOf` — should exclude a payout made 1 second short of 7 days
+- [x] [경계] `maturedBalanceOf` — should subtract earlier `EXCHANGE_REQUEST` amounts so the same points cannot be exchanged twice
+- [x] [경계] `maturedBalanceOf` — should add `EXCHANGE_REVERT` amounts back so a rejected request becomes exchangeable again
+- [x] [경계] `create` — should let only one of two concurrent requests succeed when the matured amount covers only one
 
 ### 예외
 
-- [ ] [예외] `request` — should throw `EXCHANGE_BELOW_MIN_AMOUNT` when 4000 is requested
-- [ ] [예외] `request` — should throw `EXCHANGE_INVALID_UNIT` when 10005 is requested
-- [ ] [예외] `request` — should throw `EXCHANGE_NOT_MATURED` when the points were paid out 3 days ago
-- [ ] [예외] `request` — should throw `EXCHANGE_ACCOUNT_NOT_VERIFIED` when the account is PENDING
-- [ ] [예외] `request` — should throw `EXCHANGE_ACCOUNT_NOT_VERIFIED` when the account is REJECTED
-- [ ] [예외] `request` — should throw `EXCHANGE_ACCOUNT_NOT_VERIFIED` when no account is registered
-- [ ] [예외] `request` — should throw `EXCHANGE_BELOW_MIN_AMOUNT` without reading the account when 4000 is requested by a member who has no account
-- [ ] [예외] `request` — should throw `POINT_INSUFFICIENT_BALANCE` when matured points exist but the balance is held by an open job post
-- [ ] [예외] `create` — should leave neither a request row nor a ledger entry when the balance is short
-- [ ] [예외] `POST /exchange-requests` — should respond 400 with `EXCHANGE_BELOW_MIN_AMOUNT`
-- [ ] [예외] `POST /exchange-requests` — should respond 409 with `EXCHANGE_ACCOUNT_NOT_VERIFIED`
-- [ ] [예외] `POST /exchange-requests` — should respond 400 with `VALIDATION_FAILED` when amount is missing or not an integer
+- [x] [예외] `request` — should throw `EXCHANGE_BELOW_MIN_AMOUNT` when 4000 is requested
+- [x] [예외] `request` — should throw `EXCHANGE_INVALID_UNIT` when 10005 is requested
+- [x] [예외] `request` — should throw `EXCHANGE_NOT_MATURED` when the points were paid out 3 days ago
+- [x] [예외] `request` — should throw `EXCHANGE_ACCOUNT_NOT_VERIFIED` when the account is PENDING
+- [x] [예외] `request` — should throw `EXCHANGE_ACCOUNT_NOT_VERIFIED` when the account is REJECTED
+- [x] [예외] `request` — should throw `EXCHANGE_ACCOUNT_NOT_VERIFIED` when no account is registered
+- [x] [예외] `request` — should throw `EXCHANGE_BELOW_MIN_AMOUNT` without reading the account when 4000 is requested by a member who has no account
+- [x] [예외] `request` — should throw `POINT_INSUFFICIENT_BALANCE` when matured points exist but the balance is held by an open job post
+- [x] [예외] `create` — should leave neither a request row nor a ledger entry when the balance is short
+- [x] [예외] `POST /exchange-requests` — should respond 400 with `EXCHANGE_BELOW_MIN_AMOUNT`
+- [x] [예외] `POST /exchange-requests` — should respond 409 with `EXCHANGE_ACCOUNT_NOT_VERIFIED`
+- [x] [예외] `POST /exchange-requests` — should respond 400 with `VALIDATION_FAILED` when amount is missing or not an integer
 
 ---
 

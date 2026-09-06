@@ -9,7 +9,10 @@ import {
   ExchangeAccountService,
   StubAccountVerifier,
 } from './exchange-account.service';
+import { ExchangeRequestController } from './exchange-request.controller';
+import { ExchangeRequestService } from './exchange-request.service';
 import { PrismaExchangeAccountStore } from './prisma-exchange-account.store';
+import { PrismaExchangeRequestStore } from './prisma-exchange-request.store';
 
 /**
  * 환전. 지금은 계좌 등록(#30)까지다.
@@ -20,9 +23,10 @@ import { PrismaExchangeAccountStore } from './prisma-exchange-account.store';
  */
 @Module({
   imports: [PrismaModule, NotificationModule],
-  controllers: [ExchangeAccountController],
+  controllers: [ExchangeAccountController, ExchangeRequestController],
   providers: [
     PrismaExchangeAccountStore,
+    PrismaExchangeRequestStore,
     StubAccountVerifier,
     {
       provide: EnvAccountCipher,
@@ -44,6 +48,16 @@ import { PrismaExchangeAccountStore } from './prisma-exchange-account.store';
         StubAccountVerifier,
         NotificationService,
       ],
+    },
+    {
+      // 저장소 하나가 요청 쓰기와 성숙액 읽기 둘 다 한다. 성숙액이 읽기 전용
+      // 집계라 파일을 나눌 이유가 없다 (#31).
+      provide: ExchangeRequestService,
+      useFactory: (
+        requests: PrismaExchangeRequestStore,
+        accounts: PrismaExchangeAccountStore,
+      ) => new ExchangeRequestService(requests, accounts, requests),
+      inject: [PrismaExchangeRequestStore, PrismaExchangeAccountStore],
     },
   ],
   exports: [ExchangeAccountService],

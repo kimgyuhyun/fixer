@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  ExchangeErrorCode,
-  ExchangeRequestStatus,
-  ExchangeRequestSummary,
-  RequestExchange,
+import {
+  EXCHANGE_ERRORS,
+  EXCHANGE_MATURITY_DAYS,
+  POINT_ERRORS,
+  checkExchangeAmount,
+  requestExchangeSchema,
+  type ExchangeErrorCode,
+  type ExchangeRequestStatus,
+  type ExchangeRequestSummary,
+  type RequestExchange,
 } from '@fixer/shared';
+import { PointError } from '../point/point-ledger.service';
 import type { ExchangeAccountStore } from './exchange-account.service';
 
 /** 환전이 던지는 도메인 에러 */
@@ -63,7 +69,56 @@ export class ExchangeRequestService {
     private readonly matured: MaturedPointReader,
   ) {}
 
-  request(input: RequestExchange): Promise<ExchangeRequestSummary> {
-    throw new Error('not implemented');
+  async request(input: RequestExchange): Promise<ExchangeRequestSummary> {
+    const parsed = requestExchangeSchema.parse(input);
+
+    // 입력값이 전제조건보다 먼저다. 잘못 친 숫자 때문에 DB를 읽지 않는다.
+    const checked = checkExchangeAmount(parsed.amount);
+    if (!checked.ok) {
+      throw new ExchangeError(checked.code);
+    }
+
+    const account = await this.accounts.findByUser(parsed.userId);
+    // 미등록도 같은 코드다. 요청하는 쪽에서 대응이 같다.
+    if (account?.verificationStatus !== 'VERIFIED') {
+      throw new ExchangeError(EXCHANGE_ERRORS.ACCOUNT_NOT_VERIFIED);
+    }
+
+    // **1차 방어다.** 우리가 읽은 뒤 다른 요청이 먼저 쓴 경우는 저장소가 잡는다.
+    const matured = await this.matured.maturedBalanceOf(
+      parsed.userId,
+      maturedBefore(),
+    );
+    if (matured < parsed.amount) {
+      throw new ExchangeError(EXCHANGE_ERRORS.NOT_MATURED);
+    }
+
+    const created = await this.store.create({
+      userId: parsed.userId,
+      amount: parsed.amount,
+    });
+
+    if (created === 'INSUFFICIENT') {
+      // 성숙한 포인트는 있지만 잔액이 잠겨 있다 — 자기 공고에 `HOLD`가 걸린
+      // 경우다. 새 코드를 만들지 않고 #27의 것을 그대로 쓴다.
+      throw new PointError(POINT_ERRORS.INSUFFICIENT_BALANCE);
+    }
+    if (created === 'NOT_MATURED') {
+      // 우리가 센 뒤 같은 회원의 다른 요청이 먼저 커밋했다. **저장소가 최종
+      // 판정자다** — 성숙액은 컬럼이 아니라 조건부 UPDATE의 보호를 못 받는다.
+      throw new ExchangeError(EXCHANGE_ERRORS.NOT_MATURED);
+    }
+
+    return {
+      id: created.id,
+      amount: created.amount,
+      status: created.status,
+      requestedAt: created.createdAt.toISOString(),
+    };
   }
+}
+
+/** 이 시각 이전에 지급된 것만 환전할 수 있다 (§6.4.1) */
+function maturedBefore(): Date {
+  return new Date(Date.now() - EXCHANGE_MATURITY_DAYS * 24 * 60 * 60 * 1000);
 }
