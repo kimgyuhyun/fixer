@@ -16,6 +16,8 @@ export const NOTIFICATION_TYPES = [
   'SUSPENSION_RELEASED',
   /** 환전 반려 (#34) */
   'EXCHANGE_REJECTED',
+  /** 공고 조건이 바뀌어 재동의가 필요하다 (#21) */
+  'APPLICATION_REACCEPT_REQUIRED',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

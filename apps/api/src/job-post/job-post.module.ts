@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { NotificationModule } from '../notification/notification.module';
+import { NotificationService } from '../notification/notification.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CategoryController } from './category.controller';
 import { CategoryService } from './category.service';
@@ -14,7 +16,7 @@ import {
 
 /** 공고 도메인. 카테고리(#11)와 공고 등록·목록(#12) */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, NotificationModule],
   controllers: [CategoryController, JobPostController],
   providers: [
     PrismaCategoryStore,
@@ -37,12 +39,16 @@ import {
         addresses: PrismaMemberAddressReader,
         balances: PrismaBalanceReader,
         accepted: PrismaAcceptedCounter,
-      ) => new JobPostService(store, addresses, balances, accepted),
+        // 포트로 받는다. 이 서비스는 알림이 인앱인지 메일인지 모른다 (#36).
+        notifications: NotificationService,
+      ) =>
+        new JobPostService(store, addresses, balances, accepted, notifications),
       inject: [
         PrismaJobPostStore,
         PrismaMemberAddressReader,
         PrismaBalanceReader,
         PrismaAcceptedCounter,
+        NotificationService,
       ],
     },
   ],

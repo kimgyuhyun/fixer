@@ -4,16 +4,22 @@ import {
   type JobPostVersionSnapshot,
   canTransition,
   holdIdempotencyKey,
+  type ApplicationStatus,
   type CreateJobPostRequest,
   type JobPostStatus,
 } from '@fixer/shared';
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
+import type {
+  NotificationPublisher,
+  PublishNotificationInput,
+} from '../notification/notification.service';
 import {
   JobPostError,
   JobPostService,
   transition,
   type BalanceReader,
+  type DemotedApplication,
   type JobPostRecord,
   type JobPostStore,
   type MemberAddress,
@@ -144,13 +150,45 @@ class FakeStore implements JobPostStore {
   /** 소프트 삭제된 공고. 진짜 저장소가 `deletedAt`으로 하는 일이다 */
   readonly deleted = new Set<string>();
 
+  /**
+   * 이 공고에 달린 신청. 진짜 저장소가 `Application` 행으로 들고 있는 것이다.
+   *
+   * 수정과 **한 트랜잭션**에서 재동의 대기로 내려가므로 가짜도 같은 메서드
+   * 안에서 옮긴다. 따로 두면 "따로 해도 통과하는" 테스트가 된다.
+   */
+  readonly applications: {
+    id: string;
+    jobPostId: string;
+    applicantId: string;
+    status: ApplicationStatus;
+    appliedVersion: number;
+    previousStatus: ApplicationStatus | null;
+  }[] = [];
+
+  /** 시작 상태를 만든다. 지원은 #17이 하는 일이라 여기서는 넣어만 둔다 */
+  seedApplication(input: {
+    jobPostId: string;
+    applicantId: string;
+    status: ApplicationStatus;
+    appliedVersion: number;
+  }): void {
+    this.applications.push({
+      id: `app_${this.applications.length + 1}`,
+      previousStatus: null,
+      ...input,
+    });
+  }
+
   applyUpdate(input: {
     jobPostId: string;
     patch: Partial<JobPostRecord>;
     nextVersion: number;
     writeSnapshot: boolean;
     budgetDelta: number;
-  }): Promise<(JobPostRecord & { categoryName: string }) | 'INSUFFICIENT'> {
+  }): Promise<
+    | (JobPostRecord & { categoryName: string; demoted: DemotedApplication[] })
+    | 'INSUFFICIENT'
+  > {
     // 진짜 저장소가 한 트랜잭션으로 하는 일이라 가짜도 한 메서드로 둔다.
     if (input.budgetDelta > this.balance) {
       return Promise.resolve('INSUFFICIENT');
@@ -162,6 +200,23 @@ class FakeStore implements JobPostStore {
     Object.assign(row, input.patch, { version: input.nextVersion });
     if (input.writeSnapshot) {
       this.snapshots.push({ jobPostId: row.id, version: row.version });
+    }
+
+    // 진짜 저장소의 `WHERE appliedVersion < version AND status IN (...)`.
+    // 버전이 안 올랐으면 맞는 행이 하나도 없다 (ADR-APP-2).
+    const demoted: DemotedApplication[] = [];
+    for (const app of this.applications) {
+      if (app.jobPostId !== row.id) continue;
+      if (app.status !== 'APPLIED' && app.status !== 'ACCEPTED') continue;
+      if (app.appliedVersion >= row.version) continue;
+
+      demoted.push({
+        applicationId: app.id,
+        applicantId: app.applicantId,
+        previousStatus: app.status,
+      });
+      app.previousStatus = app.status;
+      app.status = 'PENDING_REACCEPT';
     }
 
     if (input.budgetDelta !== 0) {
@@ -176,7 +231,7 @@ class FakeStore implements JobPostStore {
       });
     }
 
-    return Promise.resolve({ ...row, categoryName: '청소' });
+    return Promise.resolve({ ...row, categoryName: '청소', demoted });
   }
 
   /** 쌓인 경고. 진짜 저장소가 `Penalty` 행으로 남기는 것이다 */
@@ -258,6 +313,16 @@ function addresses(home: MemberAddress | null): MemberAddressReader {
   return { defaultAddressOf: () => Promise.resolve(home) };
 }
 
+/** 발행된 알림을 세는 가짜. 진짜 발행자와 같이 **던지지 않는다** (ADR-NOT-1) */
+class SpyPublisher implements NotificationPublisher {
+  readonly published: PublishNotificationInput[] = [];
+
+  publish(input: PublishNotificationInput): Promise<void> {
+    this.published.push(input);
+    return Promise.resolve();
+  }
+}
+
 function setup(
   opts: {
     balance?: number;
@@ -268,18 +333,21 @@ function setup(
 ): {
   service: JobPostService;
   store: FakeStore;
+  notifications: SpyPublisher;
 } {
   const store = new FakeStore(opts.balance ?? 1_000_000);
   const balances: BalanceReader = {
     balanceOf: () => Promise.resolve(store.currentBalance()),
   };
+  const notifications = new SpyPublisher();
   const service = new JobPostService(
     store,
     addresses(opts.home === undefined ? HOME : opts.home),
     balances,
     { countAccepted: () => Promise.resolve(opts.accepted ?? 0) },
+    notifications,
   );
-  return { service, store };
+  return { service, store, notifications };
 }
 
 async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
@@ -1385,5 +1453,171 @@ describe('cancel — 공고를 취소한다 (#16)', () => {
     expect(store.posts[0].status).toBe('OPEN');
     expect(store.currentBalance()).toBe(balanceBefore);
     expect(store.penalties).toHaveLength(0);
+  });
+});
+/**
+ * 버전이 오르면 지원자에게 알린다. (이슈 #21 AC4)
+ *
+ * **전환 자체는 저장소 트랜잭션이 한다** (ADR-APP-2). 서비스가 지는 책임은
+ * 커밋된 뒤 내려간 사람들에게 무엇이 바뀌었는지 알리는 것까지다.
+ */
+describe('update — 재동의 대기 알림', () => {
+  const REWARD_CHANGE = { rewardPerPerson: 60_000 } as const;
+
+  async function seedOpen(service: JobPostService): Promise<string> {
+    return (await service.create(EMPLOYER, VALID)).id;
+  }
+
+  it('should publish an APPLICATION_REACCEPT_REQUIRED notification to every demoted applicant when a required field changed', async () => {
+    const { service, store, notifications } = setup();
+    const id = await seedOpen(service);
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_a',
+      status: 'APPLIED',
+      appliedVersion: 1,
+    });
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_b',
+      status: 'ACCEPTED',
+      appliedVersion: 1,
+    });
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: REWARD_CHANGE,
+    });
+
+    expect(notifications.published.map((n) => [n.userId, n.type])).toEqual([
+      ['usr_a', 'APPLICATION_REACCEPT_REQUIRED'],
+      ['usr_b', 'APPLICATION_REACCEPT_REQUIRED'],
+    ]);
+  });
+
+  it('should put the changed field names in the notification body', async () => {
+    // AC4의 "무엇이 바뀌었는지"가 이 문장이다. 값 대조는 #22의 diff 화면이 한다.
+    const { service, store, notifications } = setup();
+    const id = await seedOpen(service);
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_a',
+      status: 'APPLIED',
+      appliedVersion: 1,
+    });
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: REWARD_CHANGE,
+    });
+
+    expect(notifications.published[0]?.body).toBe(
+      '바뀐 항목: 보상금. 계속 참여할지 확인해 주세요.',
+    );
+  });
+
+  it('should link the notification to the job post that changed', async () => {
+    const { service, store, notifications } = setup();
+    const id = await seedOpen(service);
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_a',
+      status: 'APPLIED',
+      appliedVersion: 1,
+    });
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: REWARD_CHANGE,
+    });
+
+    expect(notifications.published[0]?.linkUrl).toBe(`/job-posts/${id}`);
+  });
+
+  it('should publish exactly one notification per applicant when a required-field change is followed by a title-only change', async () => {
+    // AC3. 제목 수정은 version을 안 올리므로 아무도 내려가지 않는다 —
+    // **알림이 하나 더 늘면 오탈자 하나에 두 번 흔든 것이다.**
+    const { service, store, notifications } = setup();
+    const id = await seedOpen(service);
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_a',
+      status: 'APPLIED',
+      appliedVersion: 1,
+    });
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: REWARD_CHANGE,
+    });
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: { title: '사무실 청소 (수정)' },
+    });
+
+    expect(notifications.published.map((n) => n.userId)).toEqual(['usr_a']);
+  });
+
+  it('should publish only to the applicant whose appliedVersion is behind the new version', async () => {
+    // 이미 새 버전 조건에 동의한 사람은 다시 물을 것이 없다.
+    const { service, store, notifications } = setup();
+    const id = await seedOpen(service);
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_old',
+      status: 'APPLIED',
+      appliedVersion: 1,
+    });
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_current',
+      status: 'APPLIED',
+      appliedVersion: 2,
+    });
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: REWARD_CHANGE,
+    });
+
+    expect(notifications.published.map((n) => n.userId)).toEqual(['usr_old']);
+  });
+
+  it('should publish nothing to withdrawn or rejected applicants', async () => {
+    // 이미 나간 사람에게 조건 변경을 알리면, 끝난 지원을 다시 여는 것처럼 보인다.
+    const { service, store, notifications } = setup();
+    const id = await seedOpen(service);
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_gone',
+      status: 'WITHDRAWN',
+      appliedVersion: 1,
+    });
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_rejected',
+      status: 'REJECTED',
+      appliedVersion: 1,
+    });
+    store.seedApplication({
+      jobPostId: id,
+      applicantId: 'usr_a',
+      status: 'APPLIED',
+      appliedVersion: 1,
+    });
+
+    await service.update({
+      employerId: EMPLOYER,
+      jobPostId: id,
+      patch: REWARD_CHANGE,
+    });
+
+    expect(notifications.published.map((n) => n.userId)).toEqual(['usr_a']);
   });
 });

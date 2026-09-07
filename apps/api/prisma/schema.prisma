@@ -496,6 +496,11 @@ model Application {
   ///
   /// **#20의 무상 취소 창(수락 +2시간)이 이 값을 기준으로 판정한다.**
   acceptedAt     DateTime?
+  /// 재동의 대기로 내려가기 전 상태 (ADR-APP-3, #21).
+  ///
+  /// 전환과 같은 UPDATE 문에서 함께 적는다. 나누면 이전 상태 없이 내려간 행이
+  /// 남고, 그 행은 #22가 되돌릴 수 없다. PENDING_REACCEPT인 동안에만 의미가 있다.
+  previousStatus ApplicationStatus?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -572,4 +577,6 @@ enum NotificationType {
   SUSPENSION_RELEASED
   /// 환전 반려 (#34)
   EXCHANGE_REJECTED
+  /// 공고 조건이 바뀌어 재동의가 필요하다 (#21)
+  APPLICATION_REACCEPT_REQUIRED
 }

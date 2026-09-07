@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   JOB_POST_REQUIRED_FIELDS,
   changedRequiredFields,
+  describeRequiredChanges,
   type RequiredFieldValues,
 } from './job-post.js';
 
@@ -77,5 +78,22 @@ describe('changedRequiredFields — 6개 각각 (AC4)', () => {
         rewardPerPerson: 60_000,
       }),
     ).toEqual(['headcount', 'rewardPerPerson']);
+  });
+});
+
+describe('describeRequiredChanges', () => {
+  // AC4. 알림만 보고 무엇이 바뀌었는지 알 수 있어야 한다.
+  it('should name the changed required fields in Korean when the reward and the start time changed', () => {
+    expect(describeRequiredChanges(['workStartAt', 'rewardPerPerson'])).toBe(
+      '바뀐 항목: 근무 시작 시각, 보상금. 계속 참여할지 확인해 주세요.',
+    );
+  });
+
+  // 들어온 순서가 아니라 선언 순서다. 같은 수정이 사람마다 다른 문장으로
+  // 보이면 문의를 대조할 수 없다.
+  it('should keep the declared field order when several required fields changed at once', () => {
+    expect(
+      describeRequiredChanges(['requiredDescription', 'workAddress']),
+    ).toBe('바뀐 항목: 근무 주소, 상세 내용. 계속 참여할지 확인해 주세요.');
   });
 });
