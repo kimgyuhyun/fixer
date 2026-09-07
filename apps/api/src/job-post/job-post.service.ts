@@ -360,12 +360,13 @@ export class JobPostService {
     // **바뀐 뒤에 알린다** (#19의 거절 알림과 같은 순서). 먼저 알리면 수정이
     // 되돌아갔을 때 "조건이 바뀌었다"는 알림만 남는다. 발행은 던지지 않으므로
     // 이 줄이 수정을 되돌리지도 않는다 (ADR-NOT-1).
+    const body = describeRequiredChanges(changed);
     for (const application of updated.demoted) {
       await this.notifications.publish({
         userId: application.applicantId,
         type: 'APPLICATION_REACCEPT_REQUIRED',
         title: '공고 조건이 바뀌었습니다',
-        body: describeRequiredChanges(changed),
+        body,
         linkUrl: `/job-posts/${current.id}`,
       });
     }
