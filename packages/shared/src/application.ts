@@ -90,6 +90,14 @@ export const APPLICATION_ERRORS = {
   HEADCOUNT_FULL: 'APPLICATION_HEADCOUNT_FULL',
   /** 그 공고의 구인자가 아니다 (#18) */
   NOT_EMPLOYER: 'APPLICATION_NOT_EMPLOYER',
+  /**
+   * 그 신청의 당사자가 아니다 (#20).
+   *
+   * `NOT_OWNED`(본인 신청이 아님)·`NOT_EMPLOYER`(그 공고 구인자가 아님)를
+   * 재사용하지 않는 이유는, 취소는 **둘 중 하나이기만 하면 되기** 때문이다.
+   * 한쪽 코드를 돌려주면 반대쪽 당사자에게 틀린 안내가 나간다.
+   */
+  NOT_PARTICIPANT: 'APPLICATION_NOT_PARTICIPANT',
   /** 공고를 그 상태로 옮길 수 없다 (#23). **job-post의 코드를 재사용한다** */
   JOB_POST_INVALID_TRANSITION: 'JOB_POST_INVALID_TRANSITION',
 } as const;
@@ -139,6 +147,33 @@ export const rejectApplicationRequestSchema = z.object({
 });
 export type RejectApplicationRequest = z.infer<
   typeof rejectApplicationRequestSchema
+>;
+
+/** 무상 취소 창. 수락 시각 + 2시간 (`spec-fixed.md` §4.3) */
+export const FREE_CANCEL_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * 취소가 무상인지 경고인지 (#20).
+ *
+ * **경계는 닫혀 있다 — 정확히 2시간은 무상이다.** §4.3이 "수락 시각 +2시간,
+ * 이 안에서는 무패널티"라고 쓰고 상태머신이 "+2h 이내"라고 쓰기 때문이다.
+ */
+export function resolveCancelStatus(
+  acceptedAt: Date,
+  now: Date,
+): 'CANCELLED_FREE' | 'CANCELLED_PENALTY' {
+  const elapsed = now.getTime() - acceptedAt.getTime();
+  return elapsed <= FREE_CANCEL_WINDOW_MS
+    ? 'CANCELLED_FREE'
+    : 'CANCELLED_PENALTY';
+}
+
+/** 취소 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#20) */
+export const cancelApplicationRequestSchema = z.object({
+  actorId: z.string().min(1, { error: '회원 정보가 없습니다.' }),
+});
+export type CancelApplicationRequest = z.infer<
+  typeof cancelApplicationRequestSchema
 >;
 
 /** 완료 확인 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#23) */

@@ -1,4 +1,8 @@
-import { APPLICATION_ERRORS, JOB_POST_ERRORS } from '@fixer/shared';
+import {
+  APPLICATION_ERRORS,
+  JOB_POST_ERRORS,
+  type PenaltyReason,
+} from '@fixer/shared';
 import { describe, expect, it } from 'vitest';
 import type {
   NotificationPublisher,
@@ -51,11 +55,25 @@ type LedgerRow = {
   idempotencyKey: string;
 };
 
+/** 경고 한 줄. 취소가 무엇을 남겼는지 세는 데만 쓴다 (#20) */
+type PenaltyRow = {
+  userId: string;
+  reason: PenaltyReason;
+  jobPostId: string;
+};
+
 class FakeJobPosts implements JobPostReader {
+  private deleted = false;
+
   constructor(private readonly row: PostRow | null) {}
 
+  /** 소프트 삭제된 공고는 **못 찾은 것으로 다룬다** (#14) */
+  softDelete(): void {
+    this.deleted = true;
+  }
+
   findForApplication(jobPostId: string): Promise<PostRow | null> {
-    if (this.row === null || this.row.id !== jobPostId) {
+    if (this.deleted || this.row === null || this.row.id !== jobPostId) {
       return Promise.resolve(null);
     }
     return Promise.resolve(this.row);
@@ -76,6 +94,8 @@ class FakeStore implements ApplicationStore {
    * 금액을 예산이 아니라 여기 있는 행의 합에서 구하기 때문이다.
    */
   readonly ledger: LedgerRow[] = [];
+  /** 쌓인 경고. **지우지 않는다** — 분쟁 대응 근거다 (§5) */
+  readonly penalties: PenaltyRow[] = [];
   private seq = 0;
 
   constructor(private readonly post: PostRow | null = null) {}
@@ -247,6 +267,35 @@ class FakeStore implements ApplicationStore {
     });
   }
 
+  /**
+   * 취소. **세 문장을 함께 흉내 낸다** (#20).
+   *
+   * `ACCEPTED`가 아니면 `'STALE'`이고 **카운터도 경고도 건드리지 않는다** —
+   * 진짜 트랜잭션이 하는 일이다. 취소 버튼 연타의 두 번째가 여기서 걸린다.
+   */
+  cancel(input: {
+    applicationId: string;
+    jobPostId: string;
+    nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
+    penalty: { userId: string; reason: PenaltyReason } | null;
+  }): Promise<ApplicationRecord | 'STALE'> {
+    const row = this.rows.find((r) => r.id === input.applicationId);
+    if (row === undefined || row.status !== 'ACCEPTED') {
+      return Promise.resolve('STALE');
+    }
+
+    row.status = input.nextStatus;
+    // `WHERE acceptedCount > 0`. 자리가 없는데 더 내리면 음수가 된다.
+    if (this.post !== null && this.post.acceptedCount > 0) {
+      this.post.acceptedCount -= 1;
+    }
+    if (input.penalty !== null) {
+      this.penalties.push({ ...input.penalty, jobPostId: input.jobPostId });
+    }
+
+    return Promise.resolve({ ...row });
+  }
+
   listByJobPost(
     jobPostId: string,
     statuses: readonly ApplicationRecord['status'][],
@@ -292,21 +341,24 @@ function makeService(
 ): {
   service: ApplicationService;
   store: FakeStore;
+  jobPosts: FakeJobPosts;
   post: PostRow | null;
   notifications: SpyPublisher;
 } {
   // 저장소가 공고 행을 함께 본다. 수락이 신청과 카운터를 **함께** 바꾸므로
   // 둘을 다른 객체에 두면 트랜잭션의 전부-아니면-전무를 흉내 낼 수 없다.
   const store = new FakeStore(post);
+  const jobPosts = new FakeJobPosts(post);
   const notifications = new SpyPublisher();
   return {
     service: new ApplicationService(
       store,
-      new FakeJobPosts(post),
+      jobPosts,
       new FakeProfiles(profiles),
       notifications,
     ),
     store,
+    jobPosts,
     post,
     notifications,
   };
@@ -1235,5 +1287,181 @@ describe('complete', () => {
       code: APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION,
     });
     expect(store.ledger).toHaveLength(before);
+  });
+});
+
+/** 두 번째 지원자. 자리가 비면 이 사람이 들어간다 (#20 AC5) */
+const OTHER_APPLICANT = 'usr_seeker2';
+
+/**
+ * 수락된 신청 하나를 `hoursAgo` 시간 전에 수락된 것으로 만든다.
+ *
+ * 수락 시각을 뒤로 밀어 흐른 시간을 만든다. `vi.useFakeTimers`로 시계를
+ * 통째로 세우면 저장소가 찍는 다른 시각까지 함께 굳어 무엇이 판정에
+ * 쓰였는지 흐려진다.
+ */
+async function seedAccepted(
+  service: ApplicationService,
+  store: FakeStore,
+  hoursAgo: number,
+  applicantId: string = APPLICANT,
+): Promise<{ id: string }> {
+  const applied = await service.apply({ applicantId, jobPostId: JOB_POST });
+  await service.accept({ employerId: EMPLOYER, applicationId: applied.id });
+
+  const row = store.rows.find((r) => r.id === applied.id);
+  if (row === undefined) throw new Error('수락된 신청이 없다');
+  row.acceptedAt = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
+
+  return { id: applied.id };
+}
+
+describe('cancel', () => {
+  it('should move an ACCEPTED application to CANCELLED_FREE when the applicant cancels 1 hour after acceptance', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+
+    const result = await service.cancel({
+      actorId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('CANCELLED_FREE');
+  });
+
+  it('should move to CANCELLED_PENALTY with one LATE_CANCEL penalty on the applicant when the applicant cancels 3 hours after acceptance', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 3);
+
+    const result = await service.cancel({
+      actorId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('CANCELLED_PENALTY');
+    expect(store.penalties).toEqual([
+      { userId: APPLICANT, reason: 'LATE_CANCEL', jobPostId: JOB_POST },
+    ]);
+  });
+
+  // 무상 취소 창은 **양쪽 모두에게** 열려 있다 (§4.3).
+  it('should move to CANCELLED_FREE when the employer cancels 1 hour after acceptance', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+
+    const result = await service.cancel({
+      actorId: EMPLOYER,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('CANCELLED_FREE');
+  });
+
+  // 사유가 갈린다. 구인자 취소를 LATE_CANCEL로 적으면 구직자의 늦은 취소와
+  // 구분되지 않아 180일 집계가 두 행동을 한 덩어리로 센다 (§5).
+  it('should record one POSTER_CANCEL penalty on the employer when the employer cancels 3 hours after acceptance', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 3);
+
+    await service.cancel({ actorId: EMPLOYER, applicationId: id });
+
+    expect(store.penalties).toEqual([
+      { userId: EMPLOYER, reason: 'POSTER_CANCEL', jobPostId: JOB_POST },
+    ]);
+  });
+
+  it('should decrease acceptedCount by 1 when an accepted application is cancelled', async () => {
+    const { service, store, post } = makeService(
+      openPost({ acceptedCount: 0 }),
+    );
+    const { id } = await seedAccepted(service, store, 1);
+
+    await service.cancel({ actorId: APPLICANT, applicationId: id });
+
+    expect(post?.acceptedCount).toBe(0);
+  });
+
+  // AC5. 카운터를 안 내리면 자리가 빈 공고에 아무도 못 들어간다.
+  it('should let the employer accept another applicant when the cancellation freed the last seat', async () => {
+    const { service, store } = makeService(
+      openPost({ headcount: 1, acceptedCount: 0 }),
+    );
+    const { id } = await seedAccepted(service, store, 1);
+    const waiting = await service.apply({
+      applicantId: OTHER_APPLICANT,
+      jobPostId: JOB_POST,
+    });
+    await service.cancel({ actorId: APPLICANT, applicationId: id });
+
+    const result = await service.accept({
+      employerId: EMPLOYER,
+      applicationId: waiting.id,
+    });
+
+    expect(result.status).toBe('ACCEPTED');
+  });
+
+  // 취소 버튼 연타. 두 번째가 조용히 성공하면 자리 하나에 두 칸이 빈다.
+  it('should decrease acceptedCount only once when two cancel requests race on the same application', async () => {
+    const { service, store, post } = makeService(
+      openPost({ headcount: 2, acceptedCount: 0 }),
+    );
+    const { id } = await seedAccepted(service, store, 1);
+    await seedAccepted(service, store, 1, OTHER_APPLICANT);
+
+    await Promise.allSettled([
+      service.cancel({ actorId: APPLICANT, applicationId: id }),
+      service.cancel({ actorId: APPLICANT, applicationId: id }),
+    ]);
+
+    expect(post?.acceptedCount).toBe(1);
+  });
+
+  it('should throw APPLICATION_NOT_FOUND when the application does not exist', async () => {
+    const { service } = makeService();
+
+    await expect(
+      service.cancel({ actorId: APPLICANT, applicationId: 'app_없음' }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_FOUND });
+  });
+
+  // id만 알면 남의 계약을 깰 수 있으면 안 된다.
+  it('should throw APPLICATION_NOT_PARTICIPANT when someone who is neither the applicant nor the employer cancels', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+
+    await expect(
+      service.cancel({ actorId: 'usr_남', applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_PARTICIPANT });
+  });
+
+  // 수락 전 취소는 표에 없다. 그건 #17의 철회다.
+  it('should throw APPLICATION_INVALID_TRANSITION when the application is still APPLIED', async () => {
+    const { service } = makeService();
+    const { id } = await seedApplied(service);
+
+    await expect(
+      service.cancel({ actorId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  it('should throw APPLICATION_INVALID_TRANSITION when the application is already cancelled', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+    await service.cancel({ actorId: APPLICANT, applicationId: id });
+
+    await expect(
+      service.cancel({ actorId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  it('should throw JOB_POST_NOT_FOUND when the job post was soft-deleted', async () => {
+    const { service, store, jobPosts } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+    jobPosts.softDelete();
+
+    await expect(
+      service.cancel({ actorId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
   });
 });

@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client';
 import { lockedAmountFor } from '../point/job-post-lock';
 import { PrismaService } from '../prisma/prisma.service';
-import type { ApplicationStatus, JobPostStatus } from '@fixer/shared';
+import type {
+  ApplicationStatus,
+  JobPostStatus,
+  PenaltyReason,
+} from '@fixer/shared';
 import type {
   ApplicantProfile,
   ApplicantProfileReader,
@@ -141,6 +145,58 @@ export class PrismaApplicationStore implements ApplicationStore {
       // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.
       if (error instanceof StaleStatus) return 'STALE';
       if (error instanceof HeadcountFull) return 'FULL';
+      throw error;
+    }
+  }
+
+  /**
+   * 취소. **세 문장이 함께 되거나 함께 안 된다** (#20).
+   *
+   * 신청 전환·카운터 감소·경고 기록이 나뉘면, 자리가 빈 채로 카운터가 남거나
+   * 경고 없이 늦은 취소가 지나간다.
+   */
+  async cancel(input: {
+    applicationId: string;
+    jobPostId: string;
+    nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
+    penalty: { userId: string; reason: PenaltyReason } | null;
+  }): Promise<ApplicationRecord | 'STALE'> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // **신청 전환이 먼저다.** 이미 취소된 신청이면 여기서 0행이 되어
+        // 카운터도 경고도 건드리지 않고 통째로 되돌아간다.
+        const moved = await tx.application.updateMany({
+          where: { id: input.applicationId, status: 'ACCEPTED' },
+          data: { status: input.nextStatus },
+        });
+        if (moved.count === 0) throw new StaleStatus();
+
+        // `ADR-APP-1`이 올리기만 남겨 둔 카운터를 내리는 쪽이 여기다.
+        // `> 0`을 거는 이유는 음수가 되면 정원 판정 자체가 망가지기 때문이다.
+        await tx.jobPost.updateMany({
+          where: { id: input.jobPostId, acceptedCount: { gt: 0 } },
+          data: { acceptedCount: { decrement: 1 } },
+        });
+
+        if (input.penalty !== null) {
+          // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5).
+          await tx.penalty.create({
+            data: {
+              userId: input.penalty.userId,
+              reason: input.penalty.reason,
+              jobPostId: input.jobPostId,
+            },
+          });
+        }
+
+        const row = await tx.application.findUniqueOrThrow({
+          where: { id: input.applicationId },
+        });
+        return toRecord(row);
+      });
+    } catch (error) {
+      // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.
+      if (error instanceof StaleStatus) return 'STALE';
       throw error;
     }
   }

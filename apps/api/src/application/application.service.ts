@@ -6,6 +6,7 @@ import {
   canApplicationTransition,
   canTransition,
   completeJobPostRequestSchema,
+  resolveCancelStatus,
   type ApplicantItem,
   type ApplicantList,
   type ApplicationErrorCode,
@@ -15,6 +16,7 @@ import {
   type CompleteJobPostRequest,
   type CompletionSummary,
   type JobPostStatus,
+  type PenaltyReason,
 } from '@fixer/shared';
 import type { NotificationPublisher } from '../notification/notification.service';
 
@@ -137,6 +139,23 @@ export interface ApplicationStore {
     expectedStatus: JobPostStatus;
     rewardPerPerson: number;
   }): Promise<SettlementResult | 'STALE'>;
+
+  /**
+   * 수락된 신청을 취소한다. **한 트랜잭션이다** (#20).
+   *
+   * 1. `Application SET status=nextStatus WHERE id=? AND status='ACCEPTED'`
+   * 2. `JobPost SET acceptedCount-1 WHERE id=? AND acceptedCount > 0`
+   * 3. `penalty`가 있으면 `Penalty` 1행
+   *
+   * 셋이 나뉘면 자리가 빈 채로 카운터가 그대로 남거나(다른 사람을 못 뽑는다),
+   * 경고 없이 늦은 취소가 지나간다. `'STALE'` = `ACCEPTED`가 아니었다.
+   */
+  cancel(input: {
+    applicationId: string;
+    jobPostId: string;
+    nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
+    penalty: { userId: string; reason: PenaltyReason } | null;
+  }): Promise<ApplicationRecord | 'STALE'>;
 
   /** 구인자의 지원자 목록. 오래 지원한 순 (선착순 표시지 선착순 수락은 아니다) */
   listByJobPost(
@@ -319,6 +338,69 @@ export class ApplicationService {
   }
 
   /**
+   * 수락된 신청을 취소한다. **구직자·구인자 양쪽이 부른다** (#20).
+   *
+   * 수락 +2시간 안이면 무상(`CANCELLED_FREE`), 넘겼으면 경고 1건과 함께
+   * `CANCELLED_PENALTY`다 (`spec-fixed.md` §4.3).
+   */
+  async cancel(input: {
+    actorId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    const current = await this.store.findById(input.applicationId);
+    if (current === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
+    }
+
+    const post = await this.mustFindPost(current.jobPostId);
+
+    // **둘 중 하나이기만 하면 된다.** 한쪽만 보는 `NOT_OWNED`·`NOT_EMPLOYER`를
+    // 재사용하면 반대쪽 당사자에게 틀린 안내가 나간다.
+    const byApplicant = current.applicantId === input.actorId;
+    if (!byApplicant && post.employerId !== input.actorId) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_PARTICIPANT);
+    }
+
+    // 수락 전에는 취소할 것이 없다. 그건 #17의 철회이고, 표에도
+    // `APPLIED → CANCELLED_*`가 없다. 판정 기준이 되는 수락 시각도 아직 없다.
+    if (current.acceptedAt === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: 'CANCELLED_FREE',
+      });
+    }
+
+    const nextStatus = resolveCancelStatus(current.acceptedAt, new Date());
+    // 표에 없는 전이는 거부된다. 이미 취소된 신청이 여기서 걸린다.
+    transition(current.status, nextStatus);
+
+    const cancelled = await this.store.cancel({
+      applicationId: current.id,
+      jobPostId: post.id,
+      nextStatus,
+      // 창을 넘긴 취소만 경고다. 사유는 취소한 쪽에 따라 갈린다 (§5).
+      penalty:
+        nextStatus === 'CANCELLED_PENALTY'
+          ? {
+              userId: input.actorId,
+              reason: byApplicant ? 'LATE_CANCEL' : 'POSTER_CANCEL',
+            }
+          : null,
+    });
+
+    if (cancelled === 'STALE') {
+      // 우리가 읽은 뒤 상태가 바뀌었다. 취소 버튼 연타의 두 번째가 여기다 —
+      // **카운터도 경고도 건드리지 않은 채** 되돌아왔다.
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: nextStatus,
+      });
+    }
+
+    return toSummary(cancelled);
+  }
+
+  /**
    * 구인자가 업무 완료를 확인한다 (#23, `ADR-APP-5`).
    *
    * 확정 인원분은 구직자에게 `PAYOUT`되고 남은 잠금은 `RELEASE`된다.
@@ -390,12 +472,20 @@ export class ApplicationService {
     jobPostId: string,
     employerId: string,
   ): Promise<JobPostForApplication> {
+    const post = await this.mustFindPost(jobPostId);
+    if (post.employerId !== employerId) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_EMPLOYER);
+    }
+    return post;
+  }
+
+  /** 그 공고를 읽는다. **소프트 삭제된 것은 없는 것이다** (#14) */
+  private async mustFindPost(
+    jobPostId: string,
+  ): Promise<JobPostForApplication> {
     const post = await this.jobPosts.findForApplication(jobPostId);
     if (post === null) {
       throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_FOUND);
-    }
-    if (post.employerId !== employerId) {
-      throw new ApplicationError(APPLICATION_ERRORS.NOT_EMPLOYER);
     }
     return post;
   }
@@ -404,10 +494,7 @@ export class ApplicationService {
     // 검증이 가장 먼저다. 형식이 틀린 요청은 저장소를 건드리지 않는다.
     const parsed = applyRequestSchema.parse(input);
 
-    const post = await this.jobPosts.findForApplication(parsed.jobPostId);
-    if (post === null) {
-      throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_FOUND);
-    }
+    const post = await this.mustFindPost(parsed.jobPostId);
     // 본인 공고 확인이 상태 확인보다 먼저다. 마감된 자기 공고에 지원했을 때
     // "모집이 끝났다"고 하면 다시 열면 되는 줄 알게 된다.
     if (post.employerId === parsed.applicantId) {

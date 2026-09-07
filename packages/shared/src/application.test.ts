@@ -3,6 +3,8 @@ import {
   APPLICATION_TRANSITIONS,
   canApplicationTransition,
   formatRating,
+  FREE_CANCEL_WINDOW_MS,
+  resolveCancelStatus,
 } from './application.js';
 
 describe('canApplicationTransition', () => {
@@ -59,5 +61,40 @@ describe('APPLICATION_TRANSITIONS', () => {
     for (const { from, to } of APPLICATION_TRANSITIONS) {
       expect(canApplicationTransition(from, to)).toBe(true);
     }
+  });
+});
+
+describe('resolveCancelStatus', () => {
+  const ACCEPTED_AT = new Date('2026-10-01T09:00:00.000Z');
+
+  /** 수락 시각에서 `ms`만큼 지난 시각 */
+  function after(ms: number): Date {
+    return new Date(ACCEPTED_AT.getTime() + ms);
+  }
+
+  it('should return CANCELLED_FREE when 1 hour has passed since acceptance', () => {
+    expect(resolveCancelStatus(ACCEPTED_AT, after(60 * 60 * 1000))).toBe(
+      'CANCELLED_FREE',
+    );
+  });
+
+  it('should return CANCELLED_PENALTY when 3 hours have passed since acceptance', () => {
+    expect(resolveCancelStatus(ACCEPTED_AT, after(3 * 60 * 60 * 1000))).toBe(
+      'CANCELLED_PENALTY',
+    );
+  });
+
+  // **경계는 닫혀 있다** (§4.3). 여기서 열어 두면 정확히 2시간에 취소한
+  // 사람에게 경고가 쌓인다 — "2시간 안에는 무상"이라고 안내해 놓고서.
+  it('should return CANCELLED_FREE when exactly 2 hours have passed', () => {
+    expect(resolveCancelStatus(ACCEPTED_AT, after(FREE_CANCEL_WINDOW_MS))).toBe(
+      'CANCELLED_FREE',
+    );
+  });
+
+  it('should return CANCELLED_PENALTY when 2 hours and 1 millisecond have passed', () => {
+    expect(
+      resolveCancelStatus(ACCEPTED_AT, after(FREE_CANCEL_WINDOW_MS + 1)),
+    ).toBe('CANCELLED_PENALTY');
   });
 });

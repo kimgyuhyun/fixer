@@ -330,3 +330,34 @@ describe('POST /applications/complete', () => {
     expect(statusOf(error)).toBe(409);
   });
 });
+
+describe('POST /applications/:id/cancel', () => {
+  const CANCELLED = {
+    ...SUMMARY,
+    status: 'CANCELLED_FREE' as const,
+    acceptedAt: '2026-09-05T00:00:00.000Z',
+  };
+
+  it('should answer 200 with the cancelled application when the applicant cancels', async () => {
+    const controller = controllerWith({
+      cancel: vi.fn().mockResolvedValue(CANCELLED),
+    });
+
+    const result = await controller.cancel('app_1', {
+      actorId: 'usr_seeker',
+    });
+
+    expect(result).toMatchObject({ id: 'app_1', status: 'CANCELLED_FREE' });
+  });
+
+  // 회원 식별이 없으면 누가 취소했는지 모른 채 계약이 깨진다.
+  it('should answer 400 when actorId is missing', async () => {
+    const controller = controllerWith({
+      cancel: vi.fn().mockResolvedValue(CANCELLED),
+    });
+
+    const error = await rejectionOf(controller.cancel('app_1', {}));
+
+    expect(statusOf(error)).toBe(400);
+  });
+});
