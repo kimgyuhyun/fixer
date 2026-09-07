@@ -57,6 +57,9 @@ beforeAll(async () => {
     new PrismaMemberAddressReader(as),
     new PrismaBalanceReader(as),
     { countAccepted: () => Promise.resolve(0) },
+    // 재동의 알림(#21)은 이 파일의 관심사가 아니다. 여기서 보는 것은
+    // 관리자 강제 취소이고, 그 경로는 공고를 수정하지 않는다.
+    { publish: () => Promise.resolve() },
   );
   roles = new PrismaRoleReader(as);
   admin = new AdminJobPostService(new PrismaAdminJobPostStore(as), store, {

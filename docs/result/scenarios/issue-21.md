@@ -3,7 +3,7 @@
 > GitHub: https://github.com/Ikara777/fixer/issues/21
 > PRD: `docs/result/prd/application.md`
 > 담당: B (김규현)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: 구현 완료 (Green)
 
 ---
 
@@ -185,34 +185,34 @@ AC 셋("부가항목만 고치면 그대로")처럼 **아무 일도 안 일어�
 
 ### 정상
 
-- [ ] [정상] `describeRequiredChanges` — should name the changed required fields in Korean when the reward and the start time changed
-- [ ] [정상] `describeRequiredChanges` — should keep the declared field order when several required fields changed at once
-- [ ] [정상] `update` — should publish an APPLICATION_REACCEPT_REQUIRED notification to every demoted applicant when a required field changed
-- [ ] [정상] `update` — should put the changed field names in the notification body
-- [ ] [정상] `update` — should link the notification to the job post that changed
-- [ ] [정상] `update` — should publish exactly one notification per applicant when a required-field change is followed by a title-only change
-- [ ] [정상] `listForEmployer` — should list an applicant whose application is PENDING_REACCEPT
+- [x] [정상] `describeRequiredChanges` — should name the changed required fields in Korean when the reward and the start time changed
+- [x] [정상] `describeRequiredChanges` — should keep the declared field order when several required fields changed at once
+- [x] [정상] `update` — should publish an APPLICATION_REACCEPT_REQUIRED notification to every demoted applicant when a required field changed
+- [x] [정상] `update` — should put the changed field names in the notification body
+- [x] [정상] `update` — should link the notification to the job post that changed
+- [x] [정상] `update` — should publish exactly one notification per applicant when a required-field change is followed by a title-only change
+- [x] [정상] `listForEmployer` — should list an applicant whose application is PENDING_REACCEPT
 
 ### 경계
 
-- [ ] [경계] `EMPLOYER_VISIBLE_STATUSES` — should contain PENDING_REACCEPT so a demoted application stays visible to the employer
-- [ ] [경계] `REACCEPT_TARGET_STATUSES` — should be exactly the statuses the transition table allows into PENDING_REACCEPT
-- [ ] [경계] `update` — should publish only to the applicant whose appliedVersion is behind the new version
-- [ ] [경계] `update` — should publish nothing to withdrawn or rejected applicants
+- [x] [경계] `EMPLOYER_VISIBLE_STATUSES` — should contain PENDING_REACCEPT so a demoted application stays visible to the employer
+- [x] [경계] `REACCEPT_TARGET_STATUSES` — should be exactly the statuses the transition table allows into PENDING_REACCEPT
+- [x] [경계] `update` — should publish only to the applicant whose appliedVersion is behind the new version
+- [x] [경계] `update` — should publish nothing to withdrawn or rejected applicants
 
 ### 통합 (실제 DB)
 
-- [ ] [정상] `update` — should move an APPLIED application with appliedVersion 1 to PENDING_REACCEPT when the post becomes version 2
-- [ ] [정상] `update` — should move an ACCEPTED application to PENDING_REACCEPT as well
-- [ ] [정상] `update` — should decrease acceptedCount by the number of demoted ACCEPTED applications
-- [ ] [정상] `update` — should record the pre-demotion status on every demoted application
-- [ ] [정상] `update` — should keep every application row in the database after the demotion
-- [ ] [정상] `update` — should write one notification row per demoted applicant
-- [ ] [경계] `update` — should hold the application at ACCEPTED through a title-only change and demote it only when a required field changes
-- [ ] [경계] `update` — should hold acceptedCount through a title-only change and lower it only when a required field changes
-- [ ] [경계] `update` — should demote nobody on a second required-field change when everyone is already PENDING_REACCEPT
-- [ ] [경계] `update` — should leave withdrawn and rejected applications untouched while demoting the applied one
-- [ ] [예외] `update` — should keep the demotion out of the database when the raised budget exceeds the balance
+- [x] [정상] `update` — should move an APPLIED application with appliedVersion 1 to PENDING_REACCEPT when the post becomes version 2
+- [x] [정상] `update` — should move an ACCEPTED application to PENDING_REACCEPT as well
+- [x] [정상] `update` — should decrease acceptedCount by the number of demoted ACCEPTED applications
+- [x] [정상] `update` — should record the pre-demotion status on every demoted application
+- [x] [정상] `update` — should keep every application row in the database after the demotion
+- [x] [정상] `update` — should write one notification row per demoted applicant
+- [x] [경계] `update` — should hold the application at ACCEPTED through a title-only change and demote it only when a required field changes
+- [x] [경계] `update` — should hold acceptedCount through a title-only change and lower it only when a required field changes
+- [x] [경계] `update` — should demote nobody on a second required-field change when everyone is already PENDING_REACCEPT
+- [x] [경계] `update` — should leave withdrawn and rejected applications untouched while demoting the applied one
+- [x] [예외] `update` — should keep the demotion out of the database when the raised budget exceeds the balance
 
 ---
 

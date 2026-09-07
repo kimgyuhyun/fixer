@@ -3,6 +3,7 @@ import { lockedAmountFor } from '../point/job-post-lock';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ADMIN_ACTIONS,
+  REACCEPT_TARGET_STATUSES,
   type JobPostFilter,
   type JobPostStatus,
   type JobPostVersionSnapshot,
@@ -250,11 +251,56 @@ export class PrismaJobPostStore implements JobPostStore {
           });
         }
 
-        // 재동의 전환은 #21 Green이 이 트랜잭션 안에 채운다.
+        // 재동의 전환. **버전이 올랐을 때만 맞는 행이 있다** (ADR-APP-2) —
+        // `appliedVersion < version`이라 부가항목만 고친 경우는 조건 자체로
+        // 걸러진다. 이미 `PENDING_REACCEPT`인 신청도 대상이 아니라 두 번
+        // 내려가지 않는다.
+        const targets = await tx.application.findMany({
+          where: {
+            jobPostId: updated.id,
+            status: { in: [...REACCEPT_TARGET_STATUSES] },
+            appliedVersion: { lt: updated.version },
+          },
+          select: { id: true, applicantId: true, status: true },
+        });
+
+        for (const status of REACCEPT_TARGET_STATUSES) {
+          // **상태와 이전 상태가 한 문장 안에서 함께 바뀐다** (ADR-APP-3).
+          // 나누면 이전 상태 없이 내려간 행이 남고, #22가 되돌릴 수 없다.
+          await tx.application.updateMany({
+            where: {
+              jobPostId: updated.id,
+              status,
+              appliedVersion: { lt: updated.version },
+            },
+            data: { status: 'PENDING_REACCEPT', previousStatus: status },
+          });
+        }
+
+        const seatsFreed = targets.filter(
+          (row) => row.status === 'ACCEPTED',
+        ).length;
+        if (seatsFreed > 0) {
+          // ADR-APP-1의 카운터를 내린다. 재동의 대기는 확정 인원이 아니다
+          // (#21 AC2). `>= seatsFreed`를 거는 이유는 음수가 되면 정원 판정
+          // 자체가 망가지기 때문이다.
+          await tx.jobPost.updateMany({
+            where: { id: updated.id, acceptedCount: { gte: seatsFreed } },
+            data: { acceptedCount: { decrement: seatsFreed } },
+          });
+        }
+
         return {
           ...toRecord(updated),
           categoryName: updated.category.name,
-          demoted: [],
+          demoted: targets.map((row) => ({
+            applicationId: row.id,
+            applicantId: row.applicantId,
+            previousStatus:
+              row.status === 'ACCEPTED'
+                ? ('ACCEPTED' as const)
+                : ('APPLIED' as const),
+          })),
         };
       });
     } catch (error) {
