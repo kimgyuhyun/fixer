@@ -96,6 +96,16 @@ export class ApplicationController {
     }
   }
 
+  /** 수락된 신청을 취소한다. 구직자·구인자 양쪽이 부른다 (#20) */
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancel(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
+  }
+
   /** 구인자가 업무 완료를 확인한다 (#23) */
   @Post('complete')
   @HttpCode(HttpStatus.OK)
@@ -171,6 +181,7 @@ const MESSAGES: Record<ApplicationErrorCode, string> = {
   [APPLICATION_ERRORS.JOB_POST_NOT_FOUND]: '공고를 찾을 수 없습니다.',
   [APPLICATION_ERRORS.HEADCOUNT_FULL]: '이미 정원이 찼습니다.',
   [APPLICATION_ERRORS.NOT_EMPLOYER]: '이 공고의 구인자가 아닙니다.',
+  [APPLICATION_ERRORS.NOT_PARTICIPANT]: '이 신청의 당사자가 아닙니다.',
   [APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION]:
     '지금 상태에서는 완료 확인을 할 수 없습니다.',
 };

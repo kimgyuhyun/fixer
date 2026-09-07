@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client';
 import { lockedAmountFor } from '../point/job-post-lock';
 import { PrismaService } from '../prisma/prisma.service';
-import type { ApplicationStatus, JobPostStatus } from '@fixer/shared';
+import type {
+  ApplicationStatus,
+  JobPostStatus,
+  PenaltyReason,
+} from '@fixer/shared';
 import type {
   ApplicantProfile,
   ApplicantProfileReader,
@@ -143,6 +147,21 @@ export class PrismaApplicationStore implements ApplicationStore {
       if (error instanceof HeadcountFull) return 'FULL';
       throw error;
     }
+  }
+
+  /**
+   * 취소. **세 문장이 함께 되거나 함께 안 된다** (#20).
+   *
+   * 신청 전환·카운터 감소·경고 기록이 나뉘면, 자리가 빈 채로 카운터가 남거나
+   * 경고 없이 늦은 취소가 지나간다.
+   */
+  cancel(input: {
+    applicationId: string;
+    jobPostId: string;
+    nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
+    penalty: { userId: string; reason: PenaltyReason } | null;
+  }): Promise<ApplicationRecord | 'STALE'> {
+    throw new Error('not implemented');
   }
 
   async completeAndSettle(input: {

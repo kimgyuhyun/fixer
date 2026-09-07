@@ -15,6 +15,7 @@ import {
   type CompleteJobPostRequest,
   type CompletionSummary,
   type JobPostStatus,
+  type PenaltyReason,
 } from '@fixer/shared';
 
 /** 신청이 던지는 도메인 에러 */
@@ -136,6 +137,23 @@ export interface ApplicationStore {
     expectedStatus: JobPostStatus;
     rewardPerPerson: number;
   }): Promise<SettlementResult | 'STALE'>;
+
+  /**
+   * 수락된 신청을 취소한다. **한 트랜잭션이다** (#20).
+   *
+   * 1. `Application SET status=nextStatus WHERE id=? AND status='ACCEPTED'`
+   * 2. `JobPost SET acceptedCount-1 WHERE id=? AND acceptedCount > 0`
+   * 3. `penalty`가 있으면 `Penalty` 1행
+   *
+   * 셋이 나뉘면 자리가 빈 채로 카운터가 그대로 남거나(다른 사람을 못 뽑는다),
+   * 경고 없이 늦은 취소가 지나간다. `'STALE'` = `ACCEPTED`가 아니었다.
+   */
+  cancel(input: {
+    applicationId: string;
+    jobPostId: string;
+    nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
+    penalty: { userId: string; reason: PenaltyReason } | null;
+  }): Promise<ApplicationRecord | 'STALE'>;
 
   /** 구인자의 지원자 목록. 오래 지원한 순 (선착순 표시지 선착순 수락은 아니다) */
   listByJobPost(
@@ -259,6 +277,19 @@ export class ApplicationService {
     }
 
     return toSummary(accepted);
+  }
+
+  /**
+   * 수락된 신청을 취소한다. **구직자·구인자 양쪽이 부른다** (#20).
+   *
+   * 수락 +2시간 안이면 무상(`CANCELLED_FREE`), 넘겼으면 경고 1건과 함께
+   * `CANCELLED_PENALTY`다 (`spec-fixed.md` §4.3).
+   */
+  async cancel(input: {
+    actorId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
   }
 
   /**

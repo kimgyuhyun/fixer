@@ -877,3 +877,57 @@ describe('공고 잠금 잔여 — 완료 경로 (#53)', () => {
     expect(await ledgerSum(employerId)).toBe(37_000);
   });
 });
+
+/**
+ * **경고가 실제로 몇 건 쌓였는지는 Penalty 테이블만 안다** (#20).
+ *
+ * 가짜 저장소는 서비스가 넘긴 값을 그대로 세므로, 트랜잭션이 정말 행을
+ * 썼는지 안 썼는지를 못 본다. AC1의 "경고가 쌓이지 않는다"는 진짜 DB에서
+ * 세어야 증명된다.
+ */
+describe('cancel — 무상 취소 창 (#20)', () => {
+  /** 수락된 신청 하나. `hoursAgo` 시간 전에 수락된 것으로 만든다 */
+  async function seedAccepted(hoursAgo: number): Promise<{
+    employerId: string;
+    applicantId: string;
+    applicationId: string;
+  }> {
+    const employerId = await seedUser('boss@example.com');
+    const applicantId = await seedUser('seeker@example.com');
+    const jobPostId = await seedOpenPost(employerId);
+    const applied = await service.apply({ applicantId, jobPostId });
+    await service.accept({ employerId, applicationId: applied.id });
+
+    await prisma.application.update({
+      where: { id: applied.id },
+      data: { acceptedAt: new Date(Date.now() - hoursAgo * 60 * 60 * 1000) },
+    });
+
+    return { employerId, applicantId, applicationId: applied.id };
+  }
+
+  it('should create exactly one Penalty row when the applicant cancels past the free window', async () => {
+    const seed = await seedAccepted(3);
+
+    await service.cancel({
+      actorId: seed.applicantId,
+      applicationId: seed.applicationId,
+    });
+
+    const rows = await prisma.penalty.findMany({
+      where: { userId: seed.applicantId },
+    });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('should create no Penalty row when the applicant cancels inside the free window', async () => {
+    const seed = await seedAccepted(1);
+
+    await service.cancel({
+      actorId: seed.applicantId,
+      applicationId: seed.applicationId,
+    });
+
+    expect(await prisma.penalty.count()).toBe(0);
+  });
+});
