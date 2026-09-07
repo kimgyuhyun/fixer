@@ -213,6 +213,46 @@ describe('POST /applications/:id/accept', () => {
   });
 });
 
+describe('POST /applications/:id/reject', () => {
+  it('should respond 200 with status REJECTED', async () => {
+    const controller = controllerWith({
+      reject: vi.fn().mockResolvedValue({ ...SUMMARY, status: 'REJECTED' }),
+    });
+
+    const result = await controller.reject('app_1', {
+      employerId: 'usr_employer',
+    });
+
+    expect(result).toMatchObject({ id: 'app_1', status: 'REJECTED' });
+  });
+
+  // AC3. 수락된 신청은 취소 규칙(#20)을 따라야 한다.
+  it('should respond 409 when the error code is APPLICATION_INVALID_TRANSITION', async () => {
+    const controller = controllerWith({
+      reject: vi
+        .fn()
+        .mockRejectedValue(
+          new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION),
+        ),
+    });
+
+    const error = await rejectionOf(
+      controller.reject('app_1', { employerId: 'usr_employer' }),
+    );
+
+    expect(statusOf(error)).toBe(409);
+  });
+
+  // 없을 때 500이 나면 원인을 화면에서 알 수 없다.
+  it('should respond 400 when the body has no employerId', async () => {
+    const controller = controllerWith({ reject: vi.fn() });
+
+    const error = await rejectionOf(controller.reject('app_1', {}));
+
+    expect(statusOf(error)).toBe(400);
+  });
+});
+
 describe('GET /applications', () => {
   it('should respond 200 with the applicant list', async () => {
     const controller = controllerWith({

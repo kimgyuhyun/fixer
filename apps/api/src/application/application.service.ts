@@ -16,6 +16,7 @@ import {
   type CompletionSummary,
   type JobPostStatus,
 } from '@fixer/shared';
+import type { NotificationPublisher } from '../notification/notification.service';
 
 /** 신청이 던지는 도메인 에러 */
 export class ApplicationError extends Error {
@@ -214,7 +215,27 @@ export class ApplicationService {
     private readonly store: ApplicationStore,
     private readonly jobPosts: JobPostReader,
     private readonly profiles: ApplicantProfileReader,
+    /**
+     * 거절을 신청자에게 알린다 (#19 AC1).
+     *
+     * 포트만 본다 — 이 도메인은 알림이 인앱인지 메일인지 모른다 (`ADR-NOT-1`).
+     */
+    private readonly notifications: NotificationPublisher,
   ) {}
+
+  /**
+   * 구인자가 지원자 한 명을 거절한다 (#19).
+   *
+   * `APPLIED`만 거절할 수 있다. `ACCEPTED`는 **계약이 이미 체결된 것**이라
+   * 취소 규칙(#20)을 따라야 하고, 그 금지는 전이표에 그 줄이 없다는 사실로
+   * 표현된다 (AC3).
+   */
+  async reject(input: {
+    employerId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
+  }
 
   /** 구인자가 지원자 한 명을 수락한다. **이 순간이 계약 체결** (#18) */
   async accept(input: {

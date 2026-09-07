@@ -1,5 +1,9 @@
 import { APPLICATION_ERRORS, JOB_POST_ERRORS } from '@fixer/shared';
 import { describe, expect, it } from 'vitest';
+import type {
+  NotificationPublisher,
+  PublishNotificationInput,
+} from '../notification/notification.service';
 import {
   ApplicationService,
   type ApplicantProfile,
@@ -272,6 +276,16 @@ class FakeProfiles implements ApplicantProfileReader {
   }
 }
 
+/** 발행된 알림을 그대로 모아 두는 가짜 포트 (#36) */
+class SpyPublisher implements NotificationPublisher {
+  readonly published: PublishNotificationInput[] = [];
+
+  publish(input: PublishNotificationInput): Promise<void> {
+    this.published.push(input);
+    return Promise.resolve();
+  }
+}
+
 function makeService(
   post: PostRow | null = openPost(),
   profiles: Record<string, ApplicantProfile> = {},
@@ -279,18 +293,22 @@ function makeService(
   service: ApplicationService;
   store: FakeStore;
   post: PostRow | null;
+  notifications: SpyPublisher;
 } {
   // 저장소가 공고 행을 함께 본다. 수락이 신청과 카운터를 **함께** 바꾸므로
   // 둘을 다른 객체에 두면 트랜잭션의 전부-아니면-전무를 흉내 낼 수 없다.
   const store = new FakeStore(post);
+  const notifications = new SpyPublisher();
   return {
     service: new ApplicationService(
       store,
       new FakeJobPosts(post),
       new FakeProfiles(profiles),
+      notifications,
     ),
     store,
     post,
+    notifications,
   };
 }
 
@@ -378,6 +396,7 @@ describe('apply', () => {
       store,
       new FakeJobPosts(post),
       new FakeProfiles(),
+      new SpyPublisher(),
     );
 
     const { id } = await seedApplied(service);
@@ -450,6 +469,7 @@ describe('apply', () => {
       store,
       new FakeJobPosts(openPost()),
       new FakeProfiles(),
+      new SpyPublisher(),
     );
     await store.create({
       jobPostId: JOB_POST,
@@ -458,6 +478,20 @@ describe('apply', () => {
     });
     // 조회는 계속 "없음"이라고 한다 — 다른 요청이 방금 넣은 행을 못 본다.
     store.findByApplicant = () => Promise.resolve(null);
+
+    await expect(
+      service.apply({ applicantId: APPLICANT, jobPostId: JOB_POST }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.ALREADY_APPLIED });
+  });
+});
+
+describe('reject → apply', () => {
+  // AC2. 되살아나는 것은 WITHDRAWN뿐이다 (§4.2). 거절은 구인자의 판단이라
+  // 신청자가 다시 눌러 뒤집을 수 있으면 안 된다.
+  it('should throw APPLICATION_ALREADY_APPLIED when the applicant re-applies after being rejected', async () => {
+    const { service } = makeService();
+    const { id } = await seedApplied(service);
+    await service.reject({ employerId: EMPLOYER, applicationId: id });
 
     await expect(
       service.apply({ applicantId: APPLICANT, jobPostId: JOB_POST }),
@@ -687,7 +721,141 @@ describe('accept', () => {
   });
 });
 
+describe('reject', () => {
+  it('should move the application from APPLIED to REJECTED', async () => {
+    const { service } = makeService();
+    const { id } = await seedApplied(service);
+
+    const result = await service.reject({
+      employerId: EMPLOYER,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('REJECTED');
+  });
+
+  it('should publish an APPLICATION_REJECTED notification to the applicant', async () => {
+    const { service, notifications } = makeService();
+    const { id } = await seedApplied(service);
+
+    await service.reject({ employerId: EMPLOYER, applicationId: id });
+
+    expect(notifications.published).toMatchObject([
+      { userId: APPLICANT, type: 'APPLICATION_REJECTED' },
+    ]);
+  });
+
+  // ADR-APP-1은 카운터를 내리는 것을 취소 이슈(#20)의 몫으로 뒀다. APPLIED는
+  // 올린 적이 없으므로 여기서 내리면 아무도 안 쓴 자리가 정원에 생긴다.
+  it("should leave the job post's acceptedCount unchanged", async () => {
+    const { service, post } = makeService(openPost({ acceptedCount: 1 }));
+    const { id } = await seedApplied(service);
+
+    await service.reject({ employerId: EMPLOYER, applicationId: id });
+
+    expect(post?.acceptedCount).toBe(1);
+  });
+
+  // linkUrl에 id를 끼워 넣는 첫 발행자다. 상수 경로를 쓰면 신청자가 어느
+  // 공고에서 떨어졌는지 알 수 없다.
+  it('should point the notification link at the job post the applicant was rejected from', async () => {
+    const { service, notifications } = makeService();
+    const { id } = await seedApplied(service);
+
+    await service.reject({ employerId: EMPLOYER, applicationId: id });
+
+    expect(notifications.published[0]?.linkUrl).toBe(`/job-posts/${JOB_POST}`);
+  });
+
+  // 거절 버튼 연타. 조건부 UPDATE가 STALE을 돌려준 뒤에도 알리면 두 번 간다.
+  it('should publish exactly one notification when the same application is rejected twice', async () => {
+    const { service, notifications } = makeService();
+    const { id } = await seedApplied(service);
+    await service.reject({ employerId: EMPLOYER, applicationId: id });
+
+    await service
+      .reject({ employerId: EMPLOYER, applicationId: id })
+      .catch(() => undefined);
+
+    expect(notifications.published).toHaveLength(1);
+  });
+
+  // 거절은 돈도 정원도 안 건드린다. OPEN을 요구하면 마감된 공고에 남은
+  // 지원자를 정리할 길이 막힌다.
+  it('should succeed when the job post is no longer OPEN', async () => {
+    const { service, post } = makeService(openPost());
+    const { id } = await seedApplied(service);
+    if (post !== null) post.status = 'CLOSED';
+
+    const result = await service.reject({
+      employerId: EMPLOYER,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('REJECTED');
+  });
+
+  // AC3. 수락은 계약 체결이라 무르려면 취소 규칙(#20)을 따라야 한다.
+  it('should throw APPLICATION_INVALID_TRANSITION when the application is ACCEPTED', async () => {
+    const { service } = makeService();
+    const { id } = await seedApplied(service);
+    await service.accept({ employerId: EMPLOYER, applicationId: id });
+
+    await expect(
+      service.reject({ employerId: EMPLOYER, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  // 막힌 것을 알리면 신청자는 떨어진 줄 안다. **전제를 함께 단언한다** —
+  // 거절이 실제로 막혔다는 것을 확인하지 않으면 이 테스트는 아무것도 안 본다.
+  it('should not publish a notification when the application is ACCEPTED', async () => {
+    const { service, notifications } = makeService();
+    const { id } = await seedApplied(service);
+    await service.accept({ employerId: EMPLOYER, applicationId: id });
+
+    await expect(
+      service.reject({ employerId: EMPLOYER, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+    expect(notifications.published).toHaveLength(0);
+  });
+
+  it('should throw APPLICATION_NOT_FOUND when no application has that id', async () => {
+    const { service } = makeService();
+
+    await expect(
+      service.reject({ employerId: EMPLOYER, applicationId: 'app_없음' }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_FOUND });
+  });
+
+  // 없으면 id만 알면 남의 공고 지원자를 떨어뜨릴 수 있다.
+  it('should throw APPLICATION_NOT_EMPLOYER when the caller does not own the job post', async () => {
+    const { service } = makeService();
+    const { id } = await seedApplied(service);
+
+    await expect(
+      service.reject({ employerId: 'usr_남', applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_EMPLOYER });
+  });
+});
+
 describe('listForEmployer', () => {
+  // 감추면 구인자가 같은 사람을 두 번 검토하게 되고, 그 사람이 왜 다시
+  // 지원을 못 하는지도 알 수 없다.
+  it('should include REJECTED applicants in the list', async () => {
+    const { service } = makeService(openPost(), {
+      [APPLICANT]: { name: '김구직', ratingAsWorker: null, ratingCount: 0 },
+    });
+    const { id } = await seedApplied(service);
+    await service.reject({ employerId: EMPLOYER, applicationId: id });
+
+    const list = await service.listForEmployer({
+      employerId: EMPLOYER,
+      jobPostId: JOB_POST,
+    });
+
+    expect(list.applicants).toMatchObject([{ status: 'REJECTED' }]);
+  });
+
   it("should return the applicants of the employer's own job post", async () => {
     const { service } = makeService(openPost(), {
       [APPLICANT]: { name: '김구직', ratingAsWorker: null, ratingCount: 0 },

@@ -96,6 +96,16 @@ export class ApplicationController {
     }
   }
 
+  /** 구인자가 지원자 한 명을 거절한다 (#19) */
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  async reject(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
+  }
+
   /** 구인자가 업무 완료를 확인한다 (#23) */
   @Post('complete')
   @HttpCode(HttpStatus.OK)

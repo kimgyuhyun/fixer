@@ -133,6 +133,14 @@ export type AcceptApplicationRequest = z.infer<
   typeof acceptApplicationRequestSchema
 >;
 
+/** 거절 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#19) */
+export const rejectApplicationRequestSchema = z.object({
+  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
+});
+export type RejectApplicationRequest = z.infer<
+  typeof rejectApplicationRequestSchema
+>;
+
 /** 완료 확인 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#23) */
 export const completeJobPostRequestSchema = z.object({
   jobPostId: z.string().min(1, { error: '공고를 알 수 없습니다.' }),
