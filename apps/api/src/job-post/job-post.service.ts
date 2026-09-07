@@ -7,6 +7,7 @@ import {
   canTransition,
   changedRequiredFields,
   createJobPostRequestSchema,
+  describeRequiredChanges,
   holdIdempotencyKey,
   updateJobPostRequestSchema,
   type CreateJobPostRequest,
@@ -20,6 +21,7 @@ import {
   type JobPostVersionSnapshot,
   type UpdateJobPostRequest,
 } from '@fixer/shared';
+import type { NotificationPublisher } from '../notification/notification.service';
 
 /** 공고가 던지는 도메인 에러 */
 export class JobPostError extends Error {
@@ -104,10 +106,18 @@ export interface JobPostStore {
   ): Promise<(JobPostRecord & { categoryName: string }) | null>;
 
   /**
-   * 공고를 고친다. **버전 증가·스냅샷 저장·잠금 조정이 한 트랜잭션이다.**
+   * 공고를 고친다. **버전 증가·스냅샷 저장·잠금 조정·재동의 전환이 한
+   * 트랜잭션이다.**
    *
    * `version`만 오르고 스냅샷이 없으면 그 버전의 계약을 영영 복원할 수
    * 없다 (ADR-JOB-1). 예산이 늘었는데 잠금이 그대로면 돈이 샌다.
+   * 버전은 올랐는데 신청이 그대로면 **옛 조건에 동의한 사람이 새 조건으로
+   * 확정된다** (ADR-APP-2, #21).
+   *
+   * `appliedVersion < nextVersion`인 `APPLIED`·`ACCEPTED` 신청을
+   * `PENDING_REACCEPT`로 내리고 `previousStatus`를 함께 적는다. 내려간
+   * `ACCEPTED` 수만큼 `acceptedCount`를 줄인다. **버전이 안 올랐으면 맞는
+   * 행이 하나도 없어** 부가항목만 고친 경우가 조건 자체로 걸러진다.
    *
    * 잔액이 모자라면 `'INSUFFICIENT'`다 — 호출부가 부족 금액을 안내한다.
    */
@@ -120,7 +130,10 @@ export interface JobPostStore {
     writeSnapshot: boolean;
     /** 잠금 차액. 양수면 더 잠그고 음수면 되돌린다. 0이면 안 건드린다 */
     budgetDelta: number;
-  }): Promise<(JobPostRecord & { categoryName: string }) | 'INSUFFICIENT'>;
+  }): Promise<
+    | (JobPostRecord & { categoryName: string; demoted: DemotedApplication[] })
+    | 'INSUFFICIENT'
+  >;
 
   /** 그 버전의 스냅샷. 계약 복원이 이 한 줄이다 (ADR-JOB-1) */
   findVersion(
@@ -159,6 +172,19 @@ export interface JobPostStore {
      */
     audit?: { adminId: string; reason: string };
   }): Promise<{ released: number; alreadyReleased: boolean } | 'STALE'>;
+}
+
+/**
+ * 버전이 올라 재동의 대기로 내려간 신청 한 건 (#21).
+ *
+ * 저장소가 전환한 뒤 **커밋된 것**만 돌려준다. 알림은 이 목록으로 발행한다 —
+ * 먼저 알리면 롤백됐을 때 "조건이 바뀌었다"는 알림만 남는다.
+ */
+export interface DemotedApplication {
+  applicationId: string;
+  applicantId: string;
+  /** 내려가기 전 상태. #22의 "이전 상태로 복귀"가 이 값을 쓴다 (ADR-APP-3) */
+  previousStatus: 'APPLIED' | 'ACCEPTED';
 }
 
 /**
@@ -204,6 +230,12 @@ export class JobPostService {
     private readonly addresses: MemberAddressReader,
     private readonly balances: BalanceReader,
     private readonly accepted: AcceptedCounter,
+    /**
+     * 재동의 대기가 된 신청자에게 알린다 (#21 AC4).
+     *
+     * 포트만 본다 — 이 도메인은 알림이 인앱인지 메일인지 모른다 (ADR-NOT-1).
+     */
+    private readonly notifications: NotificationPublisher,
   ) {}
 
   async create(
@@ -322,6 +354,20 @@ export class JobPostService {
         required: budgetDelta,
         balance,
         shortfall: budgetDelta - balance,
+      });
+    }
+
+    // **바뀐 뒤에 알린다** (#19의 거절 알림과 같은 순서). 먼저 알리면 수정이
+    // 되돌아갔을 때 "조건이 바뀌었다"는 알림만 남는다. 발행은 던지지 않으므로
+    // 이 줄이 수정을 되돌리지도 않는다 (ADR-NOT-1).
+    const body = describeRequiredChanges(changed);
+    for (const application of updated.demoted) {
+      await this.notifications.publish({
+        userId: application.applicantId,
+        type: 'APPLICATION_REACCEPT_REQUIRED',
+        title: '공고 조건이 바뀌었습니다',
+        body,
+        linkUrl: `/job-posts/${current.id}`,
       });
     }
 

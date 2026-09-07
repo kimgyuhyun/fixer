@@ -7,6 +7,8 @@ import {
 import { JOB_POST_ERRORS, holdIdempotencyKey } from '@fixer/shared';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../generated/prisma/client';
+import { NotificationService } from '../notification/notification.service';
+import { PrismaNotificationStore } from '../notification/prisma-notification.store';
 import { JobPostError, JobPostService } from './job-post.service';
 import {
   PrismaBalanceReader,
@@ -45,6 +47,10 @@ beforeAll(async () => {
     new PrismaMemberAddressReader(prisma as unknown as PrismaService),
     new PrismaBalanceReader(prisma as unknown as PrismaService),
     { countAccepted: () => Promise.resolve(0) },
+    // 진짜 알림 저장소를 쓴다. 재동의 알림이 실제로 행으로 남는지가 #21 AC4다.
+    new NotificationService(
+      new PrismaNotificationStore(prisma as unknown as PrismaService),
+    ),
   );
 }, 180_000);
 
@@ -54,6 +60,8 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  await prisma.notification.deleteMany();
+  await prisma.application.deleteMany();
   await prisma.penalty.deleteMany();
   await prisma.jobPostVersion.deleteMany();
   await prisma.jobPost.deleteMany();
@@ -670,5 +678,360 @@ describe('공고 잠금 잔여 — 취소 경로 (#53)', () => {
 
     expect(result.released).toBe(BUDGET);
     expect(await balanceOf(employerId)).toBe(1_007_000);
+  });
+});
+/**
+ * 버전이 오르면 신청이 재동의 대기가 된다. (이슈 #21, ADR-APP-2)
+ *
+ * **전환·카운터 감소·예산 조정이 한 트랜잭션인지는 진짜 DB만 안다.** 가짜
+ * 저장소는 한 메서드 안에서 순서대로 실행하므로 롤백이 없어도 통과한다.
+ */
+describe('재동의 전환 — 진짜 Postgres에서 (#21)', () => {
+  /** 지원자 한 명. 이메일이 유니크라 번호를 붙인다 */
+  async function seedApplicant(no: number): Promise<string> {
+    const user = await prisma.user.create({
+      data: {
+        email: `seeker${no}@example.com`,
+        passwordHash: 'h',
+        name: `구직자${no}`,
+      },
+    });
+    return user.id;
+  }
+
+  /**
+   * 신청 하나를 만들어 둔다. 지원은 #17이, 수락은 #18이 하는 일이라
+   * 여기서는 그 결과 상태만 만든다. `ACCEPTED`면 카운터도 함께 올린다 —
+   * **카운터가 진실이기 때문이다** (ADR-APP-1).
+   */
+  async function seedApplication(input: {
+    jobPostId: string;
+    applicantId: string;
+    status: 'APPLIED' | 'ACCEPTED' | 'WITHDRAWN' | 'REJECTED';
+    appliedVersion?: number;
+  }): Promise<string> {
+    const row = await prisma.application.create({
+      data: {
+        jobPostId: input.jobPostId,
+        applicantId: input.applicantId,
+        status: input.status,
+        appliedVersion: input.appliedVersion ?? 1,
+        acceptedAt: input.status === 'ACCEPTED' ? new Date() : null,
+      },
+    });
+    if (input.status === 'ACCEPTED') {
+      await prisma.jobPost.update({
+        where: { id: input.jobPostId },
+        data: { acceptedCount: { increment: 1 } },
+      });
+    }
+    return row.id;
+  }
+
+  /** 공고 하나와 그 주인. 잔액은 넉넉히 준다 */
+  async function seedPost(balance = 5_000_000): Promise<{
+    employerId: string;
+    jobPostId: string;
+  }> {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(balance);
+    const created = await service.create(employerId, request(categoryId));
+    return { employerId, jobPostId: created.id };
+  }
+
+  async function statusOf(applicationId: string): Promise<string> {
+    const row = await prisma.application.findUniqueOrThrow({
+      where: { id: applicationId },
+    });
+    return row.status;
+  }
+
+  async function acceptedCountOf(jobPostId: string): Promise<number> {
+    const row = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: jobPostId },
+    });
+    return row.acceptedCount;
+  }
+
+  it('should move an APPLIED application with appliedVersion 1 to PENDING_REACCEPT when the post becomes version 2', async () => {
+    const { employerId, jobPostId } = await seedPost();
+    const applicationId = await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'APPLIED',
+    });
+
+    const updated = await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    expect(updated.version).toBe(2);
+    expect(await statusOf(applicationId)).toBe('PENDING_REACCEPT');
+  });
+
+  it('should move an ACCEPTED application to PENDING_REACCEPT as well', async () => {
+    // 수락은 계약 체결이다. **바뀐 조건으로 계약이 저절로 유지되면 안 된다.**
+    const { employerId, jobPostId } = await seedPost();
+    const applicationId = await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'ACCEPTED',
+    });
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { workStartAt: '2026-10-02T09:00:00.000Z' },
+    });
+
+    expect(await statusOf(applicationId)).toBe('PENDING_REACCEPT');
+  });
+
+  it('should decrease acceptedCount by the number of demoted ACCEPTED applications', async () => {
+    // AC2. 카운터가 그대로면 구인자는 **재동의하지 않은 사람으로 정원을 채운
+    // 셈**이 되고, 잠긴 포인트보다 지급할 돈이 많아진다.
+    const { employerId, jobPostId } = await seedPost();
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'ACCEPTED',
+    });
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(2),
+      status: 'ACCEPTED',
+    });
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(3),
+      status: 'APPLIED',
+    });
+    expect(await acceptedCountOf(jobPostId)).toBe(2);
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    expect(await acceptedCountOf(jobPostId)).toBe(0);
+  });
+
+  it('should record the pre-demotion status on every demoted application', async () => {
+    // ADR-APP-3. 비어 있으면 #22가 "이전 상태로 복귀"를 할 수 없다.
+    const { employerId, jobPostId } = await seedPost();
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'APPLIED',
+    });
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(2),
+      status: 'ACCEPTED',
+    });
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    const rows = await prisma.application.findMany({
+      where: { jobPostId },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(rows.map((r) => r.previousStatus)).toEqual(['APPLIED', 'ACCEPTED']);
+  });
+
+  it('should keep every application row in the database after the demotion', async () => {
+    // AC5. 신청을 지우면 지원한 기록도, 되돌아올 자리도 사라진다.
+    const { employerId, jobPostId } = await seedPost();
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'APPLIED',
+    });
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(2),
+      status: 'ACCEPTED',
+    });
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    const rows = await prisma.application.findMany({ where: { jobPostId } });
+    expect(rows.map((r) => r.status)).toEqual([
+      'PENDING_REACCEPT',
+      'PENDING_REACCEPT',
+    ]);
+  });
+
+  it('should write one notification row per demoted applicant', async () => {
+    // AC4. 알림이 없으면 신청자는 조건이 바뀐 줄도 모른 채 대기 상태가 된다.
+    const { employerId, jobPostId } = await seedPost();
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'APPLIED',
+    });
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(2),
+      status: 'ACCEPTED',
+    });
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    const notes = await prisma.notification.findMany({
+      where: { type: 'APPLICATION_REACCEPT_REQUIRED' },
+    });
+    expect(notes).toHaveLength(2);
+  });
+
+  it('should hold the application at ACCEPTED through a title-only change and demote it only when a required field changes', async () => {
+    // AC3. 무변화만 확인하면 전환이 아예 없어도 통과한다. 그래서 변화와 짝짓는다.
+    const { employerId, jobPostId } = await seedPost();
+    const applicationId = await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'ACCEPTED',
+    });
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { title: '사무실 대청소' },
+    });
+    const afterTitle = await statusOf(applicationId);
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    expect([afterTitle, await statusOf(applicationId)]).toEqual([
+      'ACCEPTED',
+      'PENDING_REACCEPT',
+    ]);
+  });
+
+  it('should hold acceptedCount through a title-only change and lower it only when a required field changes', async () => {
+    const { employerId, jobPostId } = await seedPost();
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'ACCEPTED',
+    });
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { title: '사무실 대청소' },
+    });
+    const afterTitle = await acceptedCountOf(jobPostId);
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    expect([afterTitle, await acceptedCountOf(jobPostId)]).toEqual([1, 0]);
+  });
+
+  it('should demote nobody on a second required-field change when everyone is already PENDING_REACCEPT', async () => {
+    // 두 번째에 또 내리면 카운터가 두 번 깎이고 알림이 두 번 간다.
+    const { employerId, jobPostId } = await seedPost();
+    await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'ACCEPTED',
+    });
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+    const afterFirst = await prisma.notification.count();
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 70_000 },
+    });
+
+    expect([afterFirst, await prisma.notification.count()]).toEqual([1, 1]);
+    expect(await acceptedCountOf(jobPostId)).toBe(0);
+  });
+
+  it('should leave withdrawn and rejected applications untouched while demoting the applied one', async () => {
+    // 이미 나간 사람을 다시 흔들면 끝난 지원이 열린 것처럼 보인다.
+    const { employerId, jobPostId } = await seedPost();
+    const gone = await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'WITHDRAWN',
+    });
+    const rejected = await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(2),
+      status: 'REJECTED',
+    });
+    const applied = await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(3),
+      status: 'APPLIED',
+    });
+
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 60_000 },
+    });
+
+    expect([
+      await statusOf(gone),
+      await statusOf(rejected),
+      await statusOf(applied),
+    ]).toEqual(['WITHDRAWN', 'REJECTED', 'PENDING_REACCEPT']);
+  });
+
+  it('should keep the demotion out of the database when the raised budget exceeds the balance', async () => {
+    // 전환이 예산 조정과 나뉘면 **수정은 실패했는데 지원자만 재동의 대기**가 된다.
+    const { employerId, jobPostId } = await seedPost(BUDGET);
+    const applicationId = await seedApplication({
+      jobPostId,
+      applicantId: await seedApplicant(1),
+      status: 'ACCEPTED',
+    });
+
+    await expect(
+      service.update({
+        employerId,
+        jobPostId,
+        patch: { headcount: 50 },
+      }),
+    ).rejects.toMatchObject({ code: JOB_POST_ERRORS.INSUFFICIENT_BALANCE });
+    const afterFailure = await statusOf(applicationId);
+    await service.update({
+      employerId,
+      jobPostId,
+      patch: { rewardPerPerson: 10_000 },
+    });
+
+    expect([afterFailure, await statusOf(applicationId)]).toEqual([
+      'ACCEPTED',
+      'PENDING_REACCEPT',
+    ]);
   });
 });

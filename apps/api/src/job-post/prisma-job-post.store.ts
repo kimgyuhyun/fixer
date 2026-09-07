@@ -3,6 +3,7 @@ import { lockedAmountFor } from '../point/job-post-lock';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ADMIN_ACTIONS,
+  REACCEPT_TARGET_STATUSES,
   type JobPostFilter,
   type JobPostStatus,
   type JobPostVersionSnapshot,
@@ -12,6 +13,7 @@ import {
   transition,
   type AcceptedCounter,
   type BalanceReader,
+  type DemotedApplication,
   type JobPostRecord,
   type JobPostStore,
   type MemberAddress,
@@ -182,7 +184,10 @@ export class PrismaJobPostStore implements JobPostStore {
     nextVersion: number;
     writeSnapshot: boolean;
     budgetDelta: number;
-  }): Promise<(JobPostRecord & { categoryName: string }) | 'INSUFFICIENT'> {
+  }): Promise<
+    | (JobPostRecord & { categoryName: string; demoted: DemotedApplication[] })
+    | 'INSUFFICIENT'
+  > {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const updated = await tx.jobPost.update({
@@ -246,7 +251,58 @@ export class PrismaJobPostStore implements JobPostStore {
           });
         }
 
-        return { ...toRecord(updated), categoryName: updated.category.name };
+        // 재동의 전환. **버전이 올랐을 때만 맞는 행이 있다** (ADR-APP-2) —
+        // `appliedVersion < version`이라 부가항목만 고친 경우는 조건 자체로
+        // 걸러진다. 이미 `PENDING_REACCEPT`인 신청도 대상이 아니라 두 번
+        // 내려가지 않는다.
+        //
+        // **조건을 한 곳에 둔다.** 고르는 쿼리와 바꾸는 쿼리가 갈리면
+        // 알림을 받은 사람과 실제로 내려간 사람이 달라진다.
+        const behind = {
+          jobPostId: updated.id,
+          appliedVersion: { lt: updated.version },
+        };
+        const targets = await tx.application.findMany({
+          where: { ...behind, status: { in: [...REACCEPT_TARGET_STATUSES] } },
+          select: { id: true, applicantId: true, status: true },
+        });
+
+        const demoted: DemotedApplication[] = [];
+        for (const status of REACCEPT_TARGET_STATUSES) {
+          const rows = targets.filter((row) => row.status === status);
+          if (rows.length === 0) continue;
+
+          // **상태와 이전 상태가 한 문장 안에서 함께 바뀐다** (ADR-APP-3).
+          // 나누면 이전 상태 없이 내려간 행이 남고, #22가 되돌릴 수 없다.
+          await tx.application.updateMany({
+            where: { ...behind, status },
+            data: { status: 'PENDING_REACCEPT', previousStatus: status },
+          });
+
+          if (status === 'ACCEPTED') {
+            // ADR-APP-1의 카운터를 내린다. 재동의 대기는 확정 인원이 아니다
+            // (#21 AC2). `>= rows.length`를 거는 이유는 음수가 되면 정원 판정
+            // 자체가 망가지기 때문이다.
+            await tx.jobPost.updateMany({
+              where: { id: updated.id, acceptedCount: { gte: rows.length } },
+              data: { acceptedCount: { decrement: rows.length } },
+            });
+          }
+
+          demoted.push(
+            ...rows.map((row) => ({
+              applicationId: row.id,
+              applicantId: row.applicantId,
+              previousStatus: status,
+            })),
+          );
+        }
+
+        return {
+          ...toRecord(updated),
+          categoryName: updated.category.name,
+          demoted,
+        };
       });
     } catch (error) {
       if (error instanceof InsufficientBalance) return 'INSUFFICIENT';
