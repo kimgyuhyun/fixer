@@ -201,6 +201,55 @@ export class PrismaApplicationStore implements ApplicationStore {
     }
   }
 
+  /**
+   * 노쇼. **세 문장이 함께 되거나 함께 안 된다** (#24).
+   *
+   * 취소(#20)와 같은 모양이다 — 신청 전환·카운터 감소·경고 기록이 나뉘면,
+   * 자리가 빈 채로 카운터가 남거나 경고 없이 노쇼가 지나간다.
+   */
+  async markNoShow(input: {
+    applicationId: string;
+    jobPostId: string;
+    penalty: { userId: string; reason: PenaltyReason };
+  }): Promise<ApplicationRecord | 'STALE'> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // **신청 전환이 먼저다.** 이미 노쇼로 찍힌 신청이면 여기서 0행이 되어
+        // 카운터도 경고도 건드리지 않고 통째로 되돌아간다.
+        const moved = await tx.application.updateMany({
+          where: { id: input.applicationId, status: 'ACCEPTED' },
+          data: { status: 'NO_SHOW' },
+        });
+        if (moved.count === 0) throw new StaleStatus();
+
+        // 노쇼는 더 이상 확정 인원이 아니다. `> 0`을 거는 이유는 음수가 되면
+        // 정원 판정 자체가 망가지기 때문이다.
+        await tx.jobPost.updateMany({
+          where: { id: input.jobPostId, acceptedCount: { gt: 0 } },
+          data: { acceptedCount: { decrement: 1 } },
+        });
+
+        // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5).
+        await tx.penalty.create({
+          data: {
+            userId: input.penalty.userId,
+            reason: input.penalty.reason,
+            jobPostId: input.jobPostId,
+          },
+        });
+
+        const row = await tx.application.findUniqueOrThrow({
+          where: { id: input.applicationId },
+        });
+        return toRecord(row);
+      });
+    } catch (error) {
+      // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.
+      if (error instanceof StaleStatus) return 'STALE';
+      throw error;
+    }
+  }
+
   async completeAndSettle(input: {
     jobPostId: string;
     employerId: string;
@@ -323,6 +372,7 @@ export class PrismaJobPostReader implements JobPostReader {
         headcount: true,
         acceptedCount: true,
         rewardPerPerson: true,
+        workStartAt: true,
       },
     });
   }

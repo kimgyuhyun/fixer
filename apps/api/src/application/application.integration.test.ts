@@ -934,3 +934,51 @@ describe('cancel — 무상 취소 창 (#20)', () => {
     expect(await prisma.penalty.count()).toBe(0);
   });
 });
+
+/**
+ * **노쇼가 실제로 무엇을 남겼는지는 진짜 DB만 안다** (#24).
+ *
+ * 가짜 저장소는 서비스가 넘긴 값을 그대로 세므로 트랜잭션이 정말 `Penalty`
+ * 행을 썼는지 못 본다. AC2의 "그 인원분은 지급되지 않는다"도 원장을 세어야
+ * 증명된다.
+ */
+describe('markNoShow — 노쇼 (#24)', () => {
+  /** 근무가 이미 시작된 것으로 만든다. 시작 전에는 표시 자체가 막힌다 */
+  async function startWork(jobPostId: string): Promise<void> {
+    await prisma.jobPost.update({
+      where: { id: jobPostId },
+      data: { workStartAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+  }
+
+  it('should create exactly one Penalty row with reason NO_SHOW', async () => {
+    const employerId = await seedUser('boss@example.com');
+    const applicantId = await seedUser('seeker@example.com');
+    const jobPostId = await seedOpenPost(employerId);
+    const applied = await service.apply({ applicantId, jobPostId });
+    await service.accept({ employerId, applicationId: applied.id });
+    await startWork(jobPostId);
+
+    await service.markNoShow({ employerId, applicationId: applied.id });
+
+    const rows = await prisma.penalty.findMany({
+      where: { userId: applicantId },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].reason).toBe('NO_SHOW');
+  });
+
+  it("should leave the no-show member's balance unchanged while the employer gets their share back", async () => {
+    const { employerId, jobPostId, workers, applicationIds } =
+      await seedCompletable({ headcount: 3, accepted: 3 });
+    await startWork(jobPostId);
+    await service.markNoShow({ employerId, applicationId: applicationIds[0] });
+
+    await service.complete({ jobPostId, employerId });
+
+    // 30,000 잠금 → 두 명에게 20,000 지급 → 노쇼 한 명분 10,000 반환.
+    expect(await ledgerSum(workers[0])).toBe(0);
+    expect(await ledgerSum(workers[1])).toBe(10_000);
+    expect(await ledgerSum(employerId)).toBe(10_000);
+  });
+});

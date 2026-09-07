@@ -21,6 +21,7 @@ import {
   cancelApplicationRequestSchema,
   completeJobPostRequestSchema,
   completionSummarySchema,
+  markNoShowRequestSchema,
   rejectApplicationRequestSchema,
   type ApplicantList,
   type ApplicationErrorCode,
@@ -132,6 +133,23 @@ export class ApplicationController {
     }
   }
 
+  /** 구인자가 노쇼를 기록한다 (#24) */
+  @Post(':id/no-show')
+  @HttpCode(HttpStatus.OK)
+  async markNoShow(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ApplicationSummary> {
+    try {
+      const { employerId } = markNoShowRequestSchema.parse(body ?? {});
+      return applicationSummarySchema.parse(
+        await this.service.markNoShow({ employerId, applicationId: id }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
   /** 구인자가 업무 완료를 확인한다 (#23) */
   @Post('complete')
   @HttpCode(HttpStatus.OK)
@@ -210,6 +228,8 @@ const MESSAGES: Record<ApplicationErrorCode, string> = {
   [APPLICATION_ERRORS.NOT_PARTICIPANT]: '이 신청의 당사자가 아닙니다.',
   [APPLICATION_ERRORS.JOB_POST_INVALID_TRANSITION]:
     '지금 상태에서는 완료 확인을 할 수 없습니다.',
+  [APPLICATION_ERRORS.WORK_NOT_STARTED]:
+    '근무 시작 전에는 노쇼로 표시할 수 없습니다.',
 };
 
 function toHttpError(error: unknown): unknown {
