@@ -151,29 +151,29 @@ export class ApplicationService {
 
 ### 정상
 
-- [ ] [정상] `reject` — should move the application from APPLIED to REJECTED
-- [ ] [정상] `reject` — should publish an APPLICATION_REJECTED notification to the applicant
-- [ ] [정상] `reject` — should leave the job post's acceptedCount unchanged
-- [ ] [정상] `listForEmployer` — should include REJECTED applicants in the list
-- [ ] [정상] `POST /applications/:id/reject` — should respond 200 with status REJECTED
-- [ ] [정상] `ApplicantList` — should render a 거절 button only for the APPLIED applicant when the list also has an ACCEPTED one
+- [x] [정상] `reject` — should move the application from APPLIED to REJECTED
+- [x] [정상] `reject` — should publish an APPLICATION_REJECTED notification to the applicant
+- [x] [정상] `reject` — should leave the job post's acceptedCount unchanged
+- [x] [정상] `listForEmployer` — should include REJECTED applicants in the list
+- [x] [정상] `POST /applications/:id/reject` — should respond 200 with status REJECTED
+- [x] [정상] `ApplicantList` — should render a 거절 button only for the APPLIED applicant when the list also has an ACCEPTED one
 
 ### 경계
 
-- [ ] [경계] `reject` — should point the notification link at the job post the applicant was rejected from
-- [ ] [경계] `reject` — should publish exactly one notification when the same application is rejected twice
-- [ ] [경계] `apply` — should throw APPLICATION_ALREADY_APPLIED when the applicant re-applies after being rejected
-- [ ] [경계] `reject` — should succeed when the job post is no longer OPEN
-- [ ] [경계] `ApplicantList` — should render 거절됨 for a REJECTED applicant
+- [x] [경계] `reject` — should point the notification link at the job post the applicant was rejected from
+- [x] [경계] `reject` — should publish exactly one notification when the same application is rejected twice
+- [x] [경계] `apply` — should throw APPLICATION_ALREADY_APPLIED when the applicant re-applies after being rejected
+- [x] [경계] `reject` — should succeed when the job post is no longer OPEN
+- [x] [경계] `ApplicantList` — should render 거절됨 for a REJECTED applicant
 
 ### 예외
 
-- [ ] [예외] `reject` — should throw APPLICATION_INVALID_TRANSITION when the application is ACCEPTED
-- [ ] [예외] `reject` — should not publish a notification when the application is ACCEPTED
-- [ ] [예외] `reject` — should throw APPLICATION_NOT_FOUND when no application has that id
-- [ ] [예외] `reject` — should throw APPLICATION_NOT_EMPLOYER when the caller does not own the job post
-- [ ] [예외] `POST /applications/:id/reject` — should respond 409 when the error code is APPLICATION_INVALID_TRANSITION
-- [ ] [예외] `POST /applications/:id/reject` — should respond 400 when the body has no employerId
+- [x] [예외] `reject` — should throw APPLICATION_INVALID_TRANSITION when the application is ACCEPTED
+- [x] [예외] `reject` — should not publish a notification when the application is ACCEPTED
+- [x] [예외] `reject` — should throw APPLICATION_NOT_FOUND when no application has that id
+- [x] [예외] `reject` — should throw APPLICATION_NOT_EMPLOYER when the caller does not own the job post
+- [x] [예외] `POST /applications/:id/reject` — should respond 409 when the error code is APPLICATION_INVALID_TRANSITION
+- [x] [예외] `POST /applications/:id/reject` — should respond 400 when the body has no employerId
 
 ---
 

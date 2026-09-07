@@ -20,6 +20,7 @@ import {
   applyRequestSchema,
   completeJobPostRequestSchema,
   completionSummarySchema,
+  rejectApplicationRequestSchema,
   type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationSummary,
@@ -103,7 +104,14 @@ export class ApplicationController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<ApplicationSummary> {
-    throw new Error('not implemented');
+    try {
+      const { employerId } = rejectApplicationRequestSchema.parse(body ?? {});
+      return applicationSummarySchema.parse(
+        await this.service.reject({ employerId, applicationId: id }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
   }
 
   /** 구인자가 업무 완료를 확인한다 (#23) */

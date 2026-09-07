@@ -87,6 +87,27 @@
   outline-offset: 2px;
 }
 
+/* 되돌릴 수 없는 동작이라 수락보다 약하게 그린다 (#19) */
+.reject {
+  /* 터치 목표 최소 44px */
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+
+  color: var(--color-danger);
+  font: inherit;
+  font-weight: 700;
+
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.reject:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* 목록 전체에 걸리는 동작이라 행 안이 아니라 아래에 둔다 */
 .complete {
   /* 터치 목표 최소 44px */

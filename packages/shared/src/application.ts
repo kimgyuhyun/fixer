@@ -211,8 +211,14 @@ export const applicantListSchema = z.object({
 });
 export type ApplicantList = z.infer<typeof applicantListSchema>;
 
-/** 구인자에게 보이는 상태. #19가 `REJECTED`를 더한다 */
+/**
+ * 구인자에게 보이는 상태.
+ *
+ * `REJECTED`도 보인다 (#19). 감추면 구인자가 **같은 사람을 두 번 검토하게**
+ * 되고, 그 사람이 왜 다시 지원을 못 하는지도 화면에서 알 수 없다.
+ */
 export const EMPLOYER_VISIBLE_STATUSES = [
   'APPLIED',
   'ACCEPTED',
+  'REJECTED', // ← #19
 ] as const satisfies readonly ApplicationStatus[];
