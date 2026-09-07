@@ -295,10 +295,7 @@ export class ApplicationService {
       throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
     }
 
-    const post = await this.jobPosts.findForApplication(current.jobPostId);
-    if (post === null) {
-      throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_FOUND);
-    }
+    const post = await this.mustFindPost(current.jobPostId);
 
     // **둘 중 하나이기만 하면 된다.** 한쪽만 보는 `NOT_OWNED`·`NOT_EMPLOYER`를
     // 재사용하면 반대쪽 당사자에게 틀린 안내가 나간다.
@@ -418,12 +415,20 @@ export class ApplicationService {
     jobPostId: string,
     employerId: string,
   ): Promise<JobPostForApplication> {
+    const post = await this.mustFindPost(jobPostId);
+    if (post.employerId !== employerId) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_EMPLOYER);
+    }
+    return post;
+  }
+
+  /** 그 공고를 읽는다. **소프트 삭제된 것은 없는 것이다** (#14) */
+  private async mustFindPost(
+    jobPostId: string,
+  ): Promise<JobPostForApplication> {
     const post = await this.jobPosts.findForApplication(jobPostId);
     if (post === null) {
       throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_FOUND);
-    }
-    if (post.employerId !== employerId) {
-      throw new ApplicationError(APPLICATION_ERRORS.NOT_EMPLOYER);
     }
     return post;
   }
@@ -432,10 +437,7 @@ export class ApplicationService {
     // 검증이 가장 먼저다. 형식이 틀린 요청은 저장소를 건드리지 않는다.
     const parsed = applyRequestSchema.parse(input);
 
-    const post = await this.jobPosts.findForApplication(parsed.jobPostId);
-    if (post === null) {
-      throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_FOUND);
-    }
+    const post = await this.mustFindPost(parsed.jobPostId);
     // 본인 공고 확인이 상태 확인보다 먼저다. 마감된 자기 공고에 지원했을 때
     // "모집이 끝났다"고 하면 다시 열면 되는 줄 알게 된다.
     if (post.employerId === parsed.applicantId) {
