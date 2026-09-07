@@ -13,6 +13,7 @@ import styles from './ApplicantList.module.css';
 const STATUS_LABELS: Partial<Record<ApplicationStatus, string>> = {
   APPLIED: '지원함',
   ACCEPTED: '수락됨',
+  REJECTED: '거절됨',
 };
 
 /**
@@ -85,6 +86,30 @@ export function ApplicantList({
   }
 
   /**
+   * 지원자 한 명을 거절한다 (#19).
+   *
+   * **정원과 무관하다.** 정원이 찼다고 거절을 못 하게 하면, 남은 지원자들이
+   * 영원히 "지원함"으로 떠 있게 된다.
+   */
+  async function reject(applicationId: string): Promise<void> {
+    setError(null);
+    try {
+      const res = await fetch(`/api/applications/${applicationId}/reject`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ employerId }),
+      });
+      if (!res.ok) {
+        setError(messageOf(await res.json()));
+        return;
+      }
+      await load();
+    } catch {
+      setError('요청을 처리하지 못했습니다.');
+    }
+  }
+
+  /**
    * 업무 완료를 확인한다 (#23). 확정 인원분이 지급되고 나머지는 돌아온다.
    *
    * **시스템은 일이 끝났는지 알 방법이 없다** — 출퇴근 체크도 GPS도 없어서
@@ -147,6 +172,15 @@ export function ApplicantList({
                 onClick={() => void accept(applicant.applicationId)}
               >
                 수락
+              </button>
+            )}
+            {applicant.status === 'APPLIED' && (
+              <button
+                className={styles.reject}
+                type="button"
+                onClick={() => void reject(applicant.applicationId)}
+              >
+                거절
               </button>
             )}
           </li>

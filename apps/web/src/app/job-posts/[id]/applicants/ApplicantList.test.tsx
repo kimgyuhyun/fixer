@@ -81,6 +81,42 @@ describe('ApplicantList', () => {
     expect(screen.queryByRole('button', { name: '수락' })).toBeNull();
   });
 });
+describe('ApplicantList — 거절 (#19)', () => {
+  // ACCEPTED는 계약이 체결된 것이라 거절이 아니라 취소 규칙(#20)을 따른다.
+  it('should render a 거절 button only for the APPLIED applicant when the list also has an ACCEPTED one', async () => {
+    mockList(
+      listOf(
+        [
+          APPLICANT,
+          {
+            ...APPLICANT,
+            applicationId: 'app_2',
+            applicantId: 'usr_seeker2',
+            applicantName: '박구직',
+            status: 'ACCEPTED',
+            acceptedAt: '2026-09-05T01:00:00.000Z',
+          },
+        ],
+        { acceptedCount: 1 },
+      ),
+    );
+
+    render(<ApplicantList jobPostId="job_1" />);
+
+    expect(await screen.findByText('박구직')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '거절' })).toHaveLength(1);
+  });
+
+  // 문구를 안 더하면 화면에 영문 REJECTED가 그대로 나온다.
+  it('should render 거절됨 for a REJECTED applicant', async () => {
+    mockList(listOf([{ ...APPLICANT, status: 'REJECTED' }]));
+
+    render(<ApplicantList jobPostId="job_1" />);
+
+    expect(await screen.findByText('거절됨')).toBeInTheDocument();
+  });
+});
+
 describe('ApplicantList — 완료 확인 (#23)', () => {
   it('should show the 완료 확인 button to the employer', async () => {
     mockList(

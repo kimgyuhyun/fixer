@@ -48,6 +48,9 @@ beforeAll(async () => {
     store,
     new PrismaJobPostReader(prisma as unknown as PrismaService),
     new PrismaApplicantProfileReader(prisma as unknown as PrismaService),
+    // 이 파일은 알림을 검사하지 않는다. 진짜 저장소를 끼우면 Notification
+    // 테이블까지 정리해야 하므로 삼키는 포트를 쓴다 (#19).
+    { publish: () => Promise.resolve() },
   );
 }, 180_000);
 

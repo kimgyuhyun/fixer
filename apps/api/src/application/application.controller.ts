@@ -21,6 +21,7 @@ import {
   cancelApplicationRequestSchema,
   completeJobPostRequestSchema,
   completionSummarySchema,
+  rejectApplicationRequestSchema,
   type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationSummary,
@@ -91,6 +92,23 @@ export class ApplicationController {
       const { employerId } = acceptApplicationRequestSchema.parse(body ?? {});
       return applicationSummarySchema.parse(
         await this.service.accept({ employerId, applicationId: id }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
+  /** 구인자가 지원자 한 명을 거절한다 (#19) */
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  async reject(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ApplicationSummary> {
+    try {
+      const { employerId } = rejectApplicationRequestSchema.parse(body ?? {});
+      return applicationSummarySchema.parse(
+        await this.service.reject({ employerId, applicationId: id }),
       );
     } catch (error) {
       throw toHttpError(error);

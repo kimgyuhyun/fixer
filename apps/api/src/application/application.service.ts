@@ -18,6 +18,7 @@ import {
   type JobPostStatus,
   type PenaltyReason,
 } from '@fixer/shared';
+import type { NotificationPublisher } from '../notification/notification.service';
 
 /** 신청이 던지는 도메인 에러 */
 export class ApplicationError extends Error {
@@ -233,7 +234,63 @@ export class ApplicationService {
     private readonly store: ApplicationStore,
     private readonly jobPosts: JobPostReader,
     private readonly profiles: ApplicantProfileReader,
+    /**
+     * 거절을 신청자에게 알린다 (#19 AC1).
+     *
+     * 포트만 본다 — 이 도메인은 알림이 인앱인지 메일인지 모른다 (`ADR-NOT-1`).
+     */
+    private readonly notifications: NotificationPublisher,
   ) {}
+
+  /**
+   * 구인자가 지원자 한 명을 거절한다 (#19).
+   *
+   * `APPLIED`만 거절할 수 있다. `ACCEPTED`는 **계약이 이미 체결된 것**이라
+   * 취소 규칙(#20)을 따라야 하고, 그 금지는 전이표에 그 줄이 없다는 사실로
+   * 표현된다 (AC3).
+   */
+  async reject(input: {
+    employerId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    const current = await this.store.findById(input.applicationId);
+    if (current === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
+    }
+
+    // 공고 상태는 보지 않는다. 거절은 돈도 정원도 건드리지 않으므로,
+    // `OPEN`을 요구하면 마감된 공고에 남은 지원자를 정리할 길이 막힌다.
+    await this.mustOwn(current.jobPostId, input.employerId);
+
+    // 표에 없는 전이는 거부된다. AC3의 `ACCEPTED`가 여기서 걸린다.
+    transition(current.status, 'REJECTED');
+
+    const rejected = await this.store.updateStatus({
+      applicationId: current.id,
+      expectedStatus: current.status,
+      nextStatus: 'REJECTED',
+    });
+
+    if (rejected === 'STALE') {
+      // 우리가 읽은 뒤 상태가 바뀌었다. 덮어쓰면 그 사이 체결된 계약이 사라진다.
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: 'REJECTED',
+      });
+    }
+
+    // **바뀐 뒤에 알린다.** 먼저 알리면 갱신이 실패했을 때 "거절됐다"는
+    // 알림만 남는다. 발행은 던지지 않으므로 이 줄이 거절을 되돌리지 않는다.
+    await this.notifications.publish({
+      userId: rejected.applicantId,
+      type: 'APPLICATION_REJECTED',
+      title: '지원이 거절되었습니다',
+      body: '다른 공고에 지원해 보세요.',
+      linkUrl: `/job-posts/${rejected.jobPostId}`,
+    });
+
+    return toSummary(rejected);
+  }
 
   /** 구인자가 지원자 한 명을 수락한다. **이 순간이 계약 체결** (#18) */
   async accept(input: {
