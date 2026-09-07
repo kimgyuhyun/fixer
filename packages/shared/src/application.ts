@@ -154,7 +154,10 @@ export function resolveCancelStatus(
   acceptedAt: Date,
   now: Date,
 ): 'CANCELLED_FREE' | 'CANCELLED_PENALTY' {
-  throw new Error('not implemented');
+  const elapsed = now.getTime() - acceptedAt.getTime();
+  return elapsed <= FREE_CANCEL_WINDOW_MS
+    ? 'CANCELLED_FREE'
+    : 'CANCELLED_PENALTY';
 }
 
 /** 취소 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#20) */

@@ -3,7 +3,7 @@
 > GitHub: https://github.com/Ikara777/fixer/issues/20
 > PRD: `docs/result/prd/application.md`
 > 담당: B (김규현)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: 구현 완료 (Green)
 
 ---
 
@@ -123,35 +123,35 @@ class ApplicationService {
 
 ### 정상
 
-- [ ] [정상] `resolveCancelStatus` — should return CANCELLED_FREE when 1 hour has passed since acceptance
-- [ ] [정상] `resolveCancelStatus` — should return CANCELLED_PENALTY when 3 hours have passed since acceptance
-- [ ] [정상] `cancel` — should move an ACCEPTED application to CANCELLED_FREE when the applicant cancels 1 hour after acceptance
-- [ ] [정상] `cancel` — should move to CANCELLED_PENALTY with one LATE_CANCEL penalty on the applicant when the applicant cancels 3 hours after acceptance
-- [ ] [정상] `cancel` — should move to CANCELLED_FREE when the employer cancels 1 hour after acceptance
-- [ ] [정상] `cancel` — should record one POSTER_CANCEL penalty on the employer when the employer cancels 3 hours after acceptance
-- [ ] [정상] `POST /applications/:id/cancel` — should answer 200 with the cancelled application when the applicant cancels
+- [x] [정상] `resolveCancelStatus` — should return CANCELLED_FREE when 1 hour has passed since acceptance
+- [x] [정상] `resolveCancelStatus` — should return CANCELLED_PENALTY when 3 hours have passed since acceptance
+- [x] [정상] `cancel` — should move an ACCEPTED application to CANCELLED_FREE when the applicant cancels 1 hour after acceptance
+- [x] [정상] `cancel` — should move to CANCELLED_PENALTY with one LATE_CANCEL penalty on the applicant when the applicant cancels 3 hours after acceptance
+- [x] [정상] `cancel` — should move to CANCELLED_FREE when the employer cancels 1 hour after acceptance
+- [x] [정상] `cancel` — should record one POSTER_CANCEL penalty on the employer when the employer cancels 3 hours after acceptance
+- [x] [정상] `POST /applications/:id/cancel` — should answer 200 with the cancelled application when the applicant cancels
 
 ### 경계
 
-- [ ] [경계] `resolveCancelStatus` — should return CANCELLED_FREE when exactly 2 hours have passed
-- [ ] [경계] `resolveCancelStatus` — should return CANCELLED_PENALTY when 2 hours and 1 millisecond have passed
-- [ ] [경계] `cancel` — should decrease acceptedCount by 1 when an accepted application is cancelled
-- [ ] [경계] `cancel` — should let the employer accept another applicant when the cancellation freed the last seat
-- [ ] [경계] `cancel` — should decrease acceptedCount only once when two cancel requests race on the same application
+- [x] [경계] `resolveCancelStatus` — should return CANCELLED_FREE when exactly 2 hours have passed
+- [x] [경계] `resolveCancelStatus` — should return CANCELLED_PENALTY when 2 hours and 1 millisecond have passed
+- [x] [경계] `cancel` — should decrease acceptedCount by 1 when an accepted application is cancelled
+- [x] [경계] `cancel` — should let the employer accept another applicant when the cancellation freed the last seat
+- [x] [경계] `cancel` — should decrease acceptedCount only once when two cancel requests race on the same application
 
 ### 예외
 
-- [ ] [예외] `cancel` — should throw APPLICATION_NOT_FOUND when the application does not exist
-- [ ] [예외] `cancel` — should throw APPLICATION_NOT_PARTICIPANT when someone who is neither the applicant nor the employer cancels
-- [ ] [예외] `cancel` — should throw APPLICATION_INVALID_TRANSITION when the application is still APPLIED
-- [ ] [예외] `cancel` — should throw APPLICATION_INVALID_TRANSITION when the application is already cancelled
-- [ ] [예외] `cancel` — should throw JOB_POST_NOT_FOUND when the job post was soft-deleted
-- [ ] [예외] `POST /applications/:id/cancel` — should answer 400 when actorId is missing
+- [x] [예외] `cancel` — should throw APPLICATION_NOT_FOUND when the application does not exist
+- [x] [예외] `cancel` — should throw APPLICATION_NOT_PARTICIPANT when someone who is neither the applicant nor the employer cancels
+- [x] [예외] `cancel` — should throw APPLICATION_INVALID_TRANSITION when the application is still APPLIED
+- [x] [예외] `cancel` — should throw APPLICATION_INVALID_TRANSITION when the application is already cancelled
+- [x] [예외] `cancel` — should throw JOB_POST_NOT_FOUND when the job post was soft-deleted
+- [x] [예외] `POST /applications/:id/cancel` — should answer 400 when actorId is missing
 
 ### 통합 (실제 DB)
 
-- [ ] [정상] `cancel` — should create exactly one Penalty row when the applicant cancels past the free window
-- [ ] [정상] `cancel` — should create no Penalty row when the applicant cancels inside the free window
+- [x] [정상] `cancel` — should create exactly one Penalty row when the applicant cancels past the free window
+- [x] [정상] `cancel` — should create no Penalty row when the applicant cancels inside the free window
 
 ---
 

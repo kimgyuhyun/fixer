@@ -18,6 +18,7 @@ import {
   applicantListSchema,
   applicationSummarySchema,
   applyRequestSchema,
+  cancelApplicationRequestSchema,
   completeJobPostRequestSchema,
   completionSummarySchema,
   type ApplicantList,
@@ -103,7 +104,14 @@ export class ApplicationController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<ApplicationSummary> {
-    throw new Error('not implemented');
+    try {
+      const { actorId } = cancelApplicationRequestSchema.parse(body ?? {});
+      return applicationSummarySchema.parse(
+        await this.service.cancel({ actorId, applicationId: id }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
   }
 
   /** 구인자가 업무 완료를 확인한다 (#23) */
@@ -208,7 +216,8 @@ function toHttpError(error: unknown): unknown {
     if (
       error.code === APPLICATION_ERRORS.OWN_JOB_POST ||
       error.code === APPLICATION_ERRORS.NOT_OWNED ||
-      error.code === APPLICATION_ERRORS.NOT_EMPLOYER
+      error.code === APPLICATION_ERRORS.NOT_EMPLOYER ||
+      error.code === APPLICATION_ERRORS.NOT_PARTICIPANT
     ) {
       // 없다고 하지 않는다. 지원할 수 없는 이유만 말한다.
       return new ForbiddenException(body);

@@ -6,6 +6,7 @@ import {
   canApplicationTransition,
   canTransition,
   completeJobPostRequestSchema,
+  resolveCancelStatus,
   type ApplicantItem,
   type ApplicantList,
   type ApplicationErrorCode,
@@ -289,7 +290,60 @@ export class ApplicationService {
     actorId: string;
     applicationId: string;
   }): Promise<ApplicationSummary> {
-    throw new Error('not implemented');
+    const current = await this.store.findById(input.applicationId);
+    if (current === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
+    }
+
+    const post = await this.jobPosts.findForApplication(current.jobPostId);
+    if (post === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_FOUND);
+    }
+
+    // **둘 중 하나이기만 하면 된다.** 한쪽만 보는 `NOT_OWNED`·`NOT_EMPLOYER`를
+    // 재사용하면 반대쪽 당사자에게 틀린 안내가 나간다.
+    const byApplicant = current.applicantId === input.actorId;
+    if (!byApplicant && post.employerId !== input.actorId) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_PARTICIPANT);
+    }
+
+    // 수락 전에는 취소할 것이 없다. 그건 #17의 철회이고, 표에도
+    // `APPLIED → CANCELLED_*`가 없다. 판정 기준이 되는 수락 시각도 아직 없다.
+    if (current.acceptedAt === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: 'CANCELLED_FREE',
+      });
+    }
+
+    const nextStatus = resolveCancelStatus(current.acceptedAt, new Date());
+    // 표에 없는 전이는 거부된다. 이미 취소된 신청이 여기서 걸린다.
+    transition(current.status, nextStatus);
+
+    const cancelled = await this.store.cancel({
+      applicationId: current.id,
+      jobPostId: post.id,
+      nextStatus,
+      // 창을 넘긴 취소만 경고다. 사유는 취소한 쪽에 따라 갈린다 (§5).
+      penalty:
+        nextStatus === 'CANCELLED_PENALTY'
+          ? {
+              userId: input.actorId,
+              reason: byApplicant ? 'LATE_CANCEL' : 'POSTER_CANCEL',
+            }
+          : null,
+    });
+
+    if (cancelled === 'STALE') {
+      // 우리가 읽은 뒤 상태가 바뀌었다. 취소 버튼 연타의 두 번째가 여기다 —
+      // **카운터도 경고도 건드리지 않은 채** 되돌아왔다.
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: nextStatus,
+      });
+    }
+
+    return toSummary(cancelled);
   }
 
   /**
