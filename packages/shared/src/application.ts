@@ -70,6 +70,15 @@ export function canApplicationTransition(
   return APPLICATION_TRANSITIONS.some((t) => t.from === from && t.to === to);
 }
 
+/**
+ * 재동의 대기로 내려가는 상태 (#21).
+ *
+ * **전이표에서 `PENDING_REACCEPT`로 가는 줄의 출발점과 같아야 한다.** 둘이
+ * 갈리면 표에 없는 전이가 저장소에서 조용히 일어난다.
+ */
+export const REACCEPT_TARGET_STATUSES =
+  [] as const satisfies readonly ApplicationStatus[];
+
 /** 신청이 내는 에러 코드 */
 export const APPLICATION_ERRORS = {
   /** 이미 지원한 공고다 (AC2 — 이슈에 적힌 문자열 그대로) */

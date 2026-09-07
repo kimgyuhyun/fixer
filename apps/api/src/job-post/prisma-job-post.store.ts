@@ -12,6 +12,7 @@ import {
   transition,
   type AcceptedCounter,
   type BalanceReader,
+  type DemotedApplication,
   type JobPostRecord,
   type JobPostStore,
   type MemberAddress,
@@ -182,7 +183,10 @@ export class PrismaJobPostStore implements JobPostStore {
     nextVersion: number;
     writeSnapshot: boolean;
     budgetDelta: number;
-  }): Promise<(JobPostRecord & { categoryName: string }) | 'INSUFFICIENT'> {
+  }): Promise<
+    | (JobPostRecord & { categoryName: string; demoted: DemotedApplication[] })
+    | 'INSUFFICIENT'
+  > {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const updated = await tx.jobPost.update({
@@ -246,7 +250,12 @@ export class PrismaJobPostStore implements JobPostStore {
           });
         }
 
-        return { ...toRecord(updated), categoryName: updated.category.name };
+        // 재동의 전환은 #21 Green이 이 트랜잭션 안에 채운다.
+        return {
+          ...toRecord(updated),
+          categoryName: updated.category.name,
+          demoted: [],
+        };
       });
     } catch (error) {
       if (error instanceof InsufficientBalance) return 'INSUFFICIENT';

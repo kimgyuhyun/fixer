@@ -937,6 +937,26 @@ describe('listForEmployer', () => {
     expect(list).toMatchObject({ headcount: 6, acceptedCount: 3 });
   });
 
+  // AC5. 재동의 대기가 됐다고 목록에서 사라지면 **삭제된 것처럼 보인다.**
+  // 구인자는 그 사람이 왜 빠졌는지도, 언제 돌아오는지도 알 수 없게 된다.
+  it('should list an applicant whose application is PENDING_REACCEPT', async () => {
+    const { service, store } = makeService(openPost(), {
+      [APPLICANT]: { name: '김구직', ratingAsWorker: null, ratingCount: 0 },
+    });
+    const { id } = await seedApplied(service);
+    // 공고 수정 트랜잭션이 하는 일이다 (#21, ADR-APP-2). 여기서는 그 결과만 만든다.
+    const row = store.rows.find((r) => r.id === id);
+    if (row === undefined) throw new Error('방금 만든 신청이 없다');
+    row.status = 'PENDING_REACCEPT';
+
+    const list = await service.listForEmployer({
+      employerId: EMPLOYER,
+      jobPostId: JOB_POST,
+    });
+
+    expect(list.applicants).toMatchObject([{ status: 'PENDING_REACCEPT' }]);
+  });
+
   it('should order applicants by createdAt ascending', async () => {
     const { service } = makeService(openPost(), {
       usr_a: { name: '가', ratingAsWorker: null, ratingCount: 0 },

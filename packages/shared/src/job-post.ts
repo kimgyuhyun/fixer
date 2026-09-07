@@ -67,6 +67,9 @@ export const JOB_POST_REQUIRED_FIELDS = [
   'requiredDescription',
 ] as const;
 
+/** 버전을 올리는 필드 이름 하나 */
+export type JobPostRequiredField = (typeof JOB_POST_REQUIRED_FIELDS)[number];
+
 /** 공고가 내는 에러 코드 */
 export const JOB_POST_ERRORS = {
   /** 예산이 잔액보다 크다. 부족 금액을 함께 안내한다 */
@@ -307,8 +310,8 @@ export interface RequiredFieldValues {
 export function changedRequiredFields(
   before: RequiredFieldValues,
   patch: Partial<RequiredFieldValues>,
-): string[] {
-  const changed: string[] = [];
+): JobPostRequiredField[] {
+  const changed: JobPostRequiredField[] = [];
 
   for (const field of JOB_POST_REQUIRED_FIELDS) {
     const next = patch[field];
@@ -325,6 +328,18 @@ export function changedRequiredFields(
   }
 
   return changed;
+}
+
+/**
+ * 재동의 대기 알림의 본문 (#21 AC4).
+ *
+ * **값이 아니라 바뀐 항목 이름을 적는다.** 변경 전/후 값을 나란히 보여주는
+ * 것은 #22의 diff(변경 전후 대조) 화면이 하고, 알림은 "무엇이 바뀌었나"까지다.
+ */
+export function describeRequiredChanges(
+  changed: readonly JobPostRequiredField[],
+): string {
+  throw new Error('not implemented');
 }
 
 /** 제재 사유. (`spec-fixed.md` §5) */

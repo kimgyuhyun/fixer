@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   APPLICATION_TRANSITIONS,
+  EMPLOYER_VISIBLE_STATUSES,
+  REACCEPT_TARGET_STATUSES,
   canApplicationTransition,
   formatRating,
   FREE_CANCEL_WINDOW_MS,
@@ -96,5 +98,27 @@ describe('resolveCancelStatus', () => {
     expect(
       resolveCancelStatus(ACCEPTED_AT, after(FREE_CANCEL_WINDOW_MS + 1)),
     ).toBe('CANCELLED_PENALTY');
+  });
+});
+
+describe('EMPLOYER_VISIBLE_STATUSES', () => {
+  // AC5. 재동의 대기가 되면 목록에서 사라지는 것이 곧 '삭제된 것처럼 보이는
+  // 것'이다. 구인자는 그 사람이 왜 빠졌는지 화면에서 알 수 없게 된다.
+  it('should contain PENDING_REACCEPT so a demoted application stays visible to the employer', () => {
+    expect([...EMPLOYER_VISIBLE_STATUSES] as string[]).toContain(
+      'PENDING_REACCEPT',
+    );
+  });
+});
+
+describe('REACCEPT_TARGET_STATUSES', () => {
+  // 전환 대상과 전이표가 갈리면 **표에 없는 전이가 저장소에서 조용히
+  // 일어난다.** 둘을 한 문장으로 묶어 둔다.
+  it('should be exactly the statuses the transition table allows into PENDING_REACCEPT', () => {
+    const allowed = APPLICATION_TRANSITIONS.filter(
+      (t) => t.to === 'PENDING_REACCEPT',
+    ).map((t) => t.from);
+
+    expect([...REACCEPT_TARGET_STATUSES]).toEqual(allowed);
   });
 });
