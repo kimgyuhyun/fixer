@@ -100,6 +100,14 @@ export const APPLICATION_ERRORS = {
   NOT_PARTICIPANT: 'APPLICATION_NOT_PARTICIPANT',
   /** 공고를 그 상태로 옮길 수 없다 (#23). **job-post의 코드를 재사용한다** */
   JOB_POST_INVALID_TRANSITION: 'JOB_POST_INVALID_TRANSITION',
+  /**
+   * 근무가 아직 시작되지 않았다 (#24 AC3).
+   *
+   * `INVALID_TRANSITION`으로 갈음하지 않는다. 상태는 맞고 **시각만 이른 것**이라
+   * 구인자가 조금 뒤 다시 누르면 된다 — 한 코드로 묶으면 화면이 "지금은 할 수
+   * 없습니다"밖에 말하지 못한다.
+   */
+  WORK_NOT_STARTED: 'APPLICATION_WORK_NOT_STARTED',
 } as const;
 
 export type ApplicationErrorCode =
@@ -175,6 +183,23 @@ export const cancelApplicationRequestSchema = z.object({
 export type CancelApplicationRequest = z.infer<
   typeof cancelApplicationRequestSchema
 >;
+
+/**
+ * 근무가 시작됐나 (#24 AC3).
+ *
+ * **경계는 열려 있다 — 시작 시각 정각은 이미 시작된 것이다.** AC가 막는 것은
+ * "근무 시작 **전**"이고 정각은 그 전이 아니다. `resolveCancelStatus`(#20)와
+ * 같이 경계 판정을 한 곳에만 둔다.
+ */
+export function hasWorkStarted(workStartAt: Date, now: Date): boolean {
+  throw new Error('not implemented');
+}
+
+/** 노쇼 표시 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#24) */
+export const markNoShowRequestSchema = z.object({
+  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
+});
+export type MarkNoShowRequest = z.infer<typeof markNoShowRequestSchema>;
 
 /** 완료 확인 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#23) */
 export const completeJobPostRequestSchema = z.object({

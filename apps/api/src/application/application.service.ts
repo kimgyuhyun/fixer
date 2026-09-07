@@ -157,6 +157,22 @@ export interface ApplicationStore {
     penalty: { userId: string; reason: PenaltyReason } | null;
   }): Promise<ApplicationRecord | 'STALE'>;
 
+  /**
+   * 수락된 신청을 노쇼로 표시한다. **한 트랜잭션이다** (#24).
+   *
+   * 1. `Application SET NO_SHOW WHERE id=? AND status='ACCEPTED'`
+   * 2. `JobPost SET acceptedCount-1 WHERE id=? AND acceptedCount > 0`
+   * 3. `Penalty` 1행
+   *
+   * 셋이 나뉘면 자리가 빈 채로 카운터가 남거나(대체 인원을 못 뽑는다),
+   * 경고 없이 노쇼가 지나간다. `'STALE'` = `ACCEPTED`가 아니었다.
+   */
+  markNoShow(input: {
+    applicationId: string;
+    jobPostId: string;
+    penalty: { userId: string; reason: PenaltyReason };
+  }): Promise<ApplicationRecord | 'STALE'>;
+
   /** 구인자의 지원자 목록. 오래 지원한 순 (선착순 표시지 선착순 수락은 아니다) */
   listByJobPost(
     jobPostId: string,
@@ -219,6 +235,8 @@ export interface JobPostForApplication {
   acceptedCount: number;
   /** 1인당 보상금 (#23). 완료 확인이 확정 인원마다 이 금액을 지급한다 */
   rewardPerPerson: number;
+  /** 근무 시작 시각 (#24). **이 시각 전에는 노쇼를 표시할 수 없다** */
+  workStartAt: Date;
 }
 
 /**
@@ -398,6 +416,20 @@ export class ApplicationService {
     }
 
     return toSummary(cancelled);
+  }
+
+  /**
+   * 구인자가 노쇼를 기록한다 (#24).
+   *
+   * `ACCEPTED`였던 사람이 안 나온 것이므로 `NO_SHOW`가 되고 `Penalty` 1건이
+   * 쌓인다 (`spec-fixed.md` §4.3·§5). **근무 시작 전에는 표시할 수 없다** —
+   * 아직 안 온 것과 안 나온 것은 다르다.
+   */
+  async markNoShow(input: {
+    employerId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
   }
 
   /**

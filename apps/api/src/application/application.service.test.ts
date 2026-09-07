@@ -32,9 +32,15 @@ function openPost(overrides: Partial<PostRow> = {}): PostRow {
     headcount: 2,
     acceptedCount: 0,
     rewardPerPerson: 10_000,
+    // 이미 시작된 근무. 노쇼(#24)를 표시할 수 있는 것이 기본값이다 —
+    // 시작 전 공고는 그 판정을 보는 테스트만 따로 만든다.
+    workStartAt: WORK_STARTED_AT,
     ...overrides,
   };
 }
+
+/** 지난 근무 시작 시각. 고정값이라 시계가 흘러도 계속 과거다 (#24) */
+const WORK_STARTED_AT = new Date('2026-01-01T09:00:00.000Z');
 
 type PostRow = {
   id: string;
@@ -44,6 +50,7 @@ type PostRow = {
   headcount: number;
   acceptedCount: number;
   rewardPerPerson: number;
+  workStartAt: Date;
 };
 
 /** 원장 한 줄. 완료 확인이 무엇을 썼는지 세는 데만 쓴다 (#23) */
@@ -292,6 +299,32 @@ class FakeStore implements ApplicationStore {
     if (input.penalty !== null) {
       this.penalties.push({ ...input.penalty, jobPostId: input.jobPostId });
     }
+
+    return Promise.resolve({ ...row });
+  }
+
+  /**
+   * 노쇼. **세 문장을 함께 흉내 낸다** (#24).
+   *
+   * `ACCEPTED`가 아니면 `'STALE'`이고 **카운터도 경고도 건드리지 않는다** —
+   * 진짜 트랜잭션이 하는 일이다. 노쇼 버튼 연타의 두 번째가 여기서 걸린다.
+   */
+  markNoShow(input: {
+    applicationId: string;
+    jobPostId: string;
+    penalty: { userId: string; reason: PenaltyReason };
+  }): Promise<ApplicationRecord | 'STALE'> {
+    const row = this.rows.find((r) => r.id === input.applicationId);
+    if (row === undefined || row.status !== 'ACCEPTED') {
+      return Promise.resolve('STALE');
+    }
+
+    row.status = 'NO_SHOW';
+    // `WHERE acceptedCount > 0`. 자리가 없는데 더 내리면 음수가 된다.
+    if (this.post !== null && this.post.acceptedCount > 0) {
+      this.post.acceptedCount -= 1;
+    }
+    this.penalties.push({ ...input.penalty, jobPostId: input.jobPostId });
 
     return Promise.resolve({ ...row });
   }
@@ -1079,6 +1112,17 @@ function releasedTo(store: FakeStore, userId: string): number {
     .reduce((sum, r) => sum + r.amount, 0);
 }
 
+/** 그 사람의 신청을 노쇼로 표시한다 (#24) */
+async function markNoShowOf(
+  service: ApplicationService,
+  store: FakeStore,
+  applicantId: string,
+): Promise<void> {
+  const row = store.rows.find((r) => r.applicantId === applicantId);
+  if (row === undefined) throw new Error('그 사람의 신청이 없다');
+  await service.markNoShow({ employerId: EMPLOYER, applicationId: row.id });
+}
+
 describe('complete', () => {
   it('should pay each accepted worker the reward per person when 3 of 6 are accepted', async () => {
     const { service, store, workers } = await seedForCompletion({
@@ -1288,6 +1332,52 @@ describe('complete', () => {
     });
     expect(store.ledger).toHaveLength(before);
   });
+
+  // #24 AC2. `ADR-APP-5`가 "노쇼로 표시된 인원을 지급에서 빼는 것은 #24가
+  // 이어받는다"라고 남긴 자리다. 안 나온 사람에게 돈이 나가면 안 된다.
+  it('should pay only the applications that are still ACCEPTED when one member was marked NO_SHOW', async () => {
+    const { service, store, workers } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+    await markNoShowOf(service, store, workers[0]);
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    expect(payoutsTo(store, workers[0])).toEqual([]);
+    expect(payoutsTo(store, workers[1])).toEqual([10_000]);
+  });
+
+  it("should return the no-show member's share to the employer as RELEASE", async () => {
+    const { service, store, workers } = await seedForCompletion({
+      headcount: 6,
+      accepted: 3,
+    });
+    await markNoShowOf(service, store, workers[0]);
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    // 잠금 60,000 − 지급 20,000. 노쇼 한 명분이 구인자에게 돌아온다.
+    expect(releasedTo(store, EMPLOYER)).toBe(40_000);
+  });
+
+  it('should release the whole locked amount when every accepted member was marked NO_SHOW', async () => {
+    const { service, store, workers } = await seedForCompletion({
+      headcount: 3,
+      accepted: 3,
+    });
+    for (const worker of workers) {
+      await markNoShowOf(service, store, worker);
+    }
+
+    const summary = await service.complete({
+      jobPostId: JOB_POST,
+      employerId: EMPLOYER,
+    });
+
+    expect(summary.paidCount).toBe(0);
+    expect(releasedTo(store, EMPLOYER)).toBe(30_000);
+  });
 });
 
 /** 두 번째 지원자. 자리가 비면 이 사람이 들어간다 (#20 AC5) */
@@ -1462,6 +1552,125 @@ describe('cancel', () => {
 
     await expect(
       service.cancel({ actorId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
+  });
+});
+
+/** 아직 시작하지 않은 근무. AC3의 "근무 시작 전"이 이것이다 (#24) */
+function notStartedPost(overrides: Partial<PostRow> = {}): PostRow {
+  return openPost({
+    workStartAt: new Date(Date.now() + 60 * 60 * 1000),
+    ...overrides,
+  });
+}
+
+describe('markNoShow', () => {
+  it('should move an ACCEPTED application to NO_SHOW when the employer marks it after work started', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+
+    const result = await service.markNoShow({
+      employerId: EMPLOYER,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('NO_SHOW');
+  });
+
+  // 취소(#20)와 같은 무게다 (§4.3). 경고가 안 쌓이면 180일 집계가 노쇼를
+  // 아예 못 본다.
+  it('should record one NO_SHOW penalty on the applicant when the employer marks a no-show', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+
+    await service.markNoShow({ employerId: EMPLOYER, applicationId: id });
+
+    expect(store.penalties).toEqual([
+      { userId: APPLICANT, reason: 'NO_SHOW', jobPostId: JOB_POST },
+    ]);
+  });
+
+  // 노쇼는 더 이상 확정 인원이 아니다. 카운터가 그대로 남으면 구인자가
+  // 대체 인원을 수동으로 다시 수락할 수 없다.
+  it('should decrease acceptedCount by 1 when an accepted application is marked NO_SHOW', async () => {
+    const { service, store, post } = makeService(
+      openPost({ acceptedCount: 0 }),
+    );
+    const { id } = await seedAccepted(service, store, 1);
+
+    await service.markNoShow({ employerId: EMPLOYER, applicationId: id });
+
+    expect(post?.acceptedCount).toBe(0);
+  });
+
+  // 노쇼 버튼 연타. 두 번째가 조용히 성공하면 한 사람에게 경고가 두 건 쌓인다.
+  it('should record only one penalty when two no-show requests race on the same application', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+
+    await Promise.allSettled([
+      service.markNoShow({ employerId: EMPLOYER, applicationId: id }),
+      service.markNoShow({ employerId: EMPLOYER, applicationId: id }),
+    ]);
+
+    expect(store.penalties).toHaveLength(1);
+  });
+
+  // AC3. 아직 안 온 것과 안 나온 것은 다르다.
+  it('should throw APPLICATION_WORK_NOT_STARTED when the work has not started yet', async () => {
+    const { service, store } = makeService(notStartedPost());
+    const { id } = await seedAccepted(service, store, 1);
+
+    await expect(
+      service.markNoShow({ employerId: EMPLOYER, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.WORK_NOT_STARTED });
+  });
+
+  it('should throw APPLICATION_NOT_FOUND when the application does not exist', async () => {
+    const { service } = makeService();
+
+    await expect(
+      service.markNoShow({ employerId: EMPLOYER, applicationId: 'app_없음' }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_FOUND });
+  });
+
+  // id만 알면 남의 계약자에게 경고를 심을 수 있으면 안 된다.
+  it('should throw APPLICATION_NOT_EMPLOYER when someone other than the employer marks it', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+
+    await expect(
+      service.markNoShow({ employerId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_EMPLOYER });
+  });
+
+  // 수락 전에는 나올 약속 자체가 없다. 표에 `APPLIED → NO_SHOW`가 없다.
+  it('should throw APPLICATION_INVALID_TRANSITION when the application is still APPLIED', async () => {
+    const { service } = makeService();
+    const { id } = await seedApplied(service);
+
+    await expect(
+      service.markNoShow({ employerId: EMPLOYER, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  it('should throw APPLICATION_INVALID_TRANSITION when the application is already NO_SHOW', async () => {
+    const { service, store } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+    await service.markNoShow({ employerId: EMPLOYER, applicationId: id });
+
+    await expect(
+      service.markNoShow({ employerId: EMPLOYER, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  it('should throw JOB_POST_NOT_FOUND when the job post was soft-deleted', async () => {
+    const { service, store, jobPosts } = makeService();
+    const { id } = await seedAccepted(service, store, 1);
+    jobPosts.softDelete();
+
+    await expect(
+      service.markNoShow({ employerId: EMPLOYER, applicationId: id }),
     ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
   });
 });

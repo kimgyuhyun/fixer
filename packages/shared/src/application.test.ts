@@ -4,6 +4,7 @@ import {
   canApplicationTransition,
   formatRating,
   FREE_CANCEL_WINDOW_MS,
+  hasWorkStarted,
   resolveCancelStatus,
 } from './application.js';
 
@@ -96,5 +97,27 @@ describe('resolveCancelStatus', () => {
     expect(
       resolveCancelStatus(ACCEPTED_AT, after(FREE_CANCEL_WINDOW_MS + 1)),
     ).toBe('CANCELLED_PENALTY');
+  });
+});
+
+describe('hasWorkStarted', () => {
+  const WORK_START_AT = new Date('2026-09-10T09:00:00.000Z');
+
+  function offset(ms: number): Date {
+    return new Date(WORK_START_AT.getTime() + ms);
+  }
+
+  it('should return true when the work start time has already passed', () => {
+    expect(hasWorkStarted(WORK_START_AT, offset(60 * 60 * 1000))).toBe(true);
+  });
+
+  // **경계는 열려 있다.** AC3이 막는 것은 "근무 시작 **전**"이고 정각은 그
+  // 전이 아니다. 닫아 두면 정각에 안 나온 사람을 그 순간에 기록할 수 없다.
+  it('should return true when now is exactly the work start time', () => {
+    expect(hasWorkStarted(WORK_START_AT, WORK_START_AT)).toBe(true);
+  });
+
+  it('should return false when now is one millisecond before the work start time', () => {
+    expect(hasWorkStarted(WORK_START_AT, offset(-1))).toBe(false);
   });
 });

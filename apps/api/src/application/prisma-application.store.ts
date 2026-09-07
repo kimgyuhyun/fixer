@@ -201,6 +201,14 @@ export class PrismaApplicationStore implements ApplicationStore {
     }
   }
 
+  markNoShow(input: {
+    applicationId: string;
+    jobPostId: string;
+    penalty: { userId: string; reason: PenaltyReason };
+  }): Promise<ApplicationRecord | 'STALE'> {
+    throw new Error('not implemented');
+  }
+
   async completeAndSettle(input: {
     jobPostId: string;
     employerId: string;
@@ -323,6 +331,7 @@ export class PrismaJobPostReader implements JobPostReader {
         headcount: true,
         acceptedCount: true,
         rewardPerPerson: true,
+        workStartAt: true,
       },
     });
   }

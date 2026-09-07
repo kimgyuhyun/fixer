@@ -361,3 +361,27 @@ describe('POST /applications/:id/cancel', () => {
     expect(statusOf(error)).toBe(400);
   });
 });
+
+describe('POST /applications/:id/no-show', () => {
+  it('should answer 200 with the NO_SHOW application when the employer marks it', async () => {
+    const controller = controllerWith({
+      markNoShow: vi
+        .fn()
+        .mockResolvedValue({ ...SUMMARY, status: 'NO_SHOW' as const }),
+    });
+
+    const result = await controller.markNoShow('app_1', {
+      employerId: 'usr_employer',
+    });
+
+    expect(result).toMatchObject({ id: 'app_1', status: 'NO_SHOW' });
+  });
+
+  it('should answer 400 when employerId is missing', async () => {
+    const controller = controllerWith({ markNoShow: vi.fn() });
+
+    const error = await rejectionOf(controller.markNoShow('app_1', {}));
+
+    expect(statusOf(error)).toBe(400);
+  });
+});
