@@ -133,6 +133,14 @@ export type AcceptApplicationRequest = z.infer<
   typeof acceptApplicationRequestSchema
 >;
 
+/** 거절 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#19) */
+export const rejectApplicationRequestSchema = z.object({
+  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
+});
+export type RejectApplicationRequest = z.infer<
+  typeof rejectApplicationRequestSchema
+>;
+
 /** 완료 확인 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#23) */
 export const completeJobPostRequestSchema = z.object({
   jobPostId: z.string().min(1, { error: '공고를 알 수 없습니다.' }),
@@ -203,8 +211,14 @@ export const applicantListSchema = z.object({
 });
 export type ApplicantList = z.infer<typeof applicantListSchema>;
 
-/** 구인자에게 보이는 상태. #19가 `REJECTED`를 더한다 */
+/**
+ * 구인자에게 보이는 상태.
+ *
+ * `REJECTED`도 보인다 (#19). 감추면 구인자가 **같은 사람을 두 번 검토하게**
+ * 되고, 그 사람이 왜 다시 지원을 못 하는지도 화면에서 알 수 없다.
+ */
 export const EMPLOYER_VISIBLE_STATUSES = [
   'APPLIED',
   'ACCEPTED',
+  'REJECTED', // ← #19
 ] as const satisfies readonly ApplicationStatus[];
