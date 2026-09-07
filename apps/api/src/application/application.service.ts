@@ -6,6 +6,7 @@ import {
   canApplicationTransition,
   canTransition,
   completeJobPostRequestSchema,
+  hasWorkStarted,
   resolveCancelStatus,
   type ApplicantItem,
   type ApplicantList,
@@ -429,7 +430,43 @@ export class ApplicationService {
     employerId: string;
     applicationId: string;
   }): Promise<ApplicationSummary> {
-    throw new Error('not implemented');
+    const current = await this.store.findById(input.applicationId);
+    if (current === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
+    }
+
+    // **노쇼는 구인자만 찍는다.** 취소(#20)와 달리 양쪽이 부르지 않는다 —
+    // 안 나온 사람이 스스로 기록할 일은 없고, 열어 두면 제3자가 id만 알고
+    // 남의 계약자에게 경고를 심을 수 있다.
+    const post = await this.mustOwn(current.jobPostId, input.employerId);
+
+    // AC3. **아직 안 온 것과 안 나온 것은 다르다.** 상태 확인보다 먼저 볼
+    // 이유는 없지만, 뒤로 미루면 근무 전 중복 표시가 "이미 처리됨"으로 보고된다.
+    if (!hasWorkStarted(post.workStartAt, new Date())) {
+      throw new ApplicationError(APPLICATION_ERRORS.WORK_NOT_STARTED, {
+        workStartAt: post.workStartAt.toISOString(),
+      });
+    }
+
+    // 표에 없는 전이는 거부된다. 수락 전 표시와 중복 표시가 여기서 걸린다.
+    transition(current.status, 'NO_SHOW');
+
+    const marked = await this.store.markNoShow({
+      applicationId: current.id,
+      jobPostId: post.id,
+      penalty: { userId: current.applicantId, reason: 'NO_SHOW' },
+    });
+
+    if (marked === 'STALE') {
+      // 우리가 읽은 뒤 상태가 바뀌었다. 노쇼 버튼 연타의 두 번째가 여기다 —
+      // **카운터도 경고도 건드리지 않은 채** 되돌아왔다.
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: 'NO_SHOW',
+      });
+    }
+
+    return toSummary(marked);
   }
 
   /**

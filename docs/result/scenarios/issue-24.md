@@ -3,7 +3,7 @@
 > GitHub: https://github.com/kimgyuhyun/fixer/issues/24
 > PRD: `docs/result/prd/application.md`, `docs/result/prd/penalty-rating.md`
 > 담당: B (김규현)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: 구현 완료 (Green)
 
 ---
 
@@ -143,35 +143,35 @@ class ApplicationService {
 
 ### 정상
 
-- [ ] [정상] `hasWorkStarted` — should return true when the work start time has already passed
-- [ ] [정상] `markNoShow` — should move an ACCEPTED application to NO_SHOW when the employer marks it after work started
-- [ ] [정상] `markNoShow` — should record one NO_SHOW penalty on the applicant when the employer marks a no-show
-- [ ] [정상] `complete` — should pay only the applications that are still ACCEPTED when one member was marked NO_SHOW
-- [ ] [정상] `complete` — should return the no-show member's share to the employer as RELEASE
-- [ ] [정상] `POST /applications/:id/no-show` — should answer 200 with the NO_SHOW application when the employer marks it
+- [x] [정상] `hasWorkStarted` — should return true when the work start time has already passed
+- [x] [정상] `markNoShow` — should move an ACCEPTED application to NO_SHOW when the employer marks it after work started
+- [x] [정상] `markNoShow` — should record one NO_SHOW penalty on the applicant when the employer marks a no-show
+- [x] [정상] `complete` — should pay only the applications that are still ACCEPTED when one member was marked NO_SHOW
+- [x] [정상] `complete` — should return the no-show member's share to the employer as RELEASE
+- [x] [정상] `POST /applications/:id/no-show` — should answer 200 with the NO_SHOW application when the employer marks it
 
 ### 경계
 
-- [ ] [경계] `hasWorkStarted` — should return true when now is exactly the work start time
-- [ ] [경계] `hasWorkStarted` — should return false when now is one millisecond before the work start time
-- [ ] [경계] `markNoShow` — should decrease acceptedCount by 1 when an accepted application is marked NO_SHOW
-- [ ] [경계] `markNoShow` — should record only one penalty when two no-show requests race on the same application
-- [ ] [경계] `complete` — should release the whole locked amount when every accepted member was marked NO_SHOW
+- [x] [경계] `hasWorkStarted` — should return true when now is exactly the work start time
+- [x] [경계] `hasWorkStarted` — should return false when now is one millisecond before the work start time
+- [x] [경계] `markNoShow` — should decrease acceptedCount by 1 when an accepted application is marked NO_SHOW
+- [x] [경계] `markNoShow` — should record only one penalty when two no-show requests race on the same application
+- [x] [경계] `complete` — should release the whole locked amount when every accepted member was marked NO_SHOW
 
 ### 예외
 
-- [ ] [예외] `markNoShow` — should throw APPLICATION_WORK_NOT_STARTED when the work has not started yet
-- [ ] [예외] `markNoShow` — should throw APPLICATION_NOT_FOUND when the application does not exist
-- [ ] [예외] `markNoShow` — should throw APPLICATION_NOT_EMPLOYER when someone other than the employer marks it
-- [ ] [예외] `markNoShow` — should throw APPLICATION_INVALID_TRANSITION when the application is still APPLIED
-- [ ] [예외] `markNoShow` — should throw APPLICATION_INVALID_TRANSITION when the application is already NO_SHOW
-- [ ] [예외] `markNoShow` — should throw JOB_POST_NOT_FOUND when the job post was soft-deleted
-- [ ] [예외] `POST /applications/:id/no-show` — should answer 400 when employerId is missing
+- [x] [예외] `markNoShow` — should throw APPLICATION_WORK_NOT_STARTED when the work has not started yet
+- [x] [예외] `markNoShow` — should throw APPLICATION_NOT_FOUND when the application does not exist
+- [x] [예외] `markNoShow` — should throw APPLICATION_NOT_EMPLOYER when someone other than the employer marks it
+- [x] [예외] `markNoShow` — should throw APPLICATION_INVALID_TRANSITION when the application is still APPLIED
+- [x] [예외] `markNoShow` — should throw APPLICATION_INVALID_TRANSITION when the application is already NO_SHOW
+- [x] [예외] `markNoShow` — should throw JOB_POST_NOT_FOUND when the job post was soft-deleted
+- [x] [예외] `POST /applications/:id/no-show` — should answer 400 when employerId is missing
 
 ### 통합 (실제 DB)
 
-- [ ] [정상] `markNoShow` — should create exactly one Penalty row with reason NO_SHOW
-- [ ] [정상] `complete` — should leave the no-show member's balance unchanged while the employer gets their share back
+- [x] [정상] `markNoShow` — should create exactly one Penalty row with reason NO_SHOW
+- [x] [정상] `complete` — should leave the no-show member's balance unchanged while the employer gets their share back
 
 ---
 

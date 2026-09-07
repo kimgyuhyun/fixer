@@ -192,7 +192,7 @@ export type CancelApplicationRequest = z.infer<
  * 같이 경계 판정을 한 곳에만 둔다.
  */
 export function hasWorkStarted(workStartAt: Date, now: Date): boolean {
-  throw new Error('not implemented');
+  return now.getTime() >= workStartAt.getTime();
 }
 
 /** 노쇼 표시 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#24) */
