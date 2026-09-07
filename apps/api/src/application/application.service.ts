@@ -440,8 +440,8 @@ export class ApplicationService {
     // 남의 계약자에게 경고를 심을 수 있다.
     const post = await this.mustOwn(current.jobPostId, input.employerId);
 
-    // AC3. **아직 안 온 것과 안 나온 것은 다르다.** 상태 확인보다 먼저 볼
-    // 이유는 없지만, 뒤로 미루면 근무 전 중복 표시가 "이미 처리됨"으로 보고된다.
+    // AC3. **아직 안 온 것과 안 나온 것은 다르다.** 근무가 시작되기 전에는
+    // 나오지 않았다고 말할 수 없다.
     if (!hasWorkStarted(post.workStartAt, new Date())) {
       throw new ApplicationError(APPLICATION_ERRORS.WORK_NOT_STARTED, {
         workStartAt: post.workStartAt.toISOString(),
