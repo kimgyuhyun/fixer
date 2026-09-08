@@ -126,10 +126,8 @@ export class JobPostScheduleService {
       const closedJobPostIds: string[] = [];
       const expiredJobPostIds: string[] = [];
       for (const post of posts) {
-        const to =
-          post.acceptedCount >= post.headcount
-            ? ('CLOSED' as const)
-            : ('EXPIRED' as const);
+        const to: 'CLOSED' | 'EXPIRED' =
+          post.acceptedCount >= post.headcount ? 'CLOSED' : 'EXPIRED';
 
         // 읽은 뒤 누가 취소했으면 0건이다. 덮어쓰지 않는다.
         if (!(await this.store.close(post.id, to))) continue;
