@@ -45,6 +45,15 @@ export const JOB_POST_TRANSITIONS = [
    */
   { from: 'OPEN', to: 'COMPLETED' },
   { from: 'CLOSED', to: 'CANCELLED' },
+  /**
+   * 완료 확인 (#38이 연 길).
+   *
+   * 미달인 채로 시작 시각이 지나면 자동 마감 잡이 공고를 `EXPIRED`로 옮긴다.
+   * 그때 확정 인원이 한 명이라도 있으면 **그 사람은 일을 하고 대금을 받아야
+   * 한다.** 이 전이가 없으면 #38이 `EXPIRED`를 만드는 순간 그 돈이 갇힌다 —
+   * #23이 "#38이 `EXPIRED`를 만든 뒤"로 미뤄 둔 것이 이것이다.
+   */
+  { from: 'EXPIRED', to: 'COMPLETED' },
 ] as const satisfies readonly { from: JobPostStatus; to: JobPostStatus }[];
 
 /** 이 전이가 표에 있나 */

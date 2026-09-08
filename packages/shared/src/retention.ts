@@ -27,6 +27,16 @@ export const RETENTION = {
  */
 export const ADVISORY_LOCK_KEYS = {
   PURGE_PERSONAL_INFO: 39,
+  /**
+   * 모집 미달 알림 (#38).
+   *
+   * 마감 잡과 **키를 나눈다.** 조건도 대상도 다른 두 작업이라
+   * (`prd/notification.md` §5), 한 키를 쓰면 알림이 늦어질 때 마감까지 함께
+   * 막힌다.
+   */
+  NOTIFY_UNDERFILLED_JOB_POST: 3801,
+  /** 공고 자동 마감 (#38) */
+  CLOSE_STARTED_JOB_POST: 3802,
 } as const;
 
 /** 파기된 계정의 이메일. 유니크 제약을 유지하면서 실재하지 않는 주소가 된다 */
