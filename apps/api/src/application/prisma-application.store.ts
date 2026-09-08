@@ -460,10 +460,10 @@ export class PrismaJobPostReader implements JobPostReader {
 }
 
 /**
- * 지원자의 이름과 평점. (#18)
+ * 지원자의 이름과 평점. (#18, #26)
  *
- * 이름은 진짜로 읽고, **평점은 표본 0으로 돌려준다** — `Rating`(#26)이 아직
- * 없기 때문이다. #26이 이 어댑터만 채우면 화면은 그대로 동작한다.
+ * 평점은 `User`의 역할별 캐시를 그대로 읽는다. **평균을 여기서 다시 세지
+ * 않는다** — 세는 자리는 별점이 들어오는 트랜잭션 하나뿐이다 (`ADR-PEN-3`).
  */
 @Injectable()
 export class PrismaApplicantProfileReader implements ApplicantProfileReader {
@@ -474,14 +474,23 @@ export class PrismaApplicantProfileReader implements ApplicantProfileReader {
   ): Promise<Map<string, ApplicantProfile>> {
     const rows = await this.prisma.user.findMany({
       where: { id: { in: [...applicantIds] } },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        ratingAsWorker: true,
+        ratingAsWorkerCount: true,
+      },
     });
 
     return new Map(
       rows.map((row) => [
         row.id,
-        // 평점은 #26이 채운다. 표본 0이므로 화면은 전원 "신규"로 그린다 (§7).
-        { name: row.name, ratingAsWorker: null, ratingCount: 0 },
+        {
+          name: row.name,
+          // 지원자는 그 거래에서 구직자다. 구인자 평점은 여기에 섞지 않는다 (§2.1)
+          ratingAsWorker: row.ratingAsWorker,
+          ratingCount: row.ratingAsWorkerCount,
+        },
       ]),
     );
   }

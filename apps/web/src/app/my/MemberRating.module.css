@@ -1,0 +1,64 @@
+/*
+ * 이슈 #26 · 마이페이지의 내 평점.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ * 라벨-값 두 줄 배치는 page.module.css의 정의 목록과 같은 모양을 쓴다.
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* 좁은 화면에서는 라벨 위, 값 아래. 넓어지면 한 줄로 붙인다. */
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.value {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.count {
+  margin-left: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+@media (min-width: 40rem) {
+  .row {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+
+  .label {
+    flex: 0 0 6rem;
+  }
+}

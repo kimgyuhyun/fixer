@@ -4,9 +4,9 @@
 // 운영 DB에 직접 DDL을 실행하지 않는다.
 
 generator client {
-  provider = "prisma-client"
+  provider     = "prisma-client"
   // Nest가 tsc로 src 아래만 컴파일하므로 생성물도 src 안에 둔다.
-  output   = "../src/generated/prisma"
+  output       = "../src/generated/prisma"
   // Nest 런타임이 CommonJS라 생성 클라이언트도 CJS로 맞춘다.
   moduleFormat = "cjs"
 }
@@ -22,29 +22,41 @@ datasource db {
 /// 주소(#3)·동의서(#7)·평점·잔액 캐시는 각 이슈가 자기 컬럼을 들고 온다.
 /// role과 deactivatedAt은 ADR-AUTH-3(계정 생명주기)이 확정되며 붙었다.
 model User {
-  id           String   @id @default(cuid())
+  id            String   @id @default(cuid())
   /// 소문자로 정규화해서 저장한다. 대소문자만 다른 중복 계정을 막는다.
-  email        String   @unique
+  email         String   @unique
   /// bcrypt 해시. 평문 저장 금지.
-  passwordHash String
-  name         String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  passwordHash  String
+  name          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   /// 표시용 캐시. **진실의 원천은 원장이다** (ADR-PAY-1).
-  cachedBalance Int     @default(0)
+  cachedBalance Int      @default(0)
+
+  /// 구인자로서 받은 평점 평균. 표본이 없으면 null (#26, spec §7).
+  ///
+  /// 0.0으로 두지 않는다 — 화면이 "0점을 받았다"와 구분할 수 없다.
+  /// **역할별로 나눠 담는다** (§2.1): 고용주로서와 일꾼으로서의 신뢰도는 별개다.
+  ratingAsPoster      Float?
+  /// 구인자로서 받은 별점 수. 3건 미만이면 화면이 "신규"로 그린다 (§7)
+  ratingAsPosterCount Int       @default(0)
+  /// 구직자로서 받은 평점 평균. 표본이 없으면 null (#26)
+  ratingAsWorker      Float?
+  /// 구직자로서 받은 별점 수 (#26)
+  ratingAsWorkerCount Int       @default(0)
   /// 비활성화 시각. **상태 컬럼을 만들지 않는다** — 이것 하나로 판정한다 (ADR-AUTH-3).
-  deactivatedAt DateTime?
+  deactivatedAt       DateTime?
   /// 개인정보 파기 시각. (#39)
   ///
   /// 상태 컬럼이 아니라 **시각 기록**이라 ADR-AUTH-3의 기각 사유에 걸리지
   /// 않는다. 이게 없으면 배치가 어제 파기한 계정을 오늘 또 훑는다.
-  purgedAt      DateTime?
+  purgedAt            DateTime?
   /// 관리자 여부. **별도 테이블을 만들지 않는다** (spec §11.1, #35).
   ///
   /// 화면에서 관리자를 만드는 기능은 두지 않는다 — 최초 관리자는 seed로만
   /// 만든다. 이 값을 토큰에 복사하지 않는 이유는 가드가 요청마다 여기를
   /// 읽어야 권한 회수가 즉시 반영되기 때문이다 (ADR-AUTH-3과 같은 판단).
-  role          UserRole  @default(USER)
+  role                UserRole  @default(USER)
 
   /// 로그인 세션들. (#4)
   refreshTokens     RefreshToken[]
@@ -61,6 +73,8 @@ model User {
   applications      Application[]
   notifications     Notification[]
   adminAuditLogs    AdminAuditLog[]
+  ratingsGiven      Rating[]           @relation("RatingsGiven")
+  ratingsReceived   Rating[]           @relation("RatingsReceived")
 
   /// 파기 배치가 "비활성화됐고 아직 파기 안 된" 행만 훑는다 (#39)
   @@index([deactivatedAt, purgedAt])
@@ -251,18 +265,18 @@ model Agreement {
 /// FIFO 환불이 그 값을 필요로 한다(#29). 그래서 결제 건을 따로 들고 있는다.
 model Payment {
   /// 포트원이 준 결제 건 식별자. **우리가 만들지 않는다** (ADR-PAY-3).
-  id             String        @id
-  userId         String
+  id              String        @id
+  userId          String
   /// 결제 시작 때 **서버가 정한** 금액. 확정 때 포트원이 준 값과 대조한다.
-  amount         Int
-  status         PaymentStatus @default(PENDING)
+  amount          Int
+  status          PaymentStatus @default(PENDING)
   /// 카드 취소 기한. **값은 지금 비워 둔다** — 실결제 전환 때 채운다.
   ///
   /// lot 잔여는 컬럼으로 두지 않는다. 원장에서 계산한다 (ADR-PAY-7) —
   /// 숫자가 두 벌이면 어긋났을 때 어느 쪽이 맞는지 판단할 근거가 없다.
   refundableUntil DateTime?
-  createdAt      DateTime      @default(now())
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   /// FIFO 소진이 오래된 것부터 훑는다 (ADR-PAY-7)
   @@index([userId, createdAt])
@@ -307,9 +321,9 @@ model JobPost {
   /// 기본값은 가입 주소. **서버가 채운다** — 화면이 채우면 옛 값을 보낼 수 있다.
   workAddress         String
   /// 지역 필터 1단계 (#13). 문자열을 파싱하지 않고 분해해서 담는다 (ADR-AUTH-2와 같은 이유)
-  workSido            String  @default("")
+  workSido            String   @default("")
   /// 지역 필터 2단계. 세종특별자치시처럼 없는 지역은 빈 문자열
-  workSigungu         String  @default("")
+  workSigungu         String   @default("")
   workStartAt         DateTime
   workEndAt           DateTime
   headcount           Int
@@ -336,9 +350,9 @@ model JobPost {
   /// 물리 삭제 없음 (§3.3). 상태와 이 값으로 관리한다.
   deletedAt DateTime?
 
-  employer User             @relation(fields: [employerId], references: [id], onDelete: Cascade)
-  category Category         @relation(fields: [categoryId], references: [id])
-  versions JobPostVersion[]
+  employer     User             @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  category     Category         @relation(fields: [categoryId], references: [id])
+  versions     JobPostVersion[]
   applications Application[]
 
   /// 목록은 "OPEN을 최신순으로"만 읽는다 (ADR-JOB-5)
@@ -441,6 +455,46 @@ model Suspension {
   @@index([userId, endAt])
 }
 
+/// 거래 후 남기는 별점 1건. (이슈 #26, `spec-fixed.md` §7)
+///
+/// `COMPLETED`된 거래에 한해 **양방향으로 1~5만** 남긴다. 텍스트 후기도
+/// 신고도 없다. 평균과 카운트는 `User`에 캐시되고, **진실은 이 표다** —
+/// 캐시가 틀어지면 여기서 다시 세면 된다 (ADR-PAY-1과 같은 판단).
+model Rating {
+  id            String @id @default(cuid())
+  applicationId String
+  raterId       String
+  rateeId       String
+
+  /// 평가받은 사람의 **그 거래에서의** 역할 (§2.1).
+  ///
+  /// 집계할 때마다 공고를 타고 들어가 되짚지 않고 그때 값을 굳힌다.
+  /// 별점은 그 거래 그 시점의 평가라, 나중에 공고 주인이 바뀌었다고 해서
+  /// 구인자 평점이 구직자 평점으로 옮겨 가면 안 된다 (`ADR-JOB-1`과 같은 이유).
+  rateeRole RatingRole
+  /// 1~5 정수. 범위는 `packages/shared/src/rating.ts`가 함께 지킨다
+  score     Int
+  createdAt DateTime   @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  rater       User        @relation("RatingsGiven", fields: [raterId], references: [id], onDelete: Cascade)
+  ratee       User        @relation("RatingsReceived", fields: [rateeId], references: [id], onDelete: Cascade)
+
+  /// 거래당 1회 (§7). **경합에서 실제로 이기는 것은 이 제약이다.**
+  /// 상대는 같은 거래에 별점을 줄 수 있다 — 유니크가 `raterId`까지다
+  @@unique([applicationId, raterId])
+  /// 역할별 평균 재집계가 이 인덱스로 끝난다
+  @@index([rateeId, rateeRole])
+}
+
+/// 평가받은 사람의 역할. `packages/shared/src/rating.ts`의 RATING_ROLES와 같아야 한다.
+enum RatingRole {
+  /// 구인자로서 받았다
+  POSTER
+  /// 구직자로서 받았다
+  WORKER
+}
+
 /// 환전받을 계좌. (이슈 #30, `spec-fixed.md` §6.4.1)
 ///
 /// **계좌번호는 암호화해서 담는다** (ADR-PAY-6). 평문으로 두면 DB 백업 하나가
@@ -514,10 +568,10 @@ enum ExchangeRequestStatus {
 /// 이 테이블이 "누가 누구와 무엇을 약속했는가"의 진실을 갖는다. #17은 그중
 /// 약속이 생기는 순간(`APPLIED`)과 수락 전에 무르는 순간(`WITHDRAWN`)까지다.
 model Application {
-  id          String            @id @default(cuid())
-  jobPostId   String
-  applicantId String
-  status      ApplicationStatus @default(APPLIED)
+  id             String             @id @default(cuid())
+  jobPostId      String
+  applicantId    String
+  status         ApplicationStatus  @default(APPLIED)
   /// 지원 시점의 공고 버전 (AC1).
   ///
   /// **화면용 숫자가 아니다** — #21이 "내가 동의한 조건이 그 뒤에 바뀌었나"를
@@ -532,11 +586,12 @@ model Application {
   /// 전환과 같은 UPDATE 문에서 함께 적는다. 나누면 이전 상태 없이 내려간 행이
   /// 남고, 그 행은 #22가 되돌릴 수 없다. PENDING_REACCEPT인 동안에만 의미가 있다.
   previousStatus ApplicationStatus?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
-  jobPost   JobPost @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
-  applicant User    @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  jobPost   JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  applicant User     @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  ratings   Rating[]
 
   /// 중복 신청 방지 (§4.5). **경합에서 실제로 이기는 것은 이 제약이다.**
   /// 철회 후 재지원이 새 행이 아니라 되살리기인 것도 이 제약 때문이다.
