@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { JobLock } from '../retention/purge.service';
 import type { NotificationPublisher } from './notification.service';
 
@@ -60,21 +60,110 @@ export interface AutoCloseReport {
  */
 @Injectable()
 export class JobPostScheduleService {
+  private readonly logger = new Logger(JobPostScheduleService.name);
+
   constructor(
     private readonly store: JobPostScheduleStore,
     private readonly notifications: NotificationPublisher,
     private readonly lock: JobLock,
   ) {}
 
-  notifyUnderfilled(
-    _now: Date,
-    _leadMs: number,
-    _lockKey: number,
+  /**
+   * 모집 미달 알림. `leadMs`는 운영에서 언제나 `UNDERFILL_NOTICE_LEAD_MS`(3시간)이고,
+   * 인자로 받는 것은 테스트가 3시간을 기다리지 않게 하기 위해서다.
+   */
+  async notifyUnderfilled(
+    now: Date,
+    leadMs: number,
+    lockKey: number,
   ): Promise<UnderfillNoticeReport> {
-    throw new Error('not implemented');
+    // 못 잡으면 조용히 돌아선다. 다른 인스턴스가 돌고 있다는 뜻이지 오류가
+    // 아니다 — 여기서 던지면 서버가 두 대일 때 1분마다 알람이 울린다.
+    if (!(await this.lock.tryLock(lockKey))) {
+      return { notifiedJobPostIds: [], skippedByLock: true };
+    }
+
+    try {
+      // 창을 양쪽으로 닫는다. 시작 시각이 이미 지난 공고까지 집으면 고를
+      // 시간이 0초인 선택지를 보내게 된다 — 그건 마감 잡의 몫이다.
+      const posts = await this.store.findUnderfilled(
+        now,
+        new Date(now.getTime() + leadMs),
+      );
+
+      const notifiedJobPostIds: string[] = [];
+      for (const post of posts) {
+        // **표시가 먼저다.** 조건부 UPDATE라 행을 차지한 쪽 하나만 발행한다.
+        // 발행 뒤에 표시하면 그 사이에 죽었을 때 다음 분에 또 나간다.
+        if (!(await this.store.markNotified(post.id, now))) continue;
+
+        await this.publishUnderfilled(post);
+        notifiedJobPostIds.push(post.id);
+      }
+
+      // **공고는 건드리지 않는다.** 미응답의 기본값은 유지다
+      // (`prd/notification.md` §5). 연장·삭제는 구인자가 #15·#16으로 한다.
+      return { notifiedJobPostIds, skippedByLock: false };
+    } finally {
+      // 던져도 반드시 푼다. 안 그러면 다음 실행이 영원히 막힌다.
+      await this.lock.unlock(lockKey);
+    }
   }
 
-  closeStarted(_now: Date, _lockKey: number): Promise<AutoCloseReport> {
-    throw new Error('not implemented');
+  /** 공고 자동 마감. 인원이 찼으면 `CLOSED`, 미달이면 `EXPIRED` */
+  async closeStarted(now: Date, lockKey: number): Promise<AutoCloseReport> {
+    if (!(await this.lock.tryLock(lockKey))) {
+      return {
+        closedJobPostIds: [],
+        expiredJobPostIds: [],
+        skippedByLock: true,
+      };
+    }
+
+    try {
+      const posts = await this.store.findStarted(now);
+
+      const closedJobPostIds: string[] = [];
+      const expiredJobPostIds: string[] = [];
+      for (const post of posts) {
+        const to =
+          post.acceptedCount >= post.headcount
+            ? ('CLOSED' as const)
+            : ('EXPIRED' as const);
+
+        // 읽은 뒤 누가 취소했으면 0건이다. 덮어쓰지 않는다.
+        if (!(await this.store.close(post.id, to))) continue;
+
+        (to === 'CLOSED' ? closedJobPostIds : expiredJobPostIds).push(post.id);
+      }
+
+      return { closedJobPostIds, expiredJobPostIds, skippedByLock: false };
+    } finally {
+      await this.lock.unlock(lockKey);
+    }
+  }
+
+  /**
+   * 문구는 발행자가 만든다 (`ADR-NOT-3`).
+   *
+   * **한 건이 터져도 나머지는 보낸다.** 표시가 이미 끝난 뒤라 다음 실행이
+   * 다시 집어주지 않는다 — 여기서 멈추면 뒤쪽 구인자들은 영영 못 받는다.
+   */
+  private async publishUnderfilled(post: UnderfilledJobPost): Promise<void> {
+    try {
+      await this.notifications.publish({
+        userId: post.employerId,
+        type: 'JOB_POST_UNDERFILLED',
+        title: '모집 인원이 아직 다 차지 않았습니다',
+        body: `${post.title} — 시작 3시간 전인데 ${post.acceptedCount}/${post.headcount}명입니다. 연장·삭제·유지 중에서 고르세요. 그대로 두면 유지됩니다.`,
+        linkUrl: `/job-posts/${post.id}`,
+      });
+    } catch (error) {
+      // 공고 id만 적는다. 알림 본문에는 개인정보가 담긴다.
+      this.logger.error(
+        `모집 미달 알림 발행 실패 (jobPostId=${post.id})`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 }

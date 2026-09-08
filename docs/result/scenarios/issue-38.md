@@ -3,7 +3,7 @@
 > GitHub: https://github.com/kimgyuhyun/fixer/issues/38
 > PRD: `docs/result/prd/notification.md`
 > 담당: B (김규현) · 선행 #12 #36
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: 구현 완료 (Green)
 
 ---
 
@@ -253,37 +253,37 @@ enum NotificationType {
 
 ### 정상
 
-- [ ] [정상] `notifyUnderfilled` — should publish a JOB_POST_UNDERFILLED notification to the employer when an OPEN post starts within the lead time and is under-filled
-- [ ] [정상] `notifyUnderfilled` — should tell the employer the 연장·삭제·유지 choices and link to the post
-- [ ] [정상] `notifyUnderfilled` — should publish nothing on a second run over the same post
-- [ ] [정상] `notifyUnderfilled` — should leave the notified post OPEN and undeleted so no answer means keeping it
-- [ ] [정상] `notifyUnderfilled` — should report skippedByLock and publish nothing when the lock is held elsewhere
-- [ ] [정상] `notifyUnderfilled` — should release the lock when it finishes
-- [ ] [정상] `closeStarted` — should close a post whose seats are full when its start time has passed
-- [ ] [정상] `closeStarted` — should expire an under-filled post when its start time has passed
-- [ ] [정상] `closeStarted` — should report skippedByLock and change no status when the lock is held elsewhere
-- [ ] [정상] `PrismaJobPostScheduleStore.findUnderfilled` — should return only the OPEN, under-filled, unnotified posts inside the window from the real database
-- [ ] [정상] `PrismaJobPostScheduleStore.close` — should write CLOSED and EXPIRED to the real database
+- [x] [정상] `notifyUnderfilled` — should publish a JOB_POST_UNDERFILLED notification to the employer when an OPEN post starts within the lead time and is under-filled
+- [x] [정상] `notifyUnderfilled` — should tell the employer the 연장·삭제·유지 choices and link to the post
+- [x] [정상] `notifyUnderfilled` — should publish nothing on a second run over the same post
+- [x] [정상] `notifyUnderfilled` — should leave the notified post OPEN and undeleted so no answer means keeping it
+- [x] [정상] `notifyUnderfilled` — should report skippedByLock and publish nothing when the lock is held elsewhere
+- [x] [정상] `notifyUnderfilled` — should release the lock when it finishes
+- [x] [정상] `closeStarted` — should close a post whose seats are full when its start time has passed
+- [x] [정상] `closeStarted` — should expire an under-filled post when its start time has passed
+- [x] [정상] `closeStarted` — should report skippedByLock and change no status when the lock is held elsewhere
+- [x] [정상] `PrismaJobPostScheduleStore.findUnderfilled` — should return only the OPEN, under-filled, unnotified posts inside the window from the real database
+- [x] [정상] `PrismaJobPostScheduleStore.close` — should write CLOSED and EXPIRED to the real database
 
 ### 경계
 
-- [ ] [경계] `notifyUnderfilled` — should notify a post whose start is exactly the lead time away
-- [ ] [경계] `notifyUnderfilled` — should not notify a post whose start is one second beyond the lead time
-- [ ] [경계] `notifyUnderfilled` — should not notify a post whose seats are already full
-- [ ] [경계] `notifyUnderfilled` — should publish nothing when another runner claimed the post first
-- [ ] [경계] `notifyUnderfilled` — should report the post as notified without closing or expiring it
-- [ ] [경계] `closeStarted` — should close a post exactly at its start time
-- [ ] [경계] `closeStarted` — should leave a post OPEN one second before its start time
-- [ ] [경계] `closeStarted` — should expire a post nobody was accepted for
-- [ ] [경계] `closeStarted` — should expire a notified post that got no response once its start time passes
-- [ ] [경계] `canTransition` — should allow EXPIRED to COMPLETED so accepted workers can still be paid
-- [ ] [경계] `PostgresJobLock` — should refuse the second runner while the first holds the job key
-- [ ] [경계] `PrismaJobPostScheduleStore.markNotified` — should hand the post to only one of two runs
+- [x] [경계] `notifyUnderfilled` — should notify a post whose start is exactly the lead time away
+- [x] [경계] `notifyUnderfilled` — should not notify a post whose start is one second beyond the lead time
+- [x] [경계] `notifyUnderfilled` — should not notify a post whose seats are already full
+- [x] [경계] `notifyUnderfilled` — should publish nothing when another runner claimed the post first
+- [x] [경계] `notifyUnderfilled` — should report the post as notified without closing or expiring it
+- [x] [경계] `closeStarted` — should close a post exactly at its start time
+- [x] [경계] `closeStarted` — should leave a post OPEN one second before its start time
+- [x] [경계] `closeStarted` — should expire a post nobody was accepted for
+- [x] [경계] `closeStarted` — should expire a notified post that got no response once its start time passes
+- [x] [경계] `canTransition` — should allow EXPIRED to COMPLETED so accepted workers can still be paid
+- [x] [경계] `PostgresJobLock` — should refuse the second runner while the first holds the job key
+- [x] [경계] `PrismaJobPostScheduleStore.markNotified` — should hand the post to only one of two runs
 
 ### 예외
 
-- [ ] [예외] `notifyUnderfilled` — should keep publishing to the rest when one publish fails
-- [ ] [예외] `closeStarted` — should release the lock even when the store throws
+- [x] [예외] `notifyUnderfilled` — should keep publishing to the rest when one publish fails
+- [x] [예외] `closeStarted` — should release the lock even when the store throws
 
 ---
 
