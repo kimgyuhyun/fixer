@@ -22,11 +22,14 @@ import {
   completeJobPostRequestSchema,
   completionSummarySchema,
   markNoShowRequestSchema,
+  reacceptDiffSchema,
+  reacceptRequestSchema,
   rejectApplicationRequestSchema,
   type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationSummary,
   type CompletionSummary,
+  type ReacceptDiff,
 } from '@fixer/shared';
 import { z, ZodError } from 'zod';
 import { ApplicationError, ApplicationService } from './application.service';
@@ -150,6 +153,59 @@ export class ApplicationController {
     }
   }
 
+  /** 재동의 대기 화면이 그릴 변경 전/후 (#22 AC1) */
+  @Get(':id/version-diff')
+  async versionDiff(
+    @Param('id') id: string,
+    @Query() query: unknown,
+  ): Promise<ReacceptDiff> {
+    try {
+      const { applicantId } = reacceptRequestSchema.parse(query ?? {});
+      return reacceptDiffSchema.parse(
+        await this.service.versionDiff({ applicantId, applicationId: id }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
+  /** 신청자가 바뀐 조건에 다시 동의한다 (#22 AC2·AC3) */
+  @Post(':id/reaccept')
+  @HttpCode(HttpStatus.OK)
+  async reaccept(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ApplicationSummary> {
+    try {
+      const { applicantId } = reacceptRequestSchema.parse(body ?? {});
+      return applicationSummarySchema.parse(
+        await this.service.reaccept({ applicantId, applicationId: id }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
+  /** 신청자가 바뀐 조건을 거절한다. **경고가 쌓이지 않는다** (#22 AC4) */
+  @Post(':id/decline')
+  @HttpCode(HttpStatus.OK)
+  async decline(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ApplicationSummary> {
+    try {
+      const { applicantId } = reacceptRequestSchema.parse(body ?? {});
+      return applicationSummarySchema.parse(
+        await this.service.declineVersionChange({
+          applicantId,
+          applicationId: id,
+        }),
+      );
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  }
+
   /** 구인자가 업무 완료를 확인한다 (#23) */
   @Post('complete')
   @HttpCode(HttpStatus.OK)
@@ -230,6 +286,8 @@ const MESSAGES: Record<ApplicationErrorCode, string> = {
     '지금 상태에서는 완료 확인을 할 수 없습니다.',
   [APPLICATION_ERRORS.WORK_NOT_STARTED]:
     '근무 시작 전에는 노쇼로 표시할 수 없습니다.',
+  [APPLICATION_ERRORS.JOB_POST_VERSION_NOT_FOUND]:
+    '바뀐 조건을 불러올 수 없습니다.',
 };
 
 function toHttpError(error: unknown): unknown {

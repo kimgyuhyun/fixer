@@ -1,6 +1,7 @@
 import {
   APPLICATION_ERRORS,
   JOB_POST_ERRORS,
+  type JobPostVersionSnapshot,
   type PenaltyReason,
 } from '@fixer/shared';
 import { describe, expect, it } from 'vitest';
@@ -69,10 +70,32 @@ type PenaltyRow = {
   jobPostId: string;
 };
 
+/** v1 스냅샷. 재동의 화면의 왼쪽에 오는 "내가 동의했던 조건" (#22) */
+const V1: JobPostVersionSnapshot = {
+  version: 1,
+  workAddress: '서울특별시 강남구 테헤란로 1',
+  workStartAt: '2026-01-01T09:00:00.000Z',
+  workEndAt: '2026-01-01T18:00:00.000Z',
+  headcount: 2,
+  rewardPerPerson: 10_000,
+  requiredDescription: '창고 정리',
+};
+
+/** v2 스냅샷. **보상금 하나만 달라졌다** — diff가 그 하나만 짚어야 한다 */
+const V2: JobPostVersionSnapshot = {
+  ...V1,
+  version: 2,
+  rewardPerPerson: 12_000,
+};
+
 class FakeJobPosts implements JobPostReader {
   private deleted = false;
 
-  constructor(private readonly row: PostRow | null) {}
+  constructor(
+    private readonly row: PostRow | null,
+    /** 버전별 계약 원본. 없는 버전을 물으면 null이다 (#22) */
+    private readonly snapshots: readonly JobPostVersionSnapshot[] = [V1, V2],
+  ) {}
 
   /** 소프트 삭제된 공고는 **못 찾은 것으로 다룬다** (#14) */
   softDelete(): void {
@@ -84,6 +107,18 @@ class FakeJobPosts implements JobPostReader {
       return Promise.resolve(null);
     }
     return Promise.resolve(this.row);
+  }
+
+  findVersionSnapshot(
+    jobPostId: string,
+    version: number,
+  ): Promise<JobPostVersionSnapshot | null> {
+    if (this.row === null || this.row.id !== jobPostId) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(
+      this.snapshots.find((s) => s.version === version) ?? null,
+    );
   }
 }
 
@@ -143,6 +178,7 @@ class FakeStore implements ApplicationStore {
       status: 'APPLIED',
       appliedVersion: input.appliedVersion,
       acceptedAt: null,
+      previousStatus: null,
       // 행마다 다른 시각. 목록 정렬(#18)을 검사하려면 같은 값이면 안 된다.
       createdAt: new Date(Date.UTC(2026, 8, 5, 0, 0, this.seq)),
     };
@@ -329,6 +365,40 @@ class FakeStore implements ApplicationStore {
     return Promise.resolve({ ...row });
   }
 
+  /**
+   * 재동의. **두 문장을 함께 흉내 낸다** (#22, `ADR-APP-1`).
+   *
+   * `PENDING_REACCEPT`가 아니면 `'STALE'`, 자리가 없으면 `'FULL'`이고
+   * **둘 다 카운터도 상태도 건드리지 않는다** — 진짜 트랜잭션이 하는 일이다.
+   */
+  reaccept(input: {
+    applicationId: string;
+    jobPostId: string;
+    previousStatus: 'APPLIED' | 'ACCEPTED';
+    appliedVersion: number;
+  }): Promise<ApplicationRecord | 'STALE' | 'FULL'> {
+    const row = this.rows.find((r) => r.id === input.applicationId);
+    if (row === undefined || row.status !== 'PENDING_REACCEPT') {
+      return Promise.resolve('STALE');
+    }
+
+    const takesSeat = input.previousStatus === 'ACCEPTED';
+    if (
+      takesSeat &&
+      this.post !== null &&
+      this.post.acceptedCount >= this.post.headcount
+    ) {
+      return Promise.resolve('FULL');
+    }
+
+    row.status = input.previousStatus;
+    row.appliedVersion = input.appliedVersion;
+    row.previousStatus = null;
+    if (takesSeat && this.post !== null) this.post.acceptedCount += 1;
+
+    return Promise.resolve({ ...row });
+  }
+
   listByJobPost(
     jobPostId: string,
     statuses: readonly ApplicationRecord['status'][],
@@ -371,6 +441,7 @@ class SpyPublisher implements NotificationPublisher {
 function makeService(
   post: PostRow | null = openPost(),
   profiles: Record<string, ApplicantProfile> = {},
+  snapshots: readonly JobPostVersionSnapshot[] = [V1, V2],
 ): {
   service: ApplicationService;
   store: FakeStore;
@@ -381,7 +452,7 @@ function makeService(
   // 저장소가 공고 행을 함께 본다. 수락이 신청과 카운터를 **함께** 바꾸므로
   // 둘을 다른 객체에 두면 트랜잭션의 전부-아니면-전무를 흉내 낼 수 없다.
   const store = new FakeStore(post);
-  const jobPosts = new FakeJobPosts(post);
+  const jobPosts = new FakeJobPosts(post, snapshots);
   const notifications = new SpyPublisher();
   return {
     service: new ApplicationService(
@@ -776,6 +847,7 @@ describe('accept', () => {
       status: 'APPLIED',
       appliedVersion: 1,
       acceptedAt: null,
+      previousStatus: null,
       createdAt: new Date(Date.UTC(2026, 8, 5)),
     });
 
@@ -1692,5 +1764,256 @@ describe('markNoShow', () => {
     await expect(
       service.markNoShow({ employerId: EMPLOYER, applicationId: id }),
     ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
+  });
+});
+/**
+ * #21이 내려놓은 상태를 만든다.
+ *
+ * 공고 버전이 하나 오르고 신청은 `PENDING_REACCEPT`로 내려가며, 내려가기 전
+ * 상태가 `previousStatus`에 적힌다 (`ADR-APP-3`). `ACCEPTED`였으면 확정
+ * 인원에서도 빠진다 (`ADR-APP-2`).
+ */
+async function seedDemoted(
+  service: ApplicationService,
+  store: FakeStore,
+  post: PostRow,
+  previous: 'APPLIED' | 'ACCEPTED',
+): Promise<{ id: string }> {
+  const { id } =
+    previous === 'ACCEPTED'
+      ? await seedAccepted(service, store, 1)
+      : await seedApplied(service);
+
+  const row = store.rows.find((r) => r.id === id);
+  if (row === undefined) throw new Error('내려보낼 신청이 없다');
+
+  post.version += 1;
+  row.status = 'PENDING_REACCEPT';
+  row.previousStatus = previous;
+  if (previous === 'ACCEPTED') post.acceptedCount -= 1;
+
+  return { id };
+}
+
+describe('versionDiff', () => {
+  it('should return the applied-version snapshot as before and the current-version snapshot as after', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+
+    const diff = await service.versionDiff({
+      applicantId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(diff.before).toEqual(V1);
+    expect(diff.after).toEqual(V2);
+  });
+
+  // 보상금 하나만 달라졌다. 전부 나열하면 화면이 안 바뀐 값도 바뀐 것으로 그린다.
+  it('should name only the required fields whose values differ', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+
+    const diff = await service.versionDiff({
+      applicantId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(diff.changedFields).toEqual(['rewardPerPerson']);
+  });
+
+  // diff는 계약 내용이다. id만 알면 남이 무슨 조건에 동의했는지 읽히면 안 된다.
+  it('should reject when the application belongs to another applicant', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+
+    await expect(
+      service.versionDiff({ applicantId: 'usr_other', applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_OWNED });
+  });
+
+  it('should reject when the application is not PENDING_REACCEPT', async () => {
+    const { service } = makeService();
+    const { id } = await seedApplied(service);
+
+    await expect(
+      service.versionDiff({ applicantId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  // 왼쪽이 없으면 무엇에서 무엇으로 바뀌었는지 말할 수 없다. 빈 값을 그리지 않는다.
+  it('should report JOB_POST_VERSION_NOT_FOUND when the applied-version snapshot is missing', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post, {}, [V2]);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+
+    await expect(
+      service.versionDiff({ applicantId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({
+      code: APPLICATION_ERRORS.JOB_POST_VERSION_NOT_FOUND,
+    });
+  });
+});
+
+describe('reaccept', () => {
+  it('should return an application demoted from APPLIED back to APPLIED', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+
+    const result = await service.reaccept({
+      applicantId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('APPLIED');
+  });
+
+  // 갱신하지 않으면 다음 조회에서 또 재동의 대기가 된다.
+  it('should stamp the current job post version as the applied version', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+
+    const result = await service.reaccept({
+      applicantId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(result.appliedVersion).toBe(2);
+  });
+
+  // 지원자는 자리를 차지한 적이 없다. 여기서 올리면 아무도 안 쓴 자리가 찬다.
+  it('should leave acceptedCount alone when the previous status was APPLIED', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+
+    await service.reaccept({ applicantId: APPLICANT, applicationId: id });
+
+    expect(post.acceptedCount).toBe(0);
+  });
+
+  // 재동의 버튼 연타의 두 번째. 조용히 성공하면 카운터가 두 번 올라간다.
+  it('should reject a second reaccept on the same application', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'ACCEPTED');
+    await service.reaccept({ applicantId: APPLICANT, applicationId: id });
+
+    await expect(
+      service.reaccept({ applicantId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  // ADR-APP-3의 컬럼이 비어 있으면 무엇으로 되돌릴지 알 수 없다.
+  it('should reject when the demoted application carries no previous status', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+    const row = store.rows.find((r) => r.id === id);
+    if (row === undefined) throw new Error('신청이 없다');
+    row.previousStatus = null;
+
+    await expect(
+      service.reaccept({ applicantId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  // AC3. APPLIED로 고정하면 구인자가 이미 고른 사람을 다시 고르게 된다.
+  it('should return an application demoted from ACCEPTED back to ACCEPTED', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'ACCEPTED');
+
+    const result = await service.reaccept({
+      applicantId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('ACCEPTED');
+  });
+
+  it('should raise acceptedCount by one when the previous status was ACCEPTED', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'ACCEPTED');
+
+    await service.reaccept({ applicantId: APPLICANT, applicationId: id });
+
+    expect(post.acceptedCount).toBe(1);
+  });
+
+  // 기다리는 사이 구인자가 그 자리를 다른 사람으로 채웠다. 정원 초과는 막는다 (§4.4).
+  it('should refuse with HEADCOUNT_FULL and hold the application at PENDING_REACCEPT when the seats filled while it waited', async () => {
+    const post = openPost({ headcount: 2 });
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'ACCEPTED');
+    post.acceptedCount = post.headcount;
+
+    await expect(
+      service.reaccept({ applicantId: APPLICANT, applicationId: id }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.HEADCOUNT_FULL });
+    expect(store.rows.find((r) => r.id === id)?.status).toBe(
+      'PENDING_REACCEPT',
+    );
+  });
+});
+
+describe('declineVersionChange', () => {
+  it('should move the application to CANCELLED_BY_VERSION_CHANGE', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'ACCEPTED');
+
+    const result = await service.declineVersionChange({
+      applicantId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('CANCELLED_BY_VERSION_CHANGE');
+  });
+
+  // ADR-APP-2가 내려갈 때 이미 줄였다. 또 줄이면 같은 자리가 두 번 빈다.
+  it('should leave acceptedCount alone because the demotion already lowered it', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'ACCEPTED');
+
+    await service.declineVersionChange({
+      applicantId: APPLICANT,
+      applicationId: id,
+    });
+
+    expect(post.acceptedCount).toBe(0);
+  });
+
+  it('should reject when the application is not PENDING_REACCEPT', async () => {
+    const { service } = makeService();
+    const { id } = await seedApplied(service);
+
+    await expect(
+      service.declineVersionChange({
+        applicantId: APPLICANT,
+        applicationId: id,
+      }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.INVALID_TRANSITION });
+  });
+
+  // 남의 신청을 대신 접을 수 있으면 안 된다.
+  it('should reject when the application belongs to another applicant', async () => {
+    const post = openPost();
+    const { service, store } = makeService(post);
+    const { id } = await seedDemoted(service, store, post, 'APPLIED');
+
+    await expect(
+      service.declineVersionChange({
+        applicantId: 'usr_other',
+        applicationId: id,
+      }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.NOT_OWNED });
   });
 });

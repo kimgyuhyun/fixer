@@ -7,6 +7,7 @@ import {
 } from '@fixer/shared';
 import { useEffect, useState } from 'react';
 import styles from './ApplyPanel.module.css';
+import { ReacceptPanel } from './ReacceptPanel';
 
 /** 상태를 사람 말로. 코드가 그대로 보이면 무슨 뜻인지 알 수 없다 */
 const STATUS_LABELS: Record<ApplicationStatus, string> = {
@@ -116,6 +117,15 @@ export function ApplyPanel({
 
       {status !== null && (
         <p className={styles.status}>{STATUS_LABELS[status]}</p>
+      )}
+
+      {/* 재동의 대기면 무엇이 바뀌었는지부터 보여준다 (#22 AC1) */}
+      {mine !== null && status === 'PENDING_REACCEPT' && (
+        <ReacceptPanel
+          applicationId={mine.id}
+          applicantId={applicantId}
+          onSettled={setMine}
+        />
       )}
 
       {canApply && (
