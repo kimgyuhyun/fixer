@@ -10,6 +10,7 @@ import { NotificationModule } from './notification/notification.module';
 import { HealthModule } from './health/health.module';
 import { ExchangeModule } from './exchange/exchange.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RatingModule } from './rating/rating.module';
 import { RetentionModule } from './retention/retention.module';
 
 @Module({
@@ -31,6 +32,7 @@ import { RetentionModule } from './retention/retention.module';
     ExchangeModule,
     NotificationModule,
     AdminModule,
+    RatingModule,
   ],
 })
 export class AppModule {}

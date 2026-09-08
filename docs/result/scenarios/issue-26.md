@@ -321,8 +321,8 @@ export function MemberRating({
 
 ### 경계
 
-- [ ] [경계] `rateRequestSchema` — should accept a score of exactly 1
-- [ ] [경계] `rateRequestSchema` — should accept a score of exactly 5
+- [ ] [경계] `rate` — should store a score of exactly 1
+- [ ] [경계] `rate` — should store a score of exactly 5
 - [ ] [경계] `summaryOf` — should report a null average and a zero count when the member was never rated
 - [ ] [경계] `summaryOf` — should report a count of 2 while the average is still hidden by the display rule
 - [ ] [경계] `summaryOf` — should keep the two roles apart when the member was rated in both roles
@@ -335,9 +335,9 @@ export function MemberRating({
 ### 예외
 
 - [ ] [예외] `rateeOf` — should return null when the rater is neither party of the transaction
-- [ ] [예외] `rateRequestSchema` — should reject a score below 1
-- [ ] [예외] `rateRequestSchema` — should reject a score above 5
-- [ ] [예외] `rateRequestSchema` — should reject a fractional score
+- [ ] [예외] `rate` — should reject a score below 1
+- [ ] [예외] `rate` — should reject a score above 5
+- [ ] [예외] `rate` — should reject a fractional score
 - [ ] [예외] `rate` — should throw RATING_ALREADY_RATED when the same rater rates the same transaction twice
 - [ ] [예외] `rate` — should throw RATING_NOT_COMPLETED when the transaction is still ACCEPTED
 - [ ] [예외] `rate` — should throw RATING_NOT_COMPLETED when the transaction ended as NO_SHOW
@@ -363,8 +363,9 @@ export function MemberRating({
 
 **AC에 없는데 추가한 시나리오** — 넷 다 `spec-fixed.md`가 요구하는 것이고 AC 문장만 없다.
 
-- `[경계] rateRequestSchema — 1 / 5 / 소수 / 범위 밖` — §7의 "별점 1~5"를 지키는 유일한 자리다.
-  범위를 안 막으면 별 100개짜리 평점이 평균에 섞인다
+- `[경계]·[예외] rate — 1 / 5 / 소수 / 범위 밖` — §7의 "별점 1~5"를 지키는 유일한 자리다.
+  범위를 안 막으면 별 100개짜리 평점이 평균에 섞인다. **스키마를 직접 부르지 않고
+  서비스를 통해 본다** — 스키마만 보는 테스트는 stub 상태에서도 통과해서 빨간불을 못 만든다
 - `[예외] rate — RATING_NOT_PARTICIPANT` — §7이 "거래에 한해"라고 썼다. 당사자 판정이 없으면
   아무나 남의 평점을 올리고 내릴 수 있다
 - `[예외] summaryOf — RATING_USER_NOT_FOUND` — 없는 회원에 0건을 돌려주면 화면이
