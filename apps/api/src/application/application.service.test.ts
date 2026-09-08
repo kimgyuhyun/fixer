@@ -847,6 +847,7 @@ describe('accept', () => {
       status: 'APPLIED',
       appliedVersion: 1,
       acceptedAt: null,
+      previousStatus: null,
       createdAt: new Date(Date.UTC(2026, 8, 5)),
     });
 

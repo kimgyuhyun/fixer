@@ -3,7 +3,7 @@
 > GitHub: https://github.com/Ikara777/fixer/issues/22
 > PRD: `docs/result/prd/application.md`
 > 담당: B (김규현)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: 구현 완료 (Green)
 
 ---
 
@@ -201,47 +201,47 @@ interface ReacceptPanelProps {
 
 ### 정상
 
-- [ ] [정상] `versionDiff` — should return the applied-version snapshot as before and the current-version snapshot as after
-- [ ] [정상] `versionDiff` — should name only the required fields whose values differ
-- [ ] [정상] `reaccept` — should return an application demoted from APPLIED back to APPLIED
-- [ ] [정상] `reaccept` — should stamp the current job post version as the applied version
-- [ ] [정상] `reaccept` — should return an application demoted from ACCEPTED back to ACCEPTED
-- [ ] [정상] `reaccept` — should raise acceptedCount by one when the previous status was ACCEPTED
-- [ ] [정상] `declineVersionChange` — should move the application to CANCELLED_BY_VERSION_CHANGE
+- [x] [정상] `versionDiff` — should return the applied-version snapshot as before and the current-version snapshot as after
+- [x] [정상] `versionDiff` — should name only the required fields whose values differ
+- [x] [정상] `reaccept` — should return an application demoted from APPLIED back to APPLIED
+- [x] [정상] `reaccept` — should stamp the current job post version as the applied version
+- [x] [정상] `reaccept` — should return an application demoted from ACCEPTED back to ACCEPTED
+- [x] [정상] `reaccept` — should raise acceptedCount by one when the previous status was ACCEPTED
+- [x] [정상] `declineVersionChange` — should move the application to CANCELLED_BY_VERSION_CHANGE
 
 ### 경계
 
-- [ ] [경계] `reaccept` — should leave acceptedCount alone when the previous status was APPLIED
-- [ ] [경계] `reaccept` — should refuse with HEADCOUNT_FULL and hold the application at PENDING_REACCEPT when the seats filled while it waited
-- [ ] [경계] `declineVersionChange` — should leave acceptedCount alone because the demotion already lowered it
+- [x] [경계] `reaccept` — should leave acceptedCount alone when the previous status was APPLIED
+- [x] [경계] `reaccept` — should refuse with HEADCOUNT_FULL and hold the application at PENDING_REACCEPT when the seats filled while it waited
+- [x] [경계] `declineVersionChange` — should leave acceptedCount alone because the demotion already lowered it
 
 ### 예외
 
-- [ ] [예외] `versionDiff` — should reject when the application belongs to another applicant
-- [ ] [예외] `versionDiff` — should reject when the application is not PENDING_REACCEPT
-- [ ] [예외] `versionDiff` — should report JOB_POST_VERSION_NOT_FOUND when the applied-version snapshot is missing
-- [ ] [예외] `reaccept` — should reject a second reaccept on the same application
-- [ ] [예외] `reaccept` — should reject when the demoted application carries no previous status
-- [ ] [예외] `declineVersionChange` — should reject when the application is not PENDING_REACCEPT
-- [ ] [예외] `declineVersionChange` — should reject when the application belongs to another applicant
+- [x] [예외] `versionDiff` — should reject when the application belongs to another applicant
+- [x] [예외] `versionDiff` — should reject when the application is not PENDING_REACCEPT
+- [x] [예외] `versionDiff` — should report JOB_POST_VERSION_NOT_FOUND when the applied-version snapshot is missing
+- [x] [예외] `reaccept` — should reject a second reaccept on the same application
+- [x] [예외] `reaccept` — should reject when the demoted application carries no previous status
+- [x] [예외] `declineVersionChange` — should reject when the application is not PENDING_REACCEPT
+- [x] [예외] `declineVersionChange` — should reject when the application belongs to another applicant
 
 ### 컨트롤러
 
-- [ ] [정상] `GET /applications/:id/version-diff` — should answer the diff of the applicant's demoted application
-- [ ] [정상] `POST /applications/:id/reaccept` — should answer the restored application summary
-- [ ] [정상] `POST /applications/:id/decline` — should answer the cancelled application summary
+- [x] [정상] `GET /applications/:id/version-diff` — should answer the diff of the applicant's demoted application
+- [x] [정상] `POST /applications/:id/reaccept` — should answer the restored application summary
+- [x] [정상] `POST /applications/:id/decline` — should answer the cancelled application summary
 
 ### 통합 (실제 DB)
 
-- [ ] [정상] `reaccept` — should restore status, appliedVersion and acceptedCount together in the database
-- [ ] [경계] `reaccept` — should change nothing in the database when the seats are already full
-- [ ] [정상] `declineVersionChange` — should leave no Penalty row and hold acceptedCount in the database
+- [x] [정상] `reaccept` — should restore status, appliedVersion and acceptedCount together in the database
+- [x] [경계] `reaccept` — should change nothing in the database when the seats are already full
+- [x] [정상] `declineVersionChange` — should leave no Penalty row and hold acceptedCount in the database
 
 ### 화면
 
-- [ ] [정상] `ApplyPanel` — should show the before and after value of every changed field when the application is PENDING_REACCEPT
-- [ ] [정상] `ReacceptPanel` — should send the reaccept request when 재동의 is pressed
-- [ ] [정상] `ReacceptPanel` — should send the decline request when 거절 is pressed
+- [x] [정상] `ApplyPanel` — should show the before and after value of every changed field when the application is PENDING_REACCEPT
+- [x] [정상] `ReacceptPanel` — should send the reaccept request when 재동의 is pressed
+- [x] [정상] `ReacceptPanel` — should send the decline request when 거절 is pressed
 
 ---
 
