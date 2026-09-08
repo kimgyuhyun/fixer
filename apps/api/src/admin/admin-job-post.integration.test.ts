@@ -60,6 +60,9 @@ beforeAll(async () => {
     // 재동의 알림(#21)은 이 파일의 관심사가 아니다. 여기서 보는 것은
     // 관리자 강제 취소이고, 그 경로는 공고를 수정하지 않는다.
     { publish: () => Promise.resolve() },
+    // 제재 판정(#25)도 마찬가지다. 이 파일은 공고를 준비물로 만들 뿐이라
+    // 제재 없는 회원으로 고정한다.
+    { findActive: () => Promise.resolve(null) },
   );
   roles = new PrismaRoleReader(as);
   admin = new AdminJobPostService(new PrismaAdminJobPostStore(as), store, {

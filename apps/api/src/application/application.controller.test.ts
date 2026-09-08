@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { HttpException } from '@nestjs/common';
-import { APPLICATION_ERRORS } from '@fixer/shared';
+import { APPLICATION_ERRORS, PENALTY_ERRORS } from '@fixer/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { ApplicationController } from './application.controller';
 import {
@@ -385,6 +385,24 @@ describe('POST /applications/:id/no-show', () => {
     expect(statusOf(error)).toBe(400);
   });
 });
+
+/** 제재 중 차단은 403이다. 며칠짜리라 다시 눌러도 소용없다 (#25 AC4) */
+describe('POST /applications — 제재 중 (#25)', () => {
+  it('should answer 403 with PENALTY_SUSPENDED when the applicant is suspended', async () => {
+    const controller = controllerWith({
+      apply: vi
+        .fn()
+        .mockRejectedValue(new ApplicationError(PENALTY_ERRORS.SUSPENDED)),
+    });
+
+    const error = await rejectionOf(
+      controller.apply({ applicantId: 'usr_seeker', jobPostId: 'job_1' }),
+    );
+
+    expect(statusOf(error)).toBe(403);
+  });
+});
+
 /** 재동의 대기 화면이 받는 변경 전/후 한 벌 (#22) */
 const DIFF = {
   applicationId: 'app_1',

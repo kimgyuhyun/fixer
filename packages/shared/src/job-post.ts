@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PENALTY_ERRORS } from './penalty.js';
 import { CHARGE_UNIT } from './payment.js';
 
 /** 공고 상태. (`spec-fixed.md` §3.3) */
@@ -99,6 +100,8 @@ export const JOB_POST_ERRORS = {
   NOT_EDITABLE: 'JOB_POST_NOT_EDITABLE',
   /** 그 버전의 스냅샷이 없다 (#15) */
   VERSION_NOT_FOUND: 'JOB_POST_VERSION_NOT_FOUND',
+  /** 제재 중이라 공고를 올릴 수 없다 (#25 AC3). **제재 도메인의 코드를 재사용한다** */
+  SUSPENDED: PENALTY_ERRORS.SUSPENDED,
 } as const;
 
 export type JobPostErrorCode =

@@ -51,6 +51,9 @@ beforeAll(async () => {
     // 이 파일은 알림을 검사하지 않는다. 진짜 저장소를 끼우면 Notification
     // 테이블까지 정리해야 하므로 삼키는 포트를 쓴다 (#19).
     { publish: () => Promise.resolve() },
+    // 제재 판정은 이 파일의 관심사가 아니다. 진짜 쿼리를 끼워 두면 #25의
+    // 판정까지 여기서 검증하게 된다 — 그건 penalty.integration.test.ts다.
+    { findActive: () => Promise.resolve(null) },
   );
 }, 180_000);
 
@@ -60,6 +63,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  await prisma.suspension.deleteMany();
   await prisma.application.deleteMany();
   await prisma.pointTransaction.deleteMany();
   await prisma.penalty.deleteMany();

@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { JOB_POST_ERRORS } from '@fixer/shared';
+import { JOB_POST_ERRORS, PENALTY_ERRORS } from '@fixer/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { JobPostController } from './job-post.controller';
 import { JobPostError, type JobPostService } from './job-post.service';
@@ -438,5 +438,21 @@ describe('POST /job-posts/:id/cancel', () => {
     );
 
     expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
+  });
+});
+
+/** 제재 중 차단은 403이다. 며칠짜리라 다시 눌러도 소용없다 (#25 AC3) */
+describe('POST /job-posts — 제재 중 (#25)', () => {
+  it('should answer 403 with PENALTY_SUSPENDED when the employer is suspended', async () => {
+    const controller = controllerWith({
+      create: vi
+        .fn()
+        .mockRejectedValue(new JobPostError(PENALTY_ERRORS.SUSPENDED)),
+    });
+
+    const error = await rejectionOf(controller.create(VALID_BODY));
+
+    expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
+    expect(bodyOf(error).errorCode).toBe(PENALTY_ERRORS.SUSPENDED);
   });
 });

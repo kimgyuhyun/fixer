@@ -286,6 +286,7 @@ const MESSAGES: Record<ApplicationErrorCode, string> = {
     '지금 상태에서는 완료 확인을 할 수 없습니다.',
   [APPLICATION_ERRORS.WORK_NOT_STARTED]:
     '근무 시작 전에는 노쇼로 표시할 수 없습니다.',
+  [APPLICATION_ERRORS.SUSPENDED]: '제재 중에는 지원할 수 없습니다.',
   [APPLICATION_ERRORS.JOB_POST_VERSION_NOT_FOUND]:
     '바뀐 조건을 불러올 수 없습니다.',
 };
@@ -313,7 +314,9 @@ function toHttpError(error: unknown): unknown {
       error.code === APPLICATION_ERRORS.OWN_JOB_POST ||
       error.code === APPLICATION_ERRORS.NOT_OWNED ||
       error.code === APPLICATION_ERRORS.NOT_EMPLOYER ||
-      error.code === APPLICATION_ERRORS.NOT_PARTICIPANT
+      error.code === APPLICATION_ERRORS.NOT_PARTICIPANT ||
+      // 며칠짜리라 다시 눌러도 소용없다. 409가 아니라 403이다 (#25).
+      error.code === APPLICATION_ERRORS.SUSPENDED
     ) {
       // 없다고 하지 않는다. 지원할 수 없는 이유만 말한다.
       return new ForbiddenException(body);

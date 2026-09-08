@@ -16,6 +16,7 @@ import {
   PrismaMemberAddressReader,
 } from './prisma-job-post.store';
 import { lockedAmountFor } from '../point/job-post-lock';
+import { PrismaSuspensionReader } from '../penalty/suspension.reader';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -51,6 +52,8 @@ beforeAll(async () => {
     new NotificationService(
       new PrismaNotificationStore(prisma as unknown as PrismaService),
     ),
+    // 진짜 판정 쿼리를 쓴다. 끝난 제재를 걸러 내는 것이 §5.1의 부등호다 (#25)
+    new PrismaSuspensionReader(prisma as unknown as PrismaService),
   );
 }, 180_000);
 
@@ -61,6 +64,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   await prisma.notification.deleteMany();
+  await prisma.suspension.deleteMany();
   await prisma.application.deleteMany();
   await prisma.penalty.deleteMany();
   await prisma.jobPostVersion.deleteMany();
@@ -1033,5 +1037,29 @@ describe('재동의 전환 — 진짜 Postgres에서 (#21)', () => {
       'ACCEPTED',
       'PENDING_REACCEPT',
     ]);
+  });
+});
+
+/**
+ * 제재는 끝나면 저절로 풀린다. (이슈 #25 AC6, `spec-fixed.md` §8.1)
+ *
+ * **해제 배치가 없으므로** 조회 시점 판정이 끝난 제재를 걸러 내지 못하면
+ * 그 회원은 영영 공고를 못 올린다.
+ */
+describe('공고 등록 — 제재가 끝난 회원 (#25 AC6)', () => {
+  it("should create the job post when the member's suspension already ended", async () => {
+    const categoryId = await seedCategory();
+    const employerId = await seedEmployer(500_000);
+    await prisma.suspension.create({
+      data: {
+        userId: employerId,
+        startAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        endAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const created = await service.create(employerId, request(categoryId));
+
+    expect(created.status).toBe('OPEN');
   });
 });

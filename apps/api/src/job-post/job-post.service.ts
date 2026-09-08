@@ -22,6 +22,7 @@ import {
   type UpdateJobPostRequest,
 } from '@fixer/shared';
 import type { NotificationPublisher } from '../notification/notification.service';
+import type { SuspensionReader } from '../penalty/suspension.reader';
 
 /** 공고가 던지는 도메인 에러 */
 export class JobPostError extends Error {
@@ -236,6 +237,8 @@ export class JobPostService {
      * 포트만 본다 — 이 도메인은 알림이 인앱인지 메일인지 모른다 (ADR-NOT-1).
      */
     private readonly notifications: NotificationPublisher,
+    /** 제재 중인지 묻는다 (#25 AC3). 공고 등록을 막는 유일한 조건이다 */
+    private readonly suspensions: SuspensionReader,
   ) {}
 
   async create(
@@ -244,6 +247,18 @@ export class JobPostService {
   ): Promise<JobPostSummary> {
     // 검증이 가장 먼저다. 형식이 틀린 요청은 저장소도 원장도 건드리지 않는다.
     const parsed = createJobPostRequestSchema.parse(input);
+
+    // 제재 중에는 새 공고를 올릴 수 없다 (#25 AC3). 주소를 읽거나 돈을
+    // 잠그기 전에 막는다 — 막힐 요청이 원장을 건드릴 이유가 없다.
+    const suspension = await this.suspensions.findActive(
+      employerId,
+      new Date(),
+    );
+    if (suspension !== null) {
+      throw new JobPostError(JOB_POST_ERRORS.SUSPENDED, {
+        until: suspension.endAt.toISOString(),
+      });
+    }
 
     const place = await this.resolveAddress(employerId, parsed);
     const budget = budgetOf(parsed);

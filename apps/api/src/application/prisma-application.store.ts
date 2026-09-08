@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client';
+import { recordPenalty } from '../penalty/penalty-transaction';
 import { lockedAmountFor } from '../point/job-post-lock';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -13,6 +14,7 @@ import type {
   ApplicantProfileReader,
   ApplicationRecord,
   ApplicationStore,
+  PenalizedApplication,
   JobPostForApplication,
   JobPostReader,
   SettlementResult,
@@ -161,7 +163,8 @@ export class PrismaApplicationStore implements ApplicationStore {
     jobPostId: string;
     nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
     penalty: { userId: string; reason: PenaltyReason } | null;
-  }): Promise<ApplicationRecord | 'STALE'> {
+    now: Date;
+  }): Promise<PenalizedApplication | 'STALE'> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         // **신청 전환이 먼저다.** 이미 취소된 신청이면 여기서 0행이 되어
@@ -179,21 +182,22 @@ export class PrismaApplicationStore implements ApplicationStore {
           data: { acceptedCount: { decrement: 1 } },
         });
 
-        if (input.penalty !== null) {
-          // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5).
-          await tx.penalty.create({
-            data: {
-              userId: input.penalty.userId,
-              reason: input.penalty.reason,
-              jobPostId: input.jobPostId,
-            },
-          });
-        }
+        // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5). 경고가 임계에
+        // 닿았는지도 **이 트랜잭션 안에서** 판정된다 (#25).
+        const suspension =
+          input.penalty === null
+            ? null
+            : await recordPenalty(tx, {
+                userId: input.penalty.userId,
+                reason: input.penalty.reason,
+                jobPostId: input.jobPostId,
+                now: input.now,
+              });
 
         const row = await tx.application.findUniqueOrThrow({
           where: { id: input.applicationId },
         });
-        return toRecord(row);
+        return { application: toRecord(row), suspension };
       });
     } catch (error) {
       // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.
@@ -212,7 +216,8 @@ export class PrismaApplicationStore implements ApplicationStore {
     applicationId: string;
     jobPostId: string;
     penalty: { userId: string; reason: PenaltyReason };
-  }): Promise<ApplicationRecord | 'STALE'> {
+    now: Date;
+  }): Promise<PenalizedApplication | 'STALE'> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         // **신청 전환이 먼저다.** 이미 노쇼로 찍힌 신청이면 여기서 0행이 되어
@@ -230,19 +235,19 @@ export class PrismaApplicationStore implements ApplicationStore {
           data: { acceptedCount: { decrement: 1 } },
         });
 
-        // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5).
-        await tx.penalty.create({
-          data: {
-            userId: input.penalty.userId,
-            reason: input.penalty.reason,
-            jobPostId: input.jobPostId,
-          },
+        // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5). 경고가 임계에
+        // 닿았는지도 **이 트랜잭션 안에서** 판정된다 (#25).
+        const suspension = await recordPenalty(tx, {
+          userId: input.penalty.userId,
+          reason: input.penalty.reason,
+          jobPostId: input.jobPostId,
+          now: input.now,
         });
 
         const row = await tx.application.findUniqueOrThrow({
           where: { id: input.applicationId },
         });
-        return toRecord(row);
+        return { application: toRecord(row), suspension };
       });
     } catch (error) {
       // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.

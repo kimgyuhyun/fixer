@@ -171,6 +171,14 @@ function toHttpError(error: unknown): unknown {
       });
     }
 
+    if (error.code === JOB_POST_ERRORS.SUSPENDED) {
+      // 며칠짜리라 다시 눌러도 소용없다. 409(잠시 뒤 다시)가 아니라 403이다.
+      return new ForbiddenException({
+        errorCode: error.code,
+        message: '제재 중에는 공고를 올릴 수 없습니다.',
+      });
+    }
+
     if (error.code === JOB_POST_ERRORS.NOT_OWNED) {
       // 없다고 하지 않는다. 본인 것이 아니라는 사실만 말한다.
       return new ForbiddenException({

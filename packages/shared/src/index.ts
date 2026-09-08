@@ -12,3 +12,4 @@ export * from './exchange-account.js';
 export * from './notification.js';
 export * from './admin.js';
 export * from './exchange.js';
+export * from './penalty.js';
