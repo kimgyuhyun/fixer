@@ -20,6 +20,8 @@ import {
   type PenaltyReason,
 } from '@fixer/shared';
 import type { NotificationPublisher } from '../notification/notification.service';
+import type { SuspensionRecord } from '../penalty/penalty-transaction';
+import type { SuspensionReader } from '../penalty/suspension.reader';
 
 /** 신청이 던지는 도메인 에러 */
 export class ApplicationError extends Error {
@@ -43,6 +45,18 @@ export interface ApplicationRecord {
   /** 수락 시각 (#18 AC1). 아직 수락 전이면 null */
   acceptedAt: Date | null;
   createdAt: Date;
+}
+
+/**
+ * 경고를 남기는 쓰기의 결과. (이슈 #25)
+ *
+ * **제재가 함께 생겼는지 알아야** 발생 알림을 보낼 수 있다 (§5). 판정은
+ * 경고 삽입과 같은 트랜잭션 안에서 끝나고, 알림만 그 밖으로 나온다.
+ */
+export interface PenalizedApplication {
+  application: ApplicationRecord;
+  /** 이 트랜잭션이 새로 만든 제재. 임계에 못 닿았거나 이미 제재 중이면 null */
+  suspension: SuspensionRecord | null;
 }
 
 export interface ApplicationStore {
@@ -156,7 +170,9 @@ export interface ApplicationStore {
     jobPostId: string;
     nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
     penalty: { userId: string; reason: PenaltyReason } | null;
-  }): Promise<ApplicationRecord | 'STALE'>;
+    /** 판정 기준 시각. 창(180일)을 여기서부터 되짚는다 (#25) */
+    now: Date;
+  }): Promise<PenalizedApplication | 'STALE'>;
 
   /**
    * 수락된 신청을 노쇼로 표시한다. **한 트랜잭션이다** (#24).
@@ -172,7 +188,9 @@ export interface ApplicationStore {
     applicationId: string;
     jobPostId: string;
     penalty: { userId: string; reason: PenaltyReason };
-  }): Promise<ApplicationRecord | 'STALE'>;
+    /** 판정 기준 시각. 창(180일)을 여기서부터 되짚는다 (#25) */
+    now: Date;
+  }): Promise<PenalizedApplication | 'STALE'>;
 
   /** 구인자의 지원자 목록. 오래 지원한 순 (선착순 표시지 선착순 수락은 아니다) */
   listByJobPost(
@@ -259,6 +277,8 @@ export class ApplicationService {
      * 포트만 본다 — 이 도메인은 알림이 인앱인지 메일인지 모른다 (`ADR-NOT-1`).
      */
     private readonly notifications: NotificationPublisher,
+    /** 제재 중인지 묻는다 (#25 AC4). 지원을 막는 유일한 조건이다 */
+    private readonly suspensions: SuspensionReader,
   ) {}
 
   /**
@@ -389,7 +409,8 @@ export class ApplicationService {
       });
     }
 
-    const nextStatus = resolveCancelStatus(current.acceptedAt, new Date());
+    const now = new Date();
+    const nextStatus = resolveCancelStatus(current.acceptedAt, now);
     // 표에 없는 전이는 거부된다. 이미 취소된 신청이 여기서 걸린다.
     transition(current.status, nextStatus);
 
@@ -405,6 +426,7 @@ export class ApplicationService {
               reason: byApplicant ? 'LATE_CANCEL' : 'POSTER_CANCEL',
             }
           : null,
+      now,
     });
 
     if (cancelled === 'STALE') {
@@ -416,7 +438,7 @@ export class ApplicationService {
       });
     }
 
-    return toSummary(cancelled);
+    return toSummary(cancelled.application);
   }
 
   /**
@@ -442,7 +464,8 @@ export class ApplicationService {
 
     // AC3. **아직 안 온 것과 안 나온 것은 다르다.** 근무가 시작되기 전에는
     // 나오지 않았다고 말할 수 없다.
-    if (!hasWorkStarted(post.workStartAt, new Date())) {
+    const now = new Date();
+    if (!hasWorkStarted(post.workStartAt, now)) {
       throw new ApplicationError(APPLICATION_ERRORS.WORK_NOT_STARTED, {
         workStartAt: post.workStartAt.toISOString(),
       });
@@ -455,6 +478,7 @@ export class ApplicationService {
       applicationId: current.id,
       jobPostId: post.id,
       penalty: { userId: current.applicantId, reason: 'NO_SHOW' },
+      now,
     });
 
     if (marked === 'STALE') {
@@ -466,7 +490,7 @@ export class ApplicationService {
       });
     }
 
-    return toSummary(marked);
+    return toSummary(marked.application);
   }
 
   /**

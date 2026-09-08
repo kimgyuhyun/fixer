@@ -1,6 +1,7 @@
 import {
   APPLICATION_ERRORS,
   JOB_POST_ERRORS,
+  PENALTY_ERRORS,
   type PenaltyReason,
 } from '@fixer/shared';
 import { describe, expect, it } from 'vitest';
@@ -15,8 +16,11 @@ import {
   type ApplicationRecord,
   type ApplicationStore,
   type JobPostReader,
+  type PenalizedApplication,
   type SettlementResult,
 } from './application.service';
+import type { SuspensionRecord } from '../penalty/penalty-transaction';
+import type { SuspensionReader } from '../penalty/suspension.reader';
 
 const APPLICANT = 'usr_seeker';
 const EMPLOYER = 'usr_employer';
@@ -103,6 +107,14 @@ class FakeStore implements ApplicationStore {
   readonly ledger: LedgerRow[] = [];
   /** 쌓인 경고. **지우지 않는다** — 분쟁 대응 근거다 (§5) */
   readonly penalties: PenaltyRow[] = [];
+  /**
+   * 다음 경고가 제재를 만들었다고 칠지 (#25).
+   *
+   * **판정 로직을 흉내 내지 않는다.** 창 안 몇 건인지 세는 것은 진짜 DB의
+   * 일이고(penalty.integration.test.ts), 여기서는 "제재가 생겼을 때 서비스가
+   * 알림을 보내는가"만 본다.
+   */
+  nextSuspension: SuspensionRecord | null = null;
   private seq = 0;
 
   constructor(private readonly post: PostRow | null = null) {}
@@ -285,7 +297,8 @@ class FakeStore implements ApplicationStore {
     jobPostId: string;
     nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
     penalty: { userId: string; reason: PenaltyReason } | null;
-  }): Promise<ApplicationRecord | 'STALE'> {
+    now: Date;
+  }): Promise<PenalizedApplication | 'STALE'> {
     const row = this.rows.find((r) => r.id === input.applicationId);
     if (row === undefined || row.status !== 'ACCEPTED') {
       return Promise.resolve('STALE');
@@ -300,7 +313,10 @@ class FakeStore implements ApplicationStore {
       this.penalties.push({ ...input.penalty, jobPostId: input.jobPostId });
     }
 
-    return Promise.resolve({ ...row });
+    return Promise.resolve({
+      application: { ...row },
+      suspension: input.penalty === null ? null : this.nextSuspension,
+    });
   }
 
   /**
@@ -313,7 +329,8 @@ class FakeStore implements ApplicationStore {
     applicationId: string;
     jobPostId: string;
     penalty: { userId: string; reason: PenaltyReason };
-  }): Promise<ApplicationRecord | 'STALE'> {
+    now: Date;
+  }): Promise<PenalizedApplication | 'STALE'> {
     const row = this.rows.find((r) => r.id === input.applicationId);
     if (row === undefined || row.status !== 'ACCEPTED') {
       return Promise.resolve('STALE');
@@ -326,7 +343,10 @@ class FakeStore implements ApplicationStore {
     }
     this.penalties.push({ ...input.penalty, jobPostId: input.jobPostId });
 
-    return Promise.resolve({ ...row });
+    return Promise.resolve({
+      application: { ...row },
+      suspension: this.nextSuspension,
+    });
   }
 
   listByJobPost(
@@ -368,9 +388,39 @@ class SpyPublisher implements NotificationPublisher {
   }
 }
 
+/**
+ * 제재를 묻는 포트의 가짜 (#25).
+ *
+ * **유효 기간을 다시 판정하지 않는다.** `releasedAt IS NULL AND endAt > now()`는
+ * 진짜 쿼리의 일이고(`penalty.integration.test.ts`), 여기서는 "제재 중이라고
+ * 답했을 때 서비스가 막는가"만 본다.
+ */
+class FakeSuspensions implements SuspensionReader {
+  constructor(private readonly active: Record<string, SuspensionRecord> = {}) {}
+
+  findActive(userId: string): Promise<SuspensionRecord | null> {
+    return Promise.resolve(this.active[userId] ?? null);
+  }
+}
+
+/** 그 회원이 지금 제재 중이라고 답하게 만든다 (#25) */
+function suspended(userId: string): Record<string, SuspensionRecord> {
+  return {
+    [userId]: {
+      id: 'sus_1',
+      userId,
+      startAt: new Date('2026-09-01T00:00:00.000Z'),
+      endAt: new Date('2026-09-06T00:00:00.000Z'),
+      releasedAt: null,
+    },
+  };
+}
+
 function makeService(
   post: PostRow | null = openPost(),
   profiles: Record<string, ApplicantProfile> = {},
+  /** 지금 제재 중인 회원들. 지원이 막히는 유일한 조건이다 (#25) */
+  suspensions: Record<string, SuspensionRecord> = {},
 ): {
   service: ApplicationService;
   store: FakeStore;
@@ -389,6 +439,7 @@ function makeService(
       jobPosts,
       new FakeProfiles(profiles),
       notifications,
+      new FakeSuspensions(suspensions),
     ),
     store,
     jobPosts,
@@ -482,6 +533,7 @@ describe('apply', () => {
       new FakeJobPosts(post),
       new FakeProfiles(),
       new SpyPublisher(),
+      new FakeSuspensions(),
     );
 
     const { id } = await seedApplied(service);
@@ -555,6 +607,7 @@ describe('apply', () => {
       new FakeJobPosts(openPost()),
       new FakeProfiles(),
       new SpyPublisher(),
+      new FakeSuspensions(),
     );
     await store.create({
       jobPostId: JOB_POST,
@@ -1088,12 +1141,15 @@ async function seedForCompletion({
   applied = 0,
   rewardPerPerson = 10_000,
   status = 'OPEN',
+  suspensions = {},
 }: {
   headcount: number;
   accepted: number;
   applied?: number;
   rewardPerPerson?: number;
   status?: PostRow['status'];
+  /** 제재 중인 회원들 (#25 AC5) */
+  suspensions?: Record<string, SuspensionRecord>;
 }): Promise<{
   service: ApplicationService;
   store: FakeStore;
@@ -1101,7 +1157,7 @@ async function seedForCompletion({
   workers: string[];
 }> {
   const post = openPost({ headcount, rewardPerPerson });
-  const { service, store } = makeService(post);
+  const { service, store } = makeService(post, {}, suspensions);
   store.seedHold(headcount * rewardPerPerson);
 
   const workers: string[] = [];
@@ -1692,5 +1748,46 @@ describe('markNoShow', () => {
     await expect(
       service.markNoShow({ employerId: EMPLOYER, applicationId: id }),
     ).rejects.toMatchObject({ code: APPLICATION_ERRORS.JOB_POST_NOT_FOUND });
+  });
+});
+
+/**
+ * 제재 중 차단. (이슈 #25 AC4·AC5)
+ *
+ * **막히는 것은 새 약속을 만드는 행위 하나뿐이다.** 이미 맺은 계약을
+ * 이행하는 것까지 막으면, 제재당한 구인자의 근무자들이 돈을 못 받는다 (§5).
+ */
+describe('제재 중 차단 (#25)', () => {
+  it('should throw PENALTY_SUSPENDED when the applicant is suspended', async () => {
+    const { service } = makeService(openPost(), {}, suspended(APPLICANT));
+
+    await expect(
+      service.apply({ applicantId: APPLICANT, jobPostId: JOB_POST }),
+    ).rejects.toMatchObject({ code: PENALTY_ERRORS.SUSPENDED });
+  });
+
+  // AC5. 진행 중인 계약을 이행하는 것은 막지 않는다.
+  it('should settle normally when the employer is suspended', async () => {
+    const { service, store, workers } = await seedForCompletion({
+      headcount: 2,
+      accepted: 2,
+      suspensions: suspended(EMPLOYER),
+    });
+
+    await service.complete({ jobPostId: JOB_POST, employerId: EMPLOYER });
+
+    expect(payoutsTo(store, workers[0])).toEqual([10_000]);
+  });
+
+  it('should accept an applicant normally when the employer is suspended', async () => {
+    const { service } = makeService(openPost(), {}, suspended(EMPLOYER));
+    const { id } = await seedApplied(service);
+
+    const result = await service.accept({
+      employerId: EMPLOYER,
+      applicationId: id,
+    });
+
+    expect(result.status).toBe('ACCEPTED');
   });
 });

@@ -53,6 +53,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  await prisma.suspension.deleteMany();
   await prisma.exchangeRequest.deleteMany();
   await prisma.pointTransaction.deleteMany();
   await prisma.exchangeAccount.deleteMany();
@@ -327,5 +328,31 @@ describe('환전 요청 경합 — 진짜 Postgres에서', () => {
 
     expect(error).toBeInstanceOf(PointError);
     expect((error as PointError).code).toBe(POINT_ERRORS.INSUFFICIENT_BALANCE);
+  });
+});
+
+/**
+ * 제재는 **새 약속을 만드는 행위**만 막는다. (이슈 #25 AC5, `spec-fixed.md` §5)
+ *
+ * 이미 번 돈을 못 찾게 하면 제재가 아니라 몰수가 된다. 이 테스트는 환전에
+ * 제재 판정이 끼어드는 것을 막는 회귀 방어다.
+ */
+describe('환전 — 제재 중인 회원 (#25 AC5)', () => {
+  it('should create an exchange request while the member is suspended', async () => {
+    const userId = await seedWorker(20_000);
+    await ledger({
+      userId,
+      type: 'PAYOUT',
+      amount: 20_000,
+      at: daysAgo(8),
+      key: 'payout:app_1',
+    });
+    await prisma.suspension.create({
+      data: { userId, endAt: new Date(Date.now() + 5 * DAY) },
+    });
+
+    await service.request({ userId, amount: 10_000 });
+
+    expect(await prisma.exchangeRequest.count()).toBe(1);
   });
 });

@@ -55,6 +55,7 @@ model User {
   payments          Payment[]
   jobPosts          JobPost[]
   penalties         Penalty[]
+  suspensions       Suspension[]
   exchangeAccount   ExchangeAccount?
   exchangeRequests  ExchangeRequest[]
   applications      Application[]
@@ -410,6 +411,30 @@ enum PenaltyReason {
   POSTER_CANCEL
 }
 
+/// 경고 누적으로 발생한 이용 제한. (이슈 #25, `spec-fixed.md` §5)
+///
+/// 창 안 경고가 임계에 닿은 그 트랜잭션에서 만들어진다. **만료 배치는 없다**
+/// — 유효한지는 조회 시점에 `releasedAt IS NULL AND endAt > now()`로 판정한다 (§8.1).
+model Suspension {
+  id      String   @id @default(cuid())
+  userId  String
+  startAt DateTime @default(now())
+  endAt   DateTime
+
+  /// 관리자가 만료 전에 조기 종료한 시각. (#33)
+  ///
+  /// 판정 쿼리가 이것이 null인 것만 유효 제재로 본다 (§5.1). 해제 화면과 API는
+  /// #33이 만들고, 이 이슈는 **읽기만** 한다.
+  releasedAt    DateTime?
+  releasedBy    String?
+  releaseReason String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// 유효 제재 판정이 이 순서로 훑는다 (§5.1)
+  @@index([userId, endAt])
+}
+
 /// 환전받을 계좌. (이슈 #30, `spec-fixed.md` §6.4.1)
 ///
 /// **계좌번호는 암호화해서 담는다** (ADR-PAY-6). 평문으로 두면 DB 백업 하나가
@@ -579,4 +604,6 @@ enum NotificationType {
   EXCHANGE_REJECTED
   /// 공고 조건이 바뀌어 재동의가 필요하다 (#21)
   APPLICATION_REACCEPT_REQUIRED
+  /// 경고 누적으로 제재가 시작됐다 (#25, §5 "제재 발생 시 … 알림 발송")
+  SUSPENSION_STARTED
 }

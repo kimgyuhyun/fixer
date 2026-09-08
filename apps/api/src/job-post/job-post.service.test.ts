@@ -1,6 +1,7 @@
 import {
   JOB_POST_ERRORS,
   JOB_POST_TRANSITIONS,
+  PENALTY_ERRORS,
   type JobPostVersionSnapshot,
   canTransition,
   holdIdempotencyKey,
@@ -25,6 +26,8 @@ import {
   type MemberAddress,
   type MemberAddressReader,
 } from './job-post.service';
+import type { SuspensionRecord } from '../penalty/penalty-transaction';
+import type { SuspensionReader } from '../penalty/suspension.reader';
 
 const EMPLOYER = 'usr_employer';
 const HOME: MemberAddress = {
@@ -323,12 +326,38 @@ class SpyPublisher implements NotificationPublisher {
   }
 }
 
+/**
+ * 제재를 묻는 포트의 가짜 (#25).
+ *
+ * **유효 기간을 다시 판정하지 않는다.** 그건 진짜 쿼리의 일이고
+ * (job-post.integration.test.ts), 여기서는 "제재 중이라고 답했을 때
+ * 공고 등록이 막히는가"만 본다.
+ */
+class FakeSuspensions implements SuspensionReader {
+  constructor(private readonly active: SuspensionRecord | null = null) {}
+
+  findActive(): Promise<SuspensionRecord | null> {
+    return Promise.resolve(this.active);
+  }
+}
+
+/** 지금 제재 중인 구인자 (#25 AC3) */
+const SUSPENSION: SuspensionRecord = {
+  id: 'sus_1',
+  userId: EMPLOYER,
+  startAt: new Date('2026-09-01T00:00:00.000Z'),
+  endAt: new Date('2026-09-06T00:00:00.000Z'),
+  releasedAt: null,
+};
+
 function setup(
   opts: {
     balance?: number;
     home?: MemberAddress | null;
     /** 수락된 신청 수. #17이 오기 전까지 테스트가 직접 준다 */
     accepted?: number;
+    /** 지금 유효한 제재. 있으면 공고 등록이 막힌다 (#25) */
+    suspension?: SuspensionRecord | null;
   } = {},
 ): {
   service: JobPostService;
@@ -346,6 +375,7 @@ function setup(
     balances,
     { countAccepted: () => Promise.resolve(opts.accepted ?? 0) },
     notifications,
+    new FakeSuspensions(opts.suspension ?? null),
   );
   return { service, store, notifications };
 }
@@ -1619,5 +1649,21 @@ describe('update — 재동의 대기 알림', () => {
     });
 
     expect(notifications.published.map((n) => n.userId)).toEqual(['usr_a']);
+  });
+});
+
+/**
+ * 제재 중에는 새 공고를 올릴 수 없다. (이슈 #25 AC3)
+ *
+ * 판정이 여기 있는 이유는 회원 식별이 아직 토큰이 아니라 본문으로 오기
+ * 때문이다 — 가드가 볼 주체가 없다 (#4 이전의 임시 방편).
+ */
+describe('create — 제재 중이면 막힌다 (#25 AC3)', () => {
+  it('should throw PENALTY_SUSPENDED when the employer is suspended', async () => {
+    const { service } = setup({ suspension: SUSPENSION });
+
+    const error = await rejectionOf(service.create(EMPLOYER, VALID));
+
+    expect(codeOf(error)).toBe(PENALTY_ERRORS.SUSPENDED);
   });
 });

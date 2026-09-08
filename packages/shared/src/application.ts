@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PENALTY_ERRORS } from './penalty.js';
 
 /** 신청 상태. (`spec-fixed.md` §4.2) */
 export const APPLICATION_STATUSES = [
@@ -119,6 +120,8 @@ export const APPLICATION_ERRORS = {
    * 없습니다"밖에 말하지 못한다.
    */
   WORK_NOT_STARTED: 'APPLICATION_WORK_NOT_STARTED',
+  /** 제재 중이라 지원할 수 없다 (#25 AC4). **제재 도메인의 코드를 재사용한다** */
+  SUSPENDED: PENALTY_ERRORS.SUSPENDED,
 } as const;
 
 export type ApplicationErrorCode =

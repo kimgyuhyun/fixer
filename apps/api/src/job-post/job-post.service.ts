@@ -22,6 +22,7 @@ import {
   type UpdateJobPostRequest,
 } from '@fixer/shared';
 import type { NotificationPublisher } from '../notification/notification.service';
+import type { SuspensionReader } from '../penalty/suspension.reader';
 
 /** 공고가 던지는 도메인 에러 */
 export class JobPostError extends Error {
@@ -236,6 +237,8 @@ export class JobPostService {
      * 포트만 본다 — 이 도메인은 알림이 인앱인지 메일인지 모른다 (ADR-NOT-1).
      */
     private readonly notifications: NotificationPublisher,
+    /** 제재 중인지 묻는다 (#25 AC3). 공고 등록을 막는 유일한 조건이다 */
+    private readonly suspensions: SuspensionReader,
   ) {}
 
   async create(

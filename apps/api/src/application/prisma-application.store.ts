@@ -12,6 +12,7 @@ import type {
   ApplicantProfileReader,
   ApplicationRecord,
   ApplicationStore,
+  PenalizedApplication,
   JobPostForApplication,
   JobPostReader,
   SettlementResult,
@@ -160,7 +161,8 @@ export class PrismaApplicationStore implements ApplicationStore {
     jobPostId: string;
     nextStatus: 'CANCELLED_FREE' | 'CANCELLED_PENALTY';
     penalty: { userId: string; reason: PenaltyReason } | null;
-  }): Promise<ApplicationRecord | 'STALE'> {
+    now: Date;
+  }): Promise<PenalizedApplication | 'STALE'> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         // **신청 전환이 먼저다.** 이미 취소된 신청이면 여기서 0행이 되어
@@ -188,11 +190,13 @@ export class PrismaApplicationStore implements ApplicationStore {
             },
           });
         }
+        // TODO(#25 Green): 이 자리에서 제재를 판정한다
+        const suspension = null;
 
         const row = await tx.application.findUniqueOrThrow({
           where: { id: input.applicationId },
         });
-        return toRecord(row);
+        return { application: toRecord(row), suspension };
       });
     } catch (error) {
       // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.
@@ -211,7 +215,8 @@ export class PrismaApplicationStore implements ApplicationStore {
     applicationId: string;
     jobPostId: string;
     penalty: { userId: string; reason: PenaltyReason };
-  }): Promise<ApplicationRecord | 'STALE'> {
+    now: Date;
+  }): Promise<PenalizedApplication | 'STALE'> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         // **신청 전환이 먼저다.** 이미 노쇼로 찍힌 신청이면 여기서 0행이 되어
@@ -237,11 +242,13 @@ export class PrismaApplicationStore implements ApplicationStore {
             jobPostId: input.jobPostId,
           },
         });
+        // TODO(#25 Green): 이 자리에서 제재를 판정한다
+        const suspension = null;
 
         const row = await tx.application.findUniqueOrThrow({
           where: { id: input.applicationId },
         });
-        return toRecord(row);
+        return { application: toRecord(row), suspension };
       });
     } catch (error) {
       // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.

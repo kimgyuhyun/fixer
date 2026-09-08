@@ -12,6 +12,8 @@ export const NOTIFICATION_TYPES = [
   'ACCOUNT_VERIFIED',
   /** 지원 거절 (#19) */
   'APPLICATION_REJECTED',
+  /** 경고 누적으로 제재가 시작됐다 (#25, `spec-fixed.md` §5) */
+  'SUSPENSION_STARTED',
   /** 제재 조기 해제 (#33) */
   'SUSPENSION_RELEASED',
   /** 환전 반려 (#34) */
