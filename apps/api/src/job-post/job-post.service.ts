@@ -248,6 +248,18 @@ export class JobPostService {
     // 검증이 가장 먼저다. 형식이 틀린 요청은 저장소도 원장도 건드리지 않는다.
     const parsed = createJobPostRequestSchema.parse(input);
 
+    // 제재 중에는 새 공고를 올릴 수 없다 (#25 AC3). 주소를 읽거나 돈을
+    // 잠그기 전에 막는다 — 막힐 요청이 원장을 건드릴 이유가 없다.
+    const suspension = await this.suspensions.findActive(
+      employerId,
+      new Date(),
+    );
+    if (suspension !== null) {
+      throw new JobPostError(JOB_POST_ERRORS.SUSPENDED, {
+        until: suspension.endAt.toISOString(),
+      });
+    }
+
     const place = await this.resolveAddress(employerId, parsed);
     const budget = budgetOf(parsed);
 

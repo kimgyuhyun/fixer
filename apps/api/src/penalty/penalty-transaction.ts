@@ -1,4 +1,9 @@
-import type { PenaltyReason } from '@fixer/shared';
+import {
+  penaltyWindowStart,
+  shouldSuspend,
+  suspensionEndAt,
+  type PenaltyReason,
+} from '@fixer/shared';
 import type { Prisma } from '../generated/prisma/client';
 
 /** 저장된 제재 한 건 */
@@ -30,5 +35,42 @@ export async function recordPenalty(
     now: Date;
   },
 ): Promise<SuspensionRecord | null> {
-  throw new Error('not implemented');
+  await tx.penalty.create({
+    data: {
+      userId: input.userId,
+      reason: input.reason,
+      jobPostId: input.jobPostId,
+      occurredAt: input.now,
+    },
+  });
+
+  const recent = await tx.penalty.count({
+    where: {
+      userId: input.userId,
+      occurredAt: { gte: penaltyWindowStart(input.now) },
+    },
+  });
+  if (!shouldSuspend(recent)) return null;
+
+  // 이미 제재 중이면 하나 더 만들지 않는다. 겹치면 5일이 10일이 된다 —
+  // 규칙은 5건 → 5일 하나뿐이다 (PRD Out of Scope: 단계별 차등 없음).
+  const current = await tx.suspension.findFirst({
+    where: { userId: input.userId, releasedAt: null, endAt: { gt: input.now } },
+  });
+  if (current !== null) return null;
+
+  return await tx.suspension.create({
+    data: {
+      userId: input.userId,
+      startAt: input.now,
+      endAt: suspensionEndAt(input.now),
+    },
+    select: {
+      id: true,
+      userId: true,
+      startAt: true,
+      endAt: true,
+      releasedAt: true,
+    },
+  });
 }

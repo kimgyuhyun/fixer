@@ -32,17 +32,17 @@ export type PenaltyErrorCode =
  * 정확히 180일 전에 생긴 경고까지가 최근이다.
  */
 export function penaltyWindowStart(now: Date): Date {
-  throw new Error('not implemented');
+  return new Date(now.getTime() - PENALTY_WINDOW_DAYS * DAY_MS);
 }
 
 /** 창 안 경고가 이만큼이면 제재인가 */
 export function shouldSuspend(recentPenaltyCount: number): boolean {
-  throw new Error('not implemented');
+  return recentPenaltyCount >= PENALTY_SUSPEND_THRESHOLD;
 }
 
 /** 제재 종료 시각. 시작 +5일 */
 export function suspensionEndAt(startAt: Date): Date {
-  throw new Error('not implemented');
+  return new Date(startAt.getTime() + SUSPENSION_DAYS * DAY_MS);
 }
 
 /**
@@ -56,5 +56,5 @@ export function isSuspensionActive(
   suspension: { endAt: Date; releasedAt: Date | null },
   now: Date,
 ): boolean {
-  throw new Error('not implemented');
+  return suspension.releasedAt === null && suspension.endAt > now;
 }

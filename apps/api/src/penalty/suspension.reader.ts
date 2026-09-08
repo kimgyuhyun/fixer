@@ -17,7 +17,20 @@ export interface SuspensionReader {
 export class PrismaSuspensionReader implements SuspensionReader {
   constructor(private readonly prisma: PrismaService) {}
 
-  findActive(userId: string, now: Date): Promise<SuspensionRecord | null> {
-    throw new Error('not implemented');
+  async findActive(
+    userId: string,
+    now: Date,
+  ): Promise<SuspensionRecord | null> {
+    const row = await this.prisma.suspension.findFirst({
+      where: { userId, releasedAt: null, endAt: { gt: now } },
+      select: {
+        id: true,
+        userId: true,
+        startAt: true,
+        endAt: true,
+        releasedAt: true,
+      },
+    });
+    return row;
   }
 }

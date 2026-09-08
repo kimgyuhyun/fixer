@@ -3,7 +3,7 @@
 > GitHub: https://github.com/kimgyuhyun/fixer/issues/25
 > PRD: `docs/result/prd/penalty-rating.md`
 > 담당: B (김규현)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: 구현 완료 (Green)
 
 ---
 
@@ -238,37 +238,37 @@ model Suspension {
 
 ### 정상
 
-- [ ] [정상] `penaltyWindowStart` — should return the moment 180 days before now
-- [ ] [정상] `suspensionEndAt` — should end 5 days after the suspension starts
-- [ ] [정상] `recordPenalty` — should create a suspension ending 5 days later when the 5th penalty inside the window is recorded
-- [ ] [정상] `markNoShow` — should notify the member with SUSPENSION_STARTED when the 5th penalty suspends them
-- [ ] [정상] `cancel` — should suspend the applicant when a late cancel makes their 5th penalty
-- [ ] [정상] `create` — should create the job post when the member's suspension already ended
-- [ ] [정상] `apply` — should accept the application when the member's suspension was released early
-- [ ] [정상] `complete` — should settle normally when the employer is suspended
-- [ ] [정상] `accept` — should accept an applicant normally when the employer is suspended
-- [ ] [정상] `request` — should create an exchange request while the member is suspended
+- [x] [정상] `penaltyWindowStart` — should return the moment 180 days before now
+- [x] [정상] `suspensionEndAt` — should end 5 days after the suspension starts
+- [x] [정상] `recordPenalty` — should create a suspension ending 5 days later when the 5th penalty inside the window is recorded
+- [x] [정상] `markNoShow` — should notify the member with SUSPENSION_STARTED when the 5th penalty suspends them
+- [x] [정상] `cancel` — should suspend the applicant when a late cancel makes their 5th penalty
+- [x] [정상] `create` — should create the job post when the member's suspension already ended
+- [x] [정상] `apply` — should accept the application when the member's suspension was released early
+- [x] [정상] `complete` — should settle normally when the employer is suspended
+- [x] [정상] `accept` — should accept an applicant normally when the employer is suspended
+- [x] [정상] `request` — should create an exchange request while the member is suspended
 
 ### 경계
 
-- [ ] [경계] `shouldSuspend` — should be false when only 4 penalties are inside the window
-- [ ] [경계] `shouldSuspend` — should be true when exactly 5 penalties are inside the window
-- [ ] [경계] `isSuspensionActive` — should be false when now is exactly the end time
-- [ ] [경계] `isSuspensionActive` — should be true one millisecond before the end time
-- [ ] [경계] `isSuspensionActive` — should be false when the suspension was released early
-- [ ] [경계] `recordPenalty` — should not create a suspension when only 2 of the 5 penalties are inside the window
-- [ ] [경계] `recordPenalty` — should count a penalty that occurred exactly at the window start
-- [ ] [경계] `recordPenalty` — should ignore a penalty that occurred one millisecond before the window start
-- [ ] [경계] `recordPenalty` — should not create a second suspension when a 6th penalty arrives while one is active
-- [ ] [경계] `findActive` — should ignore a suspension whose end time has passed
-- [ ] [경계] `findActive` — should ignore a suspension that was released early
+- [x] [경계] `shouldSuspend` — should be false when only 4 penalties are inside the window
+- [x] [경계] `shouldSuspend` — should be true when exactly 5 penalties are inside the window
+- [x] [경계] `isSuspensionActive` — should be false when now is exactly the end time
+- [x] [경계] `isSuspensionActive` — should be true one millisecond before the end time
+- [x] [경계] `isSuspensionActive` — should be false when the suspension was released early
+- [x] [경계] `recordPenalty` — should not create a suspension when only 2 of the 5 penalties are inside the window
+- [x] [경계] `recordPenalty` — should count a penalty that occurred exactly at the window start
+- [x] [경계] `recordPenalty` — should ignore a penalty that occurred one millisecond before the window start
+- [x] [경계] `recordPenalty` — should not create a second suspension when a 6th penalty arrives while one is active
+- [x] [경계] `findActive` — should ignore a suspension whose end time has passed
+- [x] [경계] `findActive` — should ignore a suspension that was released early
 
 ### 예외
 
-- [ ] [예외] `create` — should throw PENALTY_SUSPENDED when the employer is suspended
-- [ ] [예외] `apply` — should throw PENALTY_SUSPENDED when the applicant is suspended
-- [ ] [예외] `POST /job-posts` — should answer 403 with PENALTY_SUSPENDED when the employer is suspended
-- [ ] [예외] `POST /applications` — should answer 403 with PENALTY_SUSPENDED when the applicant is suspended
+- [x] [예외] `create` — should throw PENALTY_SUSPENDED when the employer is suspended
+- [x] [예외] `apply` — should throw PENALTY_SUSPENDED when the applicant is suspended
+- [x] [예외] `POST /job-posts` — should answer 403 with PENALTY_SUSPENDED when the employer is suspended
+- [x] [예외] `POST /applications` — should answer 403 with PENALTY_SUSPENDED when the applicant is suspended
 
 ---
 

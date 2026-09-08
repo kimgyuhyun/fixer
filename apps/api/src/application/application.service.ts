@@ -438,6 +438,8 @@ export class ApplicationService {
       });
     }
 
+    await this.notifySuspension(cancelled.suspension);
+
     return toSummary(cancelled.application);
   }
 
@@ -490,7 +492,31 @@ export class ApplicationService {
       });
     }
 
+    await this.notifySuspension(marked.suspension);
+
     return toSummary(marked.application);
+  }
+
+  /**
+   * 제재가 생겼으면 당사자에게 알린다 (#25, §5).
+   *
+   * **경고가 쌓인 트랜잭션 밖이다.** 발행은 던지지 않으므로(ADR-NOT-1) 이
+   * 줄이 취소나 노쇼를 되돌리지 않는다.
+   */
+  private async notifySuspension(
+    suspension: SuspensionRecord | null,
+  ): Promise<void> {
+    if (suspension === null) return;
+
+    await this.notifications.publish({
+      userId: suspension.userId,
+      type: 'SUSPENSION_STARTED',
+      title: '이용이 제한되었습니다',
+      body: '경고가 쌓여 공고 등록과 지원이 제한됩니다.',
+      // 제재 이력 화면은 아직 없다(#32). **없는 경로를 넣지 않는다** — 벨을
+      // 눌렀는데 404가 뜨면 알림이 안 온 것보다 나쁘다.
+      linkUrl: '/my/account',
+    });
   }
 
   /**
@@ -596,6 +622,18 @@ export class ApplicationService {
     if (post.status !== 'OPEN') {
       throw new ApplicationError(APPLICATION_ERRORS.JOB_POST_NOT_OPEN, {
         status: post.status,
+      });
+    }
+
+    // 제재 중에는 새 약속을 만들 수 없다 (#25 AC4). 이미 맺은 계약을
+    // 이행하는 것은 막지 않는다 — 그건 제재가 아니라 몰수다 (§5).
+    const suspension = await this.suspensions.findActive(
+      parsed.applicantId,
+      new Date(),
+    );
+    if (suspension !== null) {
+      throw new ApplicationError(APPLICATION_ERRORS.SUSPENDED, {
+        until: suspension.endAt.toISOString(),
       });
     }
 

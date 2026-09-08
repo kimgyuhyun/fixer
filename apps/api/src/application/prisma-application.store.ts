@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client';
+import { recordPenalty } from '../penalty/penalty-transaction';
 import { lockedAmountFor } from '../point/job-post-lock';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -180,18 +181,17 @@ export class PrismaApplicationStore implements ApplicationStore {
           data: { acceptedCount: { decrement: 1 } },
         });
 
-        if (input.penalty !== null) {
-          // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5).
-          await tx.penalty.create({
-            data: {
-              userId: input.penalty.userId,
-              reason: input.penalty.reason,
-              jobPostId: input.jobPostId,
-            },
-          });
-        }
-        // TODO(#25 Green): 이 자리에서 제재를 판정한다
-        const suspension = null;
+        // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5). 경고가 임계에
+        // 닿았는지도 **이 트랜잭션 안에서** 판정된다 (#25).
+        const suspension =
+          input.penalty === null
+            ? null
+            : await recordPenalty(tx, {
+                userId: input.penalty.userId,
+                reason: input.penalty.reason,
+                jobPostId: input.jobPostId,
+                now: input.now,
+              });
 
         const row = await tx.application.findUniqueOrThrow({
           where: { id: input.applicationId },
@@ -234,16 +234,14 @@ export class PrismaApplicationStore implements ApplicationStore {
           data: { acceptedCount: { decrement: 1 } },
         });
 
-        // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5).
-        await tx.penalty.create({
-          data: {
-            userId: input.penalty.userId,
-            reason: input.penalty.reason,
-            jobPostId: input.jobPostId,
-          },
+        // 레코드는 지우지 않는다. 분쟁 대응 근거다 (§5). 경고가 임계에
+        // 닿았는지도 **이 트랜잭션 안에서** 판정된다 (#25).
+        const suspension = await recordPenalty(tx, {
+          userId: input.penalty.userId,
+          reason: input.penalty.reason,
+          jobPostId: input.jobPostId,
+          now: input.now,
         });
-        // TODO(#25 Green): 이 자리에서 제재를 판정한다
-        const suspension = null;
 
         const row = await tx.application.findUniqueOrThrow({
           where: { id: input.applicationId },
