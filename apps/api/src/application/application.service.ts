@@ -794,14 +794,10 @@ export class ApplicationService {
     applicantId: string;
     applicationId: string;
   }): Promise<ApplicationSummary> {
-    const current = await this.store.findById(input.applicationId);
-    if (current === null) {
-      throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
-    }
-    // 없다고 하지 않는다. 본인 것이 아니라는 사실만 말한다.
-    if (current.applicantId !== input.applicantId) {
-      throw new ApplicationError(APPLICATION_ERRORS.NOT_OWNED);
-    }
+    const current = await this.mustOwnApplication(
+      input.applicationId,
+      input.applicantId,
+    );
 
     // 표에 없는 전이는 거부된다. AC5의 `ACCEPTED`가 여기서 걸린다.
     transition(current.status, 'WITHDRAWN');
