@@ -17,6 +17,28 @@ export interface SuspensionRecord {
 }
 
 /**
+ * 유효 제재를 가리는 조건. **§5.1의 `releasedAt IS NULL AND endAt > now()`다.**
+ *
+ * 판정을 쓰는 곳이 둘이다 — 여기(중복 제재 방지)와 `PrismaSuspensionReader`
+ * (차단 판정). 같은 규칙을 두 번 적으면 한쪽만 고쳐지는 날이 온다.
+ */
+export function activeSuspensionWhere(
+  userId: string,
+  now: Date,
+): { userId: string; releasedAt: null; endAt: { gt: Date } } {
+  return { userId, releasedAt: null, endAt: { gt: now } };
+}
+
+/** `SuspensionRecord`가 필요로 하는 칸. 두 조회가 같은 모양을 돌려준다 */
+export const SUSPENSION_FIELDS = {
+  id: true,
+  userId: true,
+  startAt: true,
+  endAt: true,
+  releasedAt: true,
+} as const;
+
+/**
  * 경고 1건을 쓰고, **그 자리에서** 제재 여부를 판정한다. (이슈 #25, §5)
  *
  * `point/job-post-lock.ts`와 같은 자리다 — 남의 트랜잭션 안에서 도는 헬퍼라
@@ -55,7 +77,7 @@ export async function recordPenalty(
   // 이미 제재 중이면 하나 더 만들지 않는다. 겹치면 5일이 10일이 된다 —
   // 규칙은 5건 → 5일 하나뿐이다 (PRD Out of Scope: 단계별 차등 없음).
   const current = await tx.suspension.findFirst({
-    where: { userId: input.userId, releasedAt: null, endAt: { gt: input.now } },
+    where: activeSuspensionWhere(input.userId, input.now),
   });
   if (current !== null) return null;
 
@@ -65,12 +87,6 @@ export async function recordPenalty(
       startAt: input.now,
       endAt: suspensionEndAt(input.now),
     },
-    select: {
-      id: true,
-      userId: true,
-      startAt: true,
-      endAt: true,
-      releasedAt: true,
-    },
+    select: SUSPENSION_FIELDS,
   });
 }

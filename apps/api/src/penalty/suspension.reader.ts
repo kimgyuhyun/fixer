@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { SuspensionRecord } from './penalty-transaction';
+import {
+  SUSPENSION_FIELDS,
+  activeSuspensionWhere,
+  type SuspensionRecord,
+} from './penalty-transaction';
 
 /**
  * 제재 중인지 묻는 포트. (이슈 #25, §5)
@@ -21,16 +25,9 @@ export class PrismaSuspensionReader implements SuspensionReader {
     userId: string,
     now: Date,
   ): Promise<SuspensionRecord | null> {
-    const row = await this.prisma.suspension.findFirst({
-      where: { userId, releasedAt: null, endAt: { gt: now } },
-      select: {
-        id: true,
-        userId: true,
-        startAt: true,
-        endAt: true,
-        releasedAt: true,
-      },
+    return await this.prisma.suspension.findFirst({
+      where: activeSuspensionWhere(userId, now),
+      select: SUSPENSION_FIELDS,
     });
-    return row;
   }
 }
