@@ -986,3 +986,94 @@ describe('markNoShow — 노쇼 (#24)', () => {
     expect(await ledgerSum(employerId)).toBe(10_000);
   });
 });
+/**
+ * #21이 내려놓은 상태를 DB에 만든다 (#22).
+ *
+ * 공고는 이미 버전이 올라 있고, 신청은 `PENDING_REACCEPT`로 내려가면서
+ * 내려가기 전 상태를 `previousStatus`에 달고 있다 (`ADR-APP-3`).
+ */
+async function seedDemoted(
+  jobPostId: string,
+  applicantId: string,
+  previousStatus: 'APPLIED' | 'ACCEPTED',
+): Promise<string> {
+  const row = await prisma.application.create({
+    data: {
+      jobPostId,
+      applicantId,
+      status: 'PENDING_REACCEPT',
+      previousStatus,
+      appliedVersion: 1,
+    },
+  });
+  return row.id;
+}
+
+describe('reaccept', () => {
+  it('should restore status, appliedVersion and acceptedCount together in the database', async () => {
+    const employerId = await seedUser('boss@example.com');
+    const applicantId = await seedUser('seeker@example.com');
+    // 내려갈 때 확정 인원에서 이미 빠졌다 (ADR-APP-2).
+    const jobPostId = await seedOpenPost(employerId, 2, {
+      headcount: 3,
+      acceptedCount: 0,
+    });
+    const applicationId = await seedDemoted(jobPostId, applicantId, 'ACCEPTED');
+
+    await service.reaccept({ applicantId, applicationId });
+
+    const row = await prisma.application.findUniqueOrThrow({
+      where: { id: applicationId },
+    });
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: jobPostId },
+    });
+    expect(row).toMatchObject({ status: 'ACCEPTED', appliedVersion: 2 });
+    expect(post.acceptedCount).toBe(1);
+  });
+
+  // 기다리는 사이 구인자가 그 자리를 다른 사람으로 채웠다 (§4.4).
+  it('should change nothing in the database when the seats are already full', async () => {
+    const employerId = await seedUser('boss@example.com');
+    const applicantId = await seedUser('seeker@example.com');
+    const jobPostId = await seedOpenPost(employerId, 2, {
+      headcount: 1,
+      acceptedCount: 1,
+    });
+    const applicationId = await seedDemoted(jobPostId, applicantId, 'ACCEPTED');
+
+    await expect(
+      service.reaccept({ applicantId, applicationId }),
+    ).rejects.toMatchObject({ code: APPLICATION_ERRORS.HEADCOUNT_FULL });
+
+    const row = await prisma.application.findUniqueOrThrow({
+      where: { id: applicationId },
+    });
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: jobPostId },
+    });
+    expect(row.status).toBe('PENDING_REACCEPT');
+    expect(post.acceptedCount).toBe(1);
+  });
+});
+
+describe('declineVersionChange', () => {
+  // AC4. 조건을 바꾼 건 구인자다. 카운터도 내려갈 때 이미 줄었다.
+  it('should leave no Penalty row and hold acceptedCount in the database', async () => {
+    const employerId = await seedUser('boss@example.com');
+    const applicantId = await seedUser('seeker@example.com');
+    const jobPostId = await seedOpenPost(employerId, 2, {
+      headcount: 3,
+      acceptedCount: 0,
+    });
+    const applicationId = await seedDemoted(jobPostId, applicantId, 'ACCEPTED');
+
+    await service.declineVersionChange({ applicantId, applicationId });
+
+    const post = await prisma.jobPost.findUniqueOrThrow({
+      where: { id: jobPostId },
+    });
+    expect(await prisma.penalty.count()).toBe(0);
+    expect(post.acceptedCount).toBe(0);
+  });
+});

@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type {
   ApplicationStatus,
   JobPostStatus,
+  JobPostVersionSnapshot,
   PenaltyReason,
 } from '@fixer/shared';
 import type {
@@ -339,6 +340,60 @@ export class PrismaApplicationStore implements ApplicationStore {
     `;
   }
 
+  /**
+   * 재동의. **두 문장이 함께 되거나 함께 안 된다** (#22, `ADR-APP-1`).
+   *
+   * 나뉘면 상태는 `ACCEPTED`인데 카운터는 그대로가 되어 정원보다 많은 사람이
+   * 확정된다. 수락(#18)과 같은 조건부 UPDATE를 쓰는 이유도 같다 — 자리
+   * 판정은 한 문장 안에서 끝나야 동시 요청에 두 번 들어가지 않는다.
+   */
+  async reaccept(input: {
+    applicationId: string;
+    jobPostId: string;
+    previousStatus: 'APPLIED' | 'ACCEPTED';
+    appliedVersion: number;
+  }): Promise<ApplicationRecord | 'STALE' | 'FULL'> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // **신청 갱신이 먼저다** (#18과 같은 순서). 이미 올라온 신청이면
+        // 여기서 0행이 되어 카운터를 건드리지 않고 통째로 되돌아간다.
+        const moved = await tx.application.updateMany({
+          where: { id: input.applicationId, status: 'PENDING_REACCEPT' },
+          data: {
+            status: input.previousStatus,
+            appliedVersion: input.appliedVersion,
+            // 올라온 뒤에는 지난 흔적이다 (`ADR-APP-3`). 남겨 두면 다음
+            // 재동의 대기가 옛 값을 보고 엉뚱한 상태로 되돌린다.
+            previousStatus: null,
+          },
+        });
+        if (moved.count === 0) throw new StaleStatus();
+
+        if (input.previousStatus === 'ACCEPTED') {
+          // 자리를 도로 차지한다. 한 문장이 원자적이라 정원이 찼으면 0행이다.
+          const seat = await tx.jobPost.updateMany({
+            where: {
+              id: input.jobPostId,
+              acceptedCount: { lt: this.prisma.jobPost.fields.headcount },
+            },
+            data: { acceptedCount: { increment: 1 } },
+          });
+          if (seat.count === 0) throw new HeadcountFull();
+        }
+
+        const row = await tx.application.findUniqueOrThrow({
+          where: { id: input.applicationId },
+        });
+        return toRecord(row);
+      });
+    } catch (error) {
+      // 신호를 밖으로 흘리지 않는다. 트랜잭션은 이미 통째로 되돌아갔다.
+      if (error instanceof StaleStatus) return 'STALE';
+      if (error instanceof HeadcountFull) return 'FULL';
+      throw error;
+    }
+  }
+
   async listByJobPost(
     jobPostId: string,
     statuses: readonly ApplicationStatus[],
@@ -380,6 +435,27 @@ export class PrismaJobPostReader implements JobPostReader {
         workStartAt: true,
       },
     });
+  }
+
+  /** 그 버전의 계약 원본. 재동의 화면의 좌우가 여기서 온다 (#22) */
+  async findVersionSnapshot(
+    jobPostId: string,
+    version: number,
+  ): Promise<JobPostVersionSnapshot | null> {
+    const row = await this.prisma.jobPostVersion.findUnique({
+      where: { jobPostId_version: { jobPostId, version } },
+    });
+    if (row === null) return null;
+
+    return {
+      version: row.version,
+      workAddress: row.workAddress,
+      workStartAt: row.workStartAt.toISOString(),
+      workEndAt: row.workEndAt.toISOString(),
+      headcount: row.headcount,
+      rewardPerPerson: row.rewardPerPerson,
+      requiredDescription: row.requiredDescription,
+    };
   }
 }
 
@@ -428,6 +504,7 @@ function toRecord(row: {
   status: ApplicationStatus;
   appliedVersion: number;
   acceptedAt: Date | null;
+  previousStatus: ApplicationStatus | null;
   createdAt: Date;
 }): ApplicationRecord {
   return {
@@ -437,6 +514,7 @@ function toRecord(row: {
     status: row.status,
     appliedVersion: row.appliedVersion,
     acceptedAt: row.acceptedAt,
+    previousStatus: row.previousStatus,
     createdAt: row.createdAt,
   };
 }

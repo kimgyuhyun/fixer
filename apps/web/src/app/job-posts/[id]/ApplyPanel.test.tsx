@@ -79,3 +79,56 @@ describe('ApplyPanel', () => {
     ).not.toBeInTheDocument();
   });
 });
+/**
+ * 재동의 대기 (#22 AC1).
+ *
+ * #21의 알림이 공고 상세로 보내므로 **그 화면에서 바로** 변경 전/후가
+ * 보여야 한다. `/api/applications/me`와 diff 두 곳을 부르므로 URL로 나눈다.
+ */
+describe('ApplyPanel — 재동의 대기', () => {
+  const DIFF = {
+    applicationId: 'app_1',
+    jobPostId: 'job_1',
+    before: {
+      version: 1,
+      workAddress: '서울특별시 강남구 테헤란로 1',
+      workStartAt: '2026-01-01T09:00:00.000Z',
+      workEndAt: '2026-01-01T18:00:00.000Z',
+      headcount: 2,
+      rewardPerPerson: 10_000,
+      requiredDescription: '창고 정리',
+    },
+    after: {
+      version: 2,
+      workAddress: '서울특별시 강남구 테헤란로 1',
+      workStartAt: '2026-01-01T09:00:00.000Z',
+      workEndAt: '2026-01-01T18:00:00.000Z',
+      headcount: 2,
+      rewardPerPerson: 12_000,
+      requiredDescription: '창고 정리',
+    },
+    changedFields: ['rewardPerPerson'],
+  };
+
+  it('should show the before and after value of every changed field when the application is PENDING_REACCEPT', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: unknown) => {
+        const url = String(input);
+        const body = url.includes('version-diff')
+          ? DIFF
+          : { ...SUMMARY, status: 'PENDING_REACCEPT' };
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(body),
+        });
+      }),
+    );
+
+    render(<ApplyPanel jobPostId="job_1" />);
+
+    expect(await screen.findByText('10,000')).toBeInTheDocument();
+    expect(await screen.findByText('12,000')).toBeInTheDocument();
+  });
+});

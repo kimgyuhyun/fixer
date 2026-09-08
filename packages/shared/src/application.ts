@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JOB_POST_REQUIRED_FIELDS, jobPostVersionSchema } from './job-post.js';
 import { PENALTY_ERRORS } from './penalty.js';
 
 /** 신청 상태. (`spec-fixed.md` §4.2) */
@@ -122,6 +123,13 @@ export const APPLICATION_ERRORS = {
   WORK_NOT_STARTED: 'APPLICATION_WORK_NOT_STARTED',
   /** 제재 중이라 지원할 수 없다 (#25 AC4). **제재 도메인의 코드를 재사용한다** */
   SUSPENDED: PENALTY_ERRORS.SUSPENDED,
+  /**
+   * 내가 동의한 버전의 스냅샷이 없다 (#22). **job-post의 코드를 재사용한다**
+   *
+   * 재동의 화면은 그 버전의 계약 내용을 좌측에 그린다. 없으면 무엇에서
+   * 무엇으로 바뀌었는지 말할 수 없으므로, 빈 값을 그리는 대신 거절한다.
+   */
+  JOB_POST_VERSION_NOT_FOUND: 'JOB_POST_VERSION_NOT_FOUND',
 } as const;
 
 export type ApplicationErrorCode =
@@ -284,6 +292,36 @@ export const applicantListSchema = z.object({
   applicants: z.array(applicantItemSchema),
 });
 export type ApplicantList = z.infer<typeof applicantListSchema>;
+
+/**
+ * 재동의 대기 화면이 그리는 변경 전/후 (#22 AC1).
+ *
+ * **좌우가 둘 다 버전 스냅샷이다** — 계약 원본끼리 비교한다 (`ADR-JOB-1`).
+ * 오른쪽을 지금 공고 행에서 읽어도 값은 같지만, 같은 표에서 읽으면
+ * "무엇과 무엇을 비교했나"가 한 종류로 정해진다.
+ */
+export const reacceptDiffSchema = z.object({
+  applicationId: z.string(),
+  jobPostId: z.string(),
+  /** 내가 동의했던 버전 */
+  before: jobPostVersionSchema,
+  /** 지금 공고의 버전 */
+  after: jobPostVersionSchema,
+  /**
+   * 값이 달라진 필수항목 이름들. 화면은 이 줄만 나란히 그린다.
+   *
+   * **판정은 `changedRequiredFields` 한 곳에만 있다** (`ADR-JOB-2`) —
+   * 화면이 두 스냅샷을 눈으로 대조해 다시 고르면 판정이 두 벌이 된다.
+   */
+  changedFields: z.array(z.enum(JOB_POST_REQUIRED_FIELDS)),
+});
+export type ReacceptDiff = z.infer<typeof reacceptDiffSchema>;
+
+/** 재동의·거절 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#22) */
+export const reacceptRequestSchema = z.object({
+  applicantId: z.string().min(1, { error: '회원 정보가 없습니다.' }),
+});
+export type ReacceptRequest = z.infer<typeof reacceptRequestSchema>;
 
 /**
  * 구인자에게 보이는 상태.

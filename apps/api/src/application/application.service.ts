@@ -2,9 +2,11 @@ import { Injectable } from '@nestjs/common';
 import {
   APPLICATION_ERRORS,
   EMPLOYER_VISIBLE_STATUSES,
+  REACCEPT_TARGET_STATUSES,
   applyRequestSchema,
   canApplicationTransition,
   canTransition,
+  changedRequiredFields,
   completeJobPostRequestSchema,
   hasWorkStarted,
   resolveCancelStatus,
@@ -17,7 +19,9 @@ import {
   type CompleteJobPostRequest,
   type CompletionSummary,
   type JobPostStatus,
+  type JobPostVersionSnapshot,
   type PenaltyReason,
+  type ReacceptDiff,
 } from '@fixer/shared';
 import type { NotificationPublisher } from '../notification/notification.service';
 import type { SuspensionRecord } from '../penalty/penalty-transaction';
@@ -44,6 +48,13 @@ export interface ApplicationRecord {
   appliedVersion: number;
   /** 수락 시각 (#18 AC1). 아직 수락 전이면 null */
   acceptedAt: Date | null;
+  /**
+   * 재동의 대기로 내려가기 전 상태 (`ADR-APP-3`, #21).
+   *
+   * **#22의 "이전 상태로 복귀"가 이 값을 쓴다.** `PENDING_REACCEPT`인
+   * 동안에만 의미가 있고, 다른 상태에서는 지난 흔적이라 판정에 쓰지 않는다.
+   */
+  previousStatus: ApplicationStatus | null;
   createdAt: Date;
 }
 
@@ -192,6 +203,27 @@ export interface ApplicationStore {
     now: Date;
   }): Promise<PenalizedApplication | 'STALE'>;
 
+  /**
+   * 재동의. **두 문장이 함께 되거나 함께 안 된다** (#22 AC2·AC3).
+   *
+   * 1. `Application SET status=previousStatus, appliedVersion=?,
+   *    previousStatus=NULL WHERE id=? AND status='PENDING_REACCEPT'`
+   * 2. `previousStatus='ACCEPTED'`면
+   *    `JobPost SET acceptedCount+1 WHERE id=? AND acceptedCount < headcount`
+   *
+   * 나뉘면 상태는 `ACCEPTED`인데 카운터는 그대로가 되어 **정원보다 많은
+   * 사람이 확정된다** (`ADR-APP-1`).
+   *
+   * `'STALE'` = `PENDING_REACCEPT`가 아니다 (재동의 버튼 연타의 두 번째).
+   * `'FULL'` = 기다리는 사이 자리가 찼다. **둘 다 아무것도 커밋하지 않는다.**
+   */
+  reaccept(input: {
+    applicationId: string;
+    jobPostId: string;
+    previousStatus: 'APPLIED' | 'ACCEPTED';
+    appliedVersion: number;
+  }): Promise<ApplicationRecord | 'STALE' | 'FULL'>;
+
   /** 구인자의 지원자 목록. 오래 지원한 순 (선착순 표시지 선착순 수락은 아니다) */
   listByJobPost(
     jobPostId: string,
@@ -240,6 +272,17 @@ export interface ApplicantProfile {
 export interface JobPostReader {
   /** 소프트 삭제된 공고는 **못 찾은 것으로 다룬다** (#14) */
   findForApplication(jobPostId: string): Promise<JobPostForApplication | null>;
+
+  /**
+   * 그 버전의 필수항목 6개. 없으면 null (#22 AC1).
+   *
+   * 재동의 화면의 좌우 두 값이 여기서 온다. **분쟁 시 근거가 되는 계약
+   * 내용이라** 지금 공고 행이 아니라 스냅샷을 읽는다 (`ADR-JOB-1`).
+   */
+  findVersionSnapshot(
+    jobPostId: string,
+    version: number,
+  ): Promise<JobPostVersionSnapshot | null>;
 }
 
 /** 신청 판정에 필요한 공고 정보. #17의 셋에 #18이 둘을 더했다 */
@@ -558,6 +601,134 @@ export class ApplicationService {
     return { jobPostId: post.id, status: 'COMPLETED', ...settled };
   }
 
+  /**
+   * 재동의 대기 화면이 그릴 변경 전/후 (#22 AC1, `spec-fixed.md` §3.4).
+   *
+   * 내가 동의했던 버전과 지금 버전의 스냅샷을 그대로 주고, 달라진 항목만
+   * 이름으로 짚는다. **본인 신청만 볼 수 있다** — diff는 계약 내용이라
+   * id만 알면 남이 무슨 조건에 동의했는지 읽히면 안 된다.
+   */
+  async versionDiff(input: {
+    applicantId: string;
+    applicationId: string;
+  }): Promise<ReacceptDiff> {
+    const current = await this.mustOwnApplication(
+      input.applicationId,
+      input.applicantId,
+    );
+    mustBeWaitingForReaccept(current);
+
+    const post = await this.mustFindPost(current.jobPostId);
+    const [before, after] = await Promise.all([
+      this.jobPosts.findVersionSnapshot(post.id, current.appliedVersion),
+      this.jobPosts.findVersionSnapshot(post.id, post.version),
+    ]);
+
+    if (before === null || after === null) {
+      // 한쪽이 없으면 무엇에서 무엇으로 바뀌었는지 말할 수 없다.
+      // 빈 값을 그리면 신청자가 안 바뀐 항목을 바뀐 것으로 읽는다.
+      throw new ApplicationError(
+        APPLICATION_ERRORS.JOB_POST_VERSION_NOT_FOUND,
+        { version: current.appliedVersion },
+      );
+    }
+
+    return {
+      applicationId: current.id,
+      jobPostId: post.id,
+      before,
+      after,
+      // **판정은 `changedRequiredFields` 한 곳에만 있다** (`ADR-JOB-2`).
+      // 여기서 다시 비교하면 알림이 짚은 항목과 화면이 짚는 항목이 갈린다.
+      changedFields: changedRequiredFields(before, after),
+    };
+  }
+
+  /**
+   * 신청자가 바뀐 조건에 다시 동의한다 (#22 AC2·AC3).
+   *
+   * `appliedVersion`이 최신이 되고 **이전 상태로 복귀한다** (`ADR-APP-3`).
+   * `ACCEPTED`였으면 확정 인원도 복구된다.
+   */
+  async reaccept(input: {
+    applicantId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    const current = await this.mustOwnApplication(
+      input.applicationId,
+      input.applicantId,
+    );
+    const previous = mustBeWaitingForReaccept(current);
+
+    // 표에 없는 전이는 거부된다. 재동의 버튼 연타의 두 번째가 여기서 걸린다.
+    transition(current.status, previous);
+
+    const post = await this.mustFindPost(current.jobPostId);
+    const restored = await this.store.reaccept({
+      applicationId: current.id,
+      jobPostId: post.id,
+      previousStatus: previous,
+      // 갱신하지 않으면 다음 조회에서 또 재동의 대기가 된다.
+      appliedVersion: post.version,
+    });
+
+    if (restored === 'STALE') {
+      // 우리가 읽은 뒤 상태가 바뀌었다. 덮어쓰면 카운터가 두 번 올라간다.
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: previous,
+      });
+    }
+    if (restored === 'FULL') {
+      // 조건부 UPDATE가 0행을 셌다. 기다리는 사이 구인자가 그 자리를 다른
+      // 사람으로 채웠거나 정원 자체가 줄었다 — **정원 초과는 막는다** (§4.4).
+      throw new ApplicationError(APPLICATION_ERRORS.HEADCOUNT_FULL, {
+        headcount: post.headcount,
+      });
+    }
+
+    return toSummary(restored);
+  }
+
+  /**
+   * 신청자가 바뀐 조건을 거절한다 (#22 AC4).
+   *
+   * **경고가 쌓이지 않는다.** 조건을 바꾼 것은 구인자이므로 신청자 귀책이
+   * 아니다 (`spec-fixed.md` §3.4 6번).
+   */
+  async declineVersionChange(input: {
+    applicantId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    const current = await this.mustOwnApplication(
+      input.applicationId,
+      input.applicantId,
+    );
+
+    // 표에 없는 전이는 거부된다. `PENDING_REACCEPT`가 아닌 신청이 여기서 걸린다.
+    transition(current.status, 'CANCELLED_BY_VERSION_CHANGE');
+
+    // **경고를 쓸 수 있는 경로를 아예 쓰지 않는다.** 상태만 옮기는
+    // `updateStatus`는 `Penalty`도 `acceptedCount`도 건드리지 못한다 —
+    // 카운터는 내려갈 때 이미 줄었으므로 (`ADR-APP-2`) 여기서 또 줄이면
+    // 같은 자리가 두 번 빈다.
+    const cancelled = await this.store.updateStatus({
+      applicationId: current.id,
+      expectedStatus: current.status,
+      nextStatus: 'CANCELLED_BY_VERSION_CHANGE',
+    });
+
+    if (cancelled === 'STALE') {
+      // 우리가 읽은 뒤 상태가 바뀌었다. 거절 버튼 연타의 두 번째가 여기다.
+      throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+        from: current.status,
+        to: 'CANCELLED_BY_VERSION_CHANGE',
+      });
+    }
+
+    return toSummary(cancelled);
+  }
+
   /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */
   async listForEmployer(input: {
     employerId: string;
@@ -579,6 +750,25 @@ export class ApplicationService {
       acceptedCount: post.acceptedCount,
       applicants: rows.map((row) => toApplicantItem(row, profiles)),
     };
+  }
+
+  /**
+   * 그 신청이 이 사람 것인지 확인하고 신청을 돌려준다 (#22).
+   *
+   * 없다고 하지 않는다. 본인 것이 아니라는 사실만 말한다 (#17의 철회와 같다).
+   */
+  private async mustOwnApplication(
+    applicationId: string,
+    applicantId: string,
+  ): Promise<ApplicationRecord> {
+    const current = await this.store.findById(applicationId);
+    if (current === null) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
+    }
+    if (current.applicantId !== applicantId) {
+      throw new ApplicationError(APPLICATION_ERRORS.NOT_OWNED);
+    }
+    return current;
   }
 
   /**
@@ -666,14 +856,10 @@ export class ApplicationService {
     applicantId: string;
     applicationId: string;
   }): Promise<ApplicationSummary> {
-    const current = await this.store.findById(input.applicationId);
-    if (current === null) {
-      throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
-    }
-    // 없다고 하지 않는다. 본인 것이 아니라는 사실만 말한다.
-    if (current.applicantId !== input.applicantId) {
-      throw new ApplicationError(APPLICATION_ERRORS.NOT_OWNED);
-    }
+    const current = await this.mustOwnApplication(
+      input.applicationId,
+      input.applicantId,
+    );
 
     // 표에 없는 전이는 거부된다. AC5의 `ACCEPTED`가 여기서 걸린다.
     transition(current.status, 'WITHDRAWN');
@@ -732,6 +918,36 @@ export class ApplicationService {
 
     return toSummary(revived);
   }
+}
+
+/**
+ * 재동의를 기다리는 신청인지 확인하고 **돌아갈 상태**를 돌려준다 (#22).
+ *
+ * `previousStatus`가 비어 있으면 무엇으로 되돌릴지 알 수 없다. `ADR-APP-3`이
+ * 전환과 기록을 한 UPDATE 문에 두었으므로 실제로는 비지 않지만, 비었다면
+ * 되돌리는 대신 거부한다 — 짐작해서 `APPLIED`로 보내면 이미 뽑힌 사람이
+ * 지원자로 돌아간다.
+ */
+function mustBeWaitingForReaccept(
+  row: ApplicationRecord,
+): 'APPLIED' | 'ACCEPTED' {
+  const previous = row.previousStatus;
+  if (
+    row.status !== 'PENDING_REACCEPT' ||
+    previous === null ||
+    !isReacceptTarget(previous)
+  ) {
+    throw new ApplicationError(APPLICATION_ERRORS.INVALID_TRANSITION, {
+      from: row.status,
+    });
+  }
+  return previous;
+}
+
+function isReacceptTarget(
+  status: ApplicationStatus,
+): status is 'APPLIED' | 'ACCEPTED' {
+  return REACCEPT_TARGET_STATUSES.some((target) => target === status);
 }
 
 /** 상태를 옮긴다. **표에 없으면 거부한다** */
