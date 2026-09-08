@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import {
+  RATING_ERRORS,
+  rateRequestSchema,
+  rateeOf,
   type ApplicationStatus,
   type RateRequest,
   type RatingErrorCode,
@@ -71,13 +74,54 @@ export interface RatingStore {
 export class RatingService {
   constructor(private readonly store: RatingStore) {}
 
-  /** 거래 후 별점을 남긴다 (AC1~AC3) */
-  async rate(_input: RateRequest): Promise<RatingResult> {
-    throw new Error('not implemented');
+  /**
+   * 거래 후 별점을 남긴다 (AC1~AC3).
+   *
+   * **당사자 판정이 상태 판정보다 먼저다.** 남의 거래를 두고 "아직 안
+   * 끝났다"고 답하면, 그 거래가 존재한다는 사실과 진행 상황이 함께 샌다.
+   */
+  async rate(input: RateRequest): Promise<RatingResult> {
+    const parsed = rateRequestSchema.parse(input);
+
+    const application = await this.store.findApplication(parsed.applicationId);
+    if (application === null) {
+      throw new RatingError(RATING_ERRORS.APPLICATION_NOT_FOUND);
+    }
+
+    const ratee = rateeOf({
+      raterId: parsed.raterId,
+      employerId: application.employerId,
+      applicantId: application.applicantId,
+    });
+    if (ratee === null) {
+      throw new RatingError(RATING_ERRORS.NOT_PARTICIPANT);
+    }
+
+    if (application.status !== 'COMPLETED') {
+      throw new RatingError(RATING_ERRORS.NOT_COMPLETED);
+    }
+
+    const created = await this.store.create({
+      applicationId: parsed.applicationId,
+      raterId: parsed.raterId,
+      rateeId: ratee.rateeId,
+      rateeRole: ratee.rateeRole,
+      score: parsed.score,
+    });
+    // 사전 조회로는 막을 수 없다. 두 번째 요청을 실제로 막는 것은 유니크 제약이다
+    if (created === 'DUPLICATE') {
+      throw new RatingError(RATING_ERRORS.ALREADY_RATED);
+    }
+
+    return { ...created, ratee: await this.summaryOf(ratee.rateeId) };
   }
 
   /** 한 회원의 두 평점 (AC4~AC6) */
-  async summaryOf(_userId: string): Promise<RatingSummary> {
-    throw new Error('not implemented');
+  async summaryOf(userId: string): Promise<RatingSummary> {
+    const summary = await this.store.summaryOf(userId);
+    if (summary === null) {
+      throw new RatingError(RATING_ERRORS.USER_NOT_FOUND);
+    }
+    return summary;
   }
 }

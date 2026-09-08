@@ -3,7 +3,7 @@
 > GitHub: https://github.com/kimgyuhyun/fixer/issues/26
 > PRD: `docs/result/prd/penalty-rating.md`
 > 담당: B (김규현)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: 구현 완료 (Green)
 
 ---
 
@@ -308,45 +308,45 @@ export function MemberRating({
 
 ### 정상
 
-- [ ] [정상] `rateeOf` — should point at the applicant as WORKER when the employer is the rater
-- [ ] [정상] `rateeOf` — should point at the employer as POSTER when the applicant is the rater
-- [ ] [정상] `rate` — should store the score and refresh the worker rating when the employer rates a completed transaction
-- [ ] [정상] `rate` — should store the score and refresh the poster rating when the applicant rates the employer
-- [ ] [정상] `summaryOf` — should report the average of the scores the member received as a worker
-- [ ] [정상] `POST /ratings` — should answer 201 with the rated member's refreshed rating
-- [ ] [정상] `GET /ratings/:userId` — should answer 200 with the two role averages side by side
-- [ ] [정상] `create` — should write the average and the count into the rated member's worker cache
-- [ ] [정상] `profilesOf` — should report the applicant's cached worker rating instead of an empty sample
-- [ ] [정상] `MemberRating` — should show the poster rating and the worker rating as separate rows
+- [x] [정상] `rateeOf` — should point at the applicant as WORKER when the employer is the rater
+- [x] [정상] `rateeOf` — should point at the employer as POSTER when the applicant is the rater
+- [x] [정상] `rate` — should store the score and refresh the worker rating when the employer rates a completed transaction
+- [x] [정상] `rate` — should store the score and refresh the poster rating when the applicant rates the employer
+- [x] [정상] `summaryOf` — should report the average of the scores the member received as a worker
+- [x] [정상] `POST /ratings` — should answer 201 with the rated member's refreshed rating
+- [x] [정상] `GET /ratings/:userId` — should answer 200 with the two role averages side by side
+- [x] [정상] `create` — should write the average and the count into the rated member's worker cache
+- [x] [정상] `profilesOf` — should report the applicant's cached worker rating instead of an empty sample
+- [x] [정상] `MemberRating` — should show the poster rating and the worker rating as separate rows
 
 ### 경계
 
-- [ ] [경계] `rate` — should store a score of exactly 1
-- [ ] [경계] `rate` — should store a score of exactly 5
-- [ ] [경계] `summaryOf` — should report a null average and a zero count when the member was never rated
-- [ ] [경계] `summaryOf` — should report a count of 2 while the average is still hidden by the display rule
-- [ ] [경계] `summaryOf` — should keep the two roles apart when the member was rated in both roles
-- [ ] [경계] `create` — should leave the poster cache untouched when the rating was left for the worker
-- [ ] [경계] `create` — should recompute the average over every rating the member received in that role
-- [ ] [경계] `create` — should accept the counterpart's rating on the same transaction
-- [ ] [경계] `MemberRating` — should show 신규 instead of the average when only 2 ratings were received
-- [ ] [경계] `MemberRating` — should show the average when exactly 3 ratings were received
+- [x] [경계] `rate` — should store a score of exactly 1
+- [x] [경계] `rate` — should store a score of exactly 5
+- [x] [경계] `summaryOf` — should report a null average and a zero count when the member was never rated
+- [x] [경계] `summaryOf` — should report a count of 2 while the average is still hidden by the display rule
+- [x] [경계] `summaryOf` — should keep the two roles apart when the member was rated in both roles
+- [x] [경계] `create` — should leave the poster cache untouched when the rating was left for the worker
+- [x] [경계] `create` — should recompute the average over every rating the member received in that role
+- [x] [경계] `create` — should accept the counterpart's rating on the same transaction
+- [x] [경계] `MemberRating` — should show 신규 instead of the average when only 2 ratings were received
+- [x] [경계] `MemberRating` — should show the average when exactly 3 ratings were received
 
 ### 예외
 
-- [ ] [예외] `rateeOf` — should return null when the rater is neither party of the transaction
-- [ ] [예외] `rate` — should reject a score below 1
-- [ ] [예외] `rate` — should reject a score above 5
-- [ ] [예외] `rate` — should reject a fractional score
-- [ ] [예외] `rate` — should throw RATING_ALREADY_RATED when the same rater rates the same transaction twice
-- [ ] [예외] `rate` — should throw RATING_NOT_COMPLETED when the transaction is still ACCEPTED
-- [ ] [예외] `rate` — should throw RATING_NOT_COMPLETED when the transaction ended as NO_SHOW
-- [ ] [예외] `rate` — should throw RATING_NOT_PARTICIPANT when someone outside the transaction rates
-- [ ] [예외] `rate` — should throw RATING_APPLICATION_NOT_FOUND when there is no such transaction
-- [ ] [예외] `summaryOf` — should throw RATING_USER_NOT_FOUND when there is no such member
-- [ ] [예외] `create` — should report DUPLICATE when the same rater rates the same transaction twice
-- [ ] [예외] `POST /ratings` — should answer 409 with RATING_ALREADY_RATED when the transaction was already rated
-- [ ] [예외] `POST /ratings` — should answer 409 with RATING_NOT_COMPLETED when the transaction is not completed
+- [x] [예외] `rateeOf` — should return null when the rater is neither party of the transaction
+- [x] [예외] `rate` — should reject a score below 1
+- [x] [예외] `rate` — should reject a score above 5
+- [x] [예외] `rate` — should reject a fractional score
+- [x] [예외] `rate` — should throw RATING_ALREADY_RATED when the same rater rates the same transaction twice
+- [x] [예외] `rate` — should throw RATING_NOT_COMPLETED when the transaction is still ACCEPTED
+- [x] [예외] `rate` — should throw RATING_NOT_COMPLETED when the transaction ended as NO_SHOW
+- [x] [예외] `rate` — should throw RATING_NOT_PARTICIPANT when someone outside the transaction rates
+- [x] [예외] `rate` — should throw RATING_APPLICATION_NOT_FOUND when there is no such transaction
+- [x] [예외] `summaryOf` — should throw RATING_USER_NOT_FOUND when there is no such member
+- [x] [예외] `create` — should report DUPLICATE when the same rater rates the same transaction twice
+- [x] [예외] `POST /ratings` — should answer 409 with RATING_ALREADY_RATED when the transaction was already rated
+- [x] [예외] `POST /ratings` — should answer 409 with RATING_NOT_COMPLETED when the transaction is not completed
 
 ---
 
@@ -374,3 +374,35 @@ export function MemberRating({
   구현체다. **안 채우면 지원자 목록이 계속 전원 "신규"로 보인다**
 
 **커버리지:** AC 6개 / 시나리오 33개 / 미커버 0개
+
+---
+
+## Green 결과
+
+테스트 33개 전부 통과. 저장소 전체는 1,030건(`packages/shared` 58 · `apps/web` 128 ·
+`apps/api` 844)이고 빨간불은 없다. `pnpm build` → `pnpm typecheck` → `pnpm lint` 순서로
+돌려 **오류 0건**이다 (`apps/web`의 경고 1건은 이 이슈가 건드리지 않은 파일의 기존 항목).
+
+만든·고친 파일
+
+| 파일                                                   | 무엇                                          |
+| ------------------------------------------------------ | --------------------------------------------- |
+| `packages/shared/src/rating.ts`                        | 값·스키마·`rateeOf`                           |
+| `apps/api/prisma/schema.prisma` + 마이그레이션         | `Rating` 모델과 `User`의 역할별 캐시 컬럼 4개 |
+| `apps/api/src/rating/*`                                | 서비스·저장소·컨트롤러·모듈                   |
+| `apps/api/src/application/prisma-application.store.ts` | 임시 구현체를 걷어내고 캐시를 진짜로 읽는다   |
+| `apps/web/src/app/my/MemberRating.tsx` + CSS           | 두 평점을 나란히 그린다                       |
+| `apps/web/src/app/my/page.tsx`                         | 마이페이지에 배선                             |
+
+### 커버리지 — 어댑터 두 메서드가 비어 있다
+
+`src/rating` 기준 구문 79.4% / 분기 65.6%. `rating.service.ts`는 100%다.
+
+| 미커버                                            | 판단                                                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `PrismaRatingStore.findApplication` · `summaryOf` | **시나리오에서 빠진 것이다.** 서비스 테스트는 가짜 저장소를 쓰고, 통합 테스트는 `create`만 부른다 |
+| `RatingController`의 404·403 분기                 | 시나리오가 409 둘만 잡는다. 나머지 분기는 코드로만 있다                                           |
+
+**커버리지를 채우려고 테스트를 더 쓰지 않았다.** 다만 `findApplication`의 조인
+(`Application → JobPost.employerId`)은 지금 어떤 테스트도 진짜 DB에서 실행하지 않으므로,
+**배포 전에 한 번은 실제로 태워 봐야 하는 자리**로 남긴다.

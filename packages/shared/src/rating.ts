@@ -100,10 +100,16 @@ export type RatingResult = z.infer<typeof ratingResultSchema>;
  * 당사자가 아니면 `null`이다. **판정을 서비스 안에 숨기지 않는 이유는**
  * 이것이 "구인자 평점 / 구직자 평점"이 갈리는 유일한 지점이기 때문이다.
  */
-export function rateeOf(_input: {
+export function rateeOf(input: {
   raterId: string;
   employerId: string;
   applicantId: string;
 }): { rateeId: string; rateeRole: RatingRole } | null {
-  throw new Error('not implemented');
+  if (input.raterId === input.employerId) {
+    return { rateeId: input.applicantId, rateeRole: 'WORKER' };
+  }
+  if (input.raterId === input.applicantId) {
+    return { rateeId: input.employerId, rateeRole: 'POSTER' };
+  }
+  return null;
 }

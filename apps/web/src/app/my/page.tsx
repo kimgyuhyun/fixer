@@ -4,6 +4,7 @@ import { myProfileSchema, type MyProfile } from '@fixer/shared';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { MemberRating } from './MemberRating';
 import styles from './page.module.css';
 
 /**
@@ -109,6 +110,9 @@ export default function MyPage() {
           </dd>
         </div>
       </dl>
+
+      {/* 구인자 평점과 구직자 평점은 별개다 (#26, spec §2.1) */}
+      <MemberRating userId={profile.id} />
 
       <p className={styles.note}>주소 등록은 이슈 #3에서 만듭니다.</p>
 
