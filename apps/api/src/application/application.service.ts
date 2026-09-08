@@ -17,7 +17,9 @@ import {
   type CompleteJobPostRequest,
   type CompletionSummary,
   type JobPostStatus,
+  type JobPostVersionSnapshot,
   type PenaltyReason,
+  type ReacceptDiff,
 } from '@fixer/shared';
 import type { NotificationPublisher } from '../notification/notification.service';
 
@@ -42,6 +44,13 @@ export interface ApplicationRecord {
   appliedVersion: number;
   /** 수락 시각 (#18 AC1). 아직 수락 전이면 null */
   acceptedAt: Date | null;
+  /**
+   * 재동의 대기로 내려가기 전 상태 (`ADR-APP-3`, #21).
+   *
+   * **#22의 "이전 상태로 복귀"가 이 값을 쓴다.** `PENDING_REACCEPT`인
+   * 동안에만 의미가 있고, 다른 상태에서는 지난 흔적이라 판정에 쓰지 않는다.
+   */
+  previousStatus: ApplicationStatus | null;
   createdAt: Date;
 }
 
@@ -174,6 +183,27 @@ export interface ApplicationStore {
     penalty: { userId: string; reason: PenaltyReason };
   }): Promise<ApplicationRecord | 'STALE'>;
 
+  /**
+   * 재동의. **두 문장이 함께 되거나 함께 안 된다** (#22 AC2·AC3).
+   *
+   * 1. `Application SET status=previousStatus, appliedVersion=?,
+   *    previousStatus=NULL WHERE id=? AND status='PENDING_REACCEPT'`
+   * 2. `previousStatus='ACCEPTED'`면
+   *    `JobPost SET acceptedCount+1 WHERE id=? AND acceptedCount < headcount`
+   *
+   * 나뉘면 상태는 `ACCEPTED`인데 카운터는 그대로가 되어 **정원보다 많은
+   * 사람이 확정된다** (`ADR-APP-1`).
+   *
+   * `'STALE'` = `PENDING_REACCEPT`가 아니다 (재동의 버튼 연타의 두 번째).
+   * `'FULL'` = 기다리는 사이 자리가 찼다. **둘 다 아무것도 커밋하지 않는다.**
+   */
+  reaccept(input: {
+    applicationId: string;
+    jobPostId: string;
+    previousStatus: 'APPLIED' | 'ACCEPTED';
+    appliedVersion: number;
+  }): Promise<ApplicationRecord | 'STALE' | 'FULL'>;
+
   /** 구인자의 지원자 목록. 오래 지원한 순 (선착순 표시지 선착순 수락은 아니다) */
   listByJobPost(
     jobPostId: string,
@@ -222,6 +252,17 @@ export interface ApplicantProfile {
 export interface JobPostReader {
   /** 소프트 삭제된 공고는 **못 찾은 것으로 다룬다** (#14) */
   findForApplication(jobPostId: string): Promise<JobPostForApplication | null>;
+
+  /**
+   * 그 버전의 필수항목 6개. 없으면 null (#22 AC1).
+   *
+   * 재동의 화면의 좌우 두 값이 여기서 온다. **분쟁 시 근거가 되는 계약
+   * 내용이라** 지금 공고 행이 아니라 스냅샷을 읽는다 (`ADR-JOB-1`).
+   */
+  findVersionSnapshot(
+    jobPostId: string,
+    version: number,
+  ): Promise<JobPostVersionSnapshot | null>;
 }
 
 /** 신청 판정에 필요한 공고 정보. #17의 셋에 #18이 둘을 더했다 */
@@ -506,6 +547,46 @@ export class ApplicationService {
     }
 
     return { jobPostId: post.id, status: 'COMPLETED', ...settled };
+  }
+
+  /**
+   * 재동의 대기 화면이 그릴 변경 전/후 (#22 AC1, `spec-fixed.md` §3.4).
+   *
+   * 내가 동의했던 버전과 지금 버전의 스냅샷을 그대로 주고, 달라진 항목만
+   * 이름으로 짚는다. **본인 신청만 볼 수 있다** — diff는 계약 내용이라
+   * id만 알면 남이 무슨 조건에 동의했는지 읽히면 안 된다.
+   */
+  versionDiff(_input: {
+    applicantId: string;
+    applicationId: string;
+  }): Promise<ReacceptDiff> {
+    throw new Error('not implemented');
+  }
+
+  /**
+   * 신청자가 바뀐 조건에 다시 동의한다 (#22 AC2·AC3).
+   *
+   * `appliedVersion`이 최신이 되고 **이전 상태로 복귀한다** (`ADR-APP-3`).
+   * `ACCEPTED`였으면 확정 인원도 복구된다.
+   */
+  reaccept(_input: {
+    applicantId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
+  }
+
+  /**
+   * 신청자가 바뀐 조건을 거절한다 (#22 AC4).
+   *
+   * **경고가 쌓이지 않는다.** 조건을 바꾼 것은 구인자이므로 신청자 귀책이
+   * 아니다 (`spec-fixed.md` §3.4 6번).
+   */
+  declineVersionChange(_input: {
+    applicantId: string;
+    applicationId: string;
+  }): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
   }
 
   /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */

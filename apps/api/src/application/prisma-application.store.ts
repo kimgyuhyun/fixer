@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type {
   ApplicationStatus,
   JobPostStatus,
+  JobPostVersionSnapshot,
   PenaltyReason,
 } from '@fixer/shared';
 import type {
@@ -334,6 +335,15 @@ export class PrismaApplicationStore implements ApplicationStore {
     `;
   }
 
+  reaccept(_input: {
+    applicationId: string;
+    jobPostId: string;
+    previousStatus: 'APPLIED' | 'ACCEPTED';
+    appliedVersion: number;
+  }): Promise<ApplicationRecord | 'STALE' | 'FULL'> {
+    throw new Error('not implemented');
+  }
+
   async listByJobPost(
     jobPostId: string,
     statuses: readonly ApplicationStatus[],
@@ -375,6 +385,13 @@ export class PrismaJobPostReader implements JobPostReader {
         workStartAt: true,
       },
     });
+  }
+
+  findVersionSnapshot(
+    _jobPostId: string,
+    _version: number,
+  ): Promise<JobPostVersionSnapshot | null> {
+    throw new Error('not implemented');
   }
 }
 
@@ -423,6 +440,7 @@ function toRecord(row: {
   status: ApplicationStatus;
   appliedVersion: number;
   acceptedAt: Date | null;
+  previousStatus: ApplicationStatus | null;
   createdAt: Date;
 }): ApplicationRecord {
   return {
@@ -432,6 +450,7 @@ function toRecord(row: {
     status: row.status,
     appliedVersion: row.appliedVersion,
     acceptedAt: row.acceptedAt,
+    previousStatus: row.previousStatus,
     createdAt: row.createdAt,
   };
 }

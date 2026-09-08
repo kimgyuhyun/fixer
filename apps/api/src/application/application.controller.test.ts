@@ -385,3 +385,79 @@ describe('POST /applications/:id/no-show', () => {
     expect(statusOf(error)).toBe(400);
   });
 });
+/** 재동의 대기 화면이 받는 변경 전/후 한 벌 (#22) */
+const DIFF = {
+  applicationId: 'app_1',
+  jobPostId: 'job_1',
+  before: {
+    version: 1,
+    workAddress: '서울특별시 강남구 테헤란로 1',
+    workStartAt: '2026-01-01T09:00:00.000Z',
+    workEndAt: '2026-01-01T18:00:00.000Z',
+    headcount: 2,
+    rewardPerPerson: 10_000,
+    requiredDescription: '창고 정리',
+  },
+  after: {
+    version: 2,
+    workAddress: '서울특별시 강남구 테헤란로 1',
+    workStartAt: '2026-01-01T09:00:00.000Z',
+    workEndAt: '2026-01-01T18:00:00.000Z',
+    headcount: 2,
+    rewardPerPerson: 12_000,
+    requiredDescription: '창고 정리',
+  },
+  changedFields: ['rewardPerPerson' as const],
+};
+
+describe('GET /applications/:id/version-diff', () => {
+  it("should answer the diff of the applicant's demoted application", async () => {
+    const controller = controllerWith({
+      versionDiff: vi.fn().mockResolvedValue(DIFF),
+    });
+
+    const result = await controller.versionDiff('app_1', {
+      applicantId: 'usr_seeker',
+    });
+
+    expect(result).toMatchObject({
+      applicationId: 'app_1',
+      changedFields: ['rewardPerPerson'],
+    });
+  });
+});
+
+describe('POST /applications/:id/reaccept', () => {
+  it('should answer the restored application summary', async () => {
+    const controller = controllerWith({
+      reaccept: vi.fn().mockResolvedValue({
+        ...SUMMARY,
+        status: 'ACCEPTED' as const,
+        appliedVersion: 2,
+      }),
+    });
+
+    const result = await controller.reaccept('app_1', {
+      applicantId: 'usr_seeker',
+    });
+
+    expect(result).toMatchObject({ status: 'ACCEPTED', appliedVersion: 2 });
+  });
+});
+
+describe('POST /applications/:id/decline', () => {
+  it('should answer the cancelled application summary', async () => {
+    const controller = controllerWith({
+      declineVersionChange: vi.fn().mockResolvedValue({
+        ...SUMMARY,
+        status: 'CANCELLED_BY_VERSION_CHANGE' as const,
+      }),
+    });
+
+    const result = await controller.decline('app_1', {
+      applicantId: 'usr_seeker',
+    });
+
+    expect(result).toMatchObject({ status: 'CANCELLED_BY_VERSION_CHANGE' });
+  });
+});

@@ -27,6 +27,7 @@ import {
   type ApplicationErrorCode,
   type ApplicationSummary,
   type CompletionSummary,
+  type ReacceptDiff,
 } from '@fixer/shared';
 import { z, ZodError } from 'zod';
 import { ApplicationError, ApplicationService } from './application.service';
@@ -148,6 +149,35 @@ export class ApplicationController {
     } catch (error) {
       throw toHttpError(error);
     }
+  }
+
+  /** 재동의 대기 화면이 그릴 변경 전/후 (#22 AC1) */
+  @Get(':id/version-diff')
+  versionDiff(
+    @Param('id') _id: string,
+    @Query() _query: unknown,
+  ): Promise<ReacceptDiff> {
+    throw new Error('not implemented');
+  }
+
+  /** 신청자가 바뀐 조건에 다시 동의한다 (#22 AC2·AC3) */
+  @Post(':id/reaccept')
+  @HttpCode(HttpStatus.OK)
+  reaccept(
+    @Param('id') _id: string,
+    @Body() _body: unknown,
+  ): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
+  }
+
+  /** 신청자가 바뀐 조건을 거절한다. **경고가 쌓이지 않는다** (#22 AC4) */
+  @Post(':id/decline')
+  @HttpCode(HttpStatus.OK)
+  decline(
+    @Param('id') _id: string,
+    @Body() _body: unknown,
+  ): Promise<ApplicationSummary> {
+    throw new Error('not implemented');
   }
 
   /** 구인자가 업무 완료를 확인한다 (#23) */
