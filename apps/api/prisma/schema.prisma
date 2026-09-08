@@ -325,6 +325,12 @@ model JobPost {
   /// 통과하는 그 틈을 못 막는다.
   acceptedCount Int @default(0)
 
+  /// 모집 미달 알림을 보낸 시각. null이면 아직 안 보냈다 (#38).
+  ///
+  /// 이 컬럼의 `IS NULL`이 중복 발송을 막는 **1차 방어**다
+  /// (`spec-fixed.md` §8.2). 2차는 advisory lock이다.
+  underfilledNotifiedAt DateTime?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   /// 물리 삭제 없음 (§3.3). 상태와 이 값으로 관리한다.
@@ -606,4 +612,6 @@ enum NotificationType {
   APPLICATION_REACCEPT_REQUIRED
   /// 경고 누적으로 제재가 시작됐다 (#25, §5 "제재 발생 시 … 알림 발송")
   SUSPENSION_STARTED
+  /// 시작 3시간 전인데 인원이 안 찼다 (#38)
+  JOB_POST_UNDERFILLED
 }

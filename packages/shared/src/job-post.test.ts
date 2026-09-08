@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   JOB_POST_REQUIRED_FIELDS,
+  canTransition,
   changedRequiredFields,
   describeRequiredChanges,
   type RequiredFieldValues,
@@ -95,5 +96,14 @@ describe('describeRequiredChanges', () => {
     expect(
       describeRequiredChanges(['requiredDescription', 'workAddress']),
     ).toBe('바뀐 항목: 근무 주소, 상세 내용. 계속 참여할지 확인해 주세요.');
+  });
+});
+
+describe('canTransition', () => {
+  // #38이 만드는 회귀를 #38이 막는다. 미달인 채로 시작 시각이 지나면 공고는
+  // EXPIRED가 되는데, 수락자가 한 명이라도 있으면 그 사람은 일을 하고 대금을
+  // 받아야 한다. 완료 확인(#23)이 EXPIRED에서 막히면 그 돈이 갇힌다.
+  it('should allow EXPIRED to COMPLETED so accepted workers can still be paid', () => {
+    expect(canTransition('EXPIRED', 'COMPLETED')).toBe(true);
   });
 });

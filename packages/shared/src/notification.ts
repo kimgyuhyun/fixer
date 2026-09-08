@@ -20,9 +20,19 @@ export const NOTIFICATION_TYPES = [
   'EXCHANGE_REJECTED',
   /** 공고 조건이 바뀌어 재동의가 필요하다 (#21) */
   'APPLICATION_REACCEPT_REQUIRED',
+  /** 시작 3시간 전인데 인원이 안 찼다 (#38) */
+  'JOB_POST_UNDERFILLED',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/**
+ * 모집 미달 알림을 보내는 시점. 시작 **3시간** 전 (`spec-fixed.md` §8.1)
+ *
+ * 테스트는 이 값을 쓰지 않고 짧은 값을 **주입한다** — 3시간을 실제로 기다릴
+ * 수는 없기 때문이다. `RETENTION`을 한 곳에 모은 것과 같은 이유다.
+ */
+export const UNDERFILL_NOTICE_LEAD_MS = 3 * 60 * 60 * 1000;
 
 /**
  * 목록이 한 번에 주는 최대 건수.
