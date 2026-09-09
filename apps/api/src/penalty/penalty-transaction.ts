@@ -19,14 +19,23 @@ export interface SuspensionRecord {
 /**
  * 유효 제재를 가리는 조건. **§5.1의 `releasedAt IS NULL AND endAt > now()`다.**
  *
- * 판정을 쓰는 곳이 둘이다 — 여기(중복 제재 방지)와 `PrismaSuspensionReader`
- * (차단 판정). 같은 규칙을 두 번 적으면 한쪽만 고쳐지는 날이 온다.
+ * 판정을 쓰는 곳이 셋이다 — 중복 제재 방지, `PrismaSuspensionReader`(차단
+ * 판정), 그리고 블랙리스트 목록(#33). 같은 규칙을 세 번 적으면 한 곳만
+ * 고쳐지는 날이 온다.
  */
+export function activeSuspensionAtWhere(now: Date): {
+  releasedAt: null;
+  endAt: { gt: Date };
+} {
+  return { releasedAt: null, endAt: { gt: now } };
+}
+
+/** 위 조건을 회원 한 명으로 좁힌 것 */
 export function activeSuspensionWhere(
   userId: string,
   now: Date,
 ): { userId: string; releasedAt: null; endAt: { gt: Date } } {
-  return { userId, releasedAt: null, endAt: { gt: now } };
+  return { userId, ...activeSuspensionAtWhere(now) };
 }
 
 /** `SuspensionRecord`가 필요로 하는 칸. 두 조회가 같은 모양을 돌려준다 */
