@@ -1,10 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import type { AdminJobPostFilter, UserRole } from '@fixer/shared';
+import type {
+  AdminJobPostFilter,
+  AdminSuspensionFilter,
+  UserRole,
+} from '@fixer/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   AdminJobPostRow,
   AdminJobPostStore,
 } from './admin-job-post.service';
+import type {
+  AdminSuspensionRow,
+  AdminSuspensionStore,
+  ReleasedSuspension,
+} from './admin-suspension.service';
 import type { RoleReader } from './admin.guard';
 
 /** 회원의 등급을 DB에서 읽는다. 토큰에 복사하지 않는 이유는 가드 주석에 */
@@ -91,5 +100,30 @@ export class PrismaAdminJobPostStore implements AdminJobPostStore {
       })),
       total,
     };
+  }
+}
+
+/**
+ * 블랙리스트 = `Suspension` 조회. **새 테이블을 만들지 않는다** (§5.1).
+ */
+@Injectable()
+export class PrismaAdminSuspensionStore implements AdminSuspensionStore {
+  constructor(private readonly prisma: PrismaService) {}
+
+  listActive(
+    filter: AdminSuspensionFilter,
+    pageSize: number,
+    now: Date,
+  ): Promise<{ items: AdminSuspensionRow[]; total: number }> {
+    throw new Error('not implemented');
+  }
+
+  release(input: {
+    suspensionId: string;
+    adminId: string;
+    reason: string;
+    now: Date;
+  }): Promise<ReleasedSuspension | 'NOT_FOUND' | 'ALREADY_RELEASED'> {
+    throw new Error('not implemented');
   }
 }
