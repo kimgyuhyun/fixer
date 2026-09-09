@@ -1,14 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  AdminMemberDetail,
-  AdminMemberFilter,
-  AdminMemberList,
-  ApplicationStatus,
-  JobPostStatus,
-  PenaltyReason,
-  PointTransactionType,
-  RatingRole,
+import {
+  ADMIN_ERRORS,
+  ADMIN_MEMBER_PAGE_SIZE,
+  memberStatusOf,
+  type AdminMemberDetail,
+  type AdminMemberFilter,
+  type AdminMemberList,
+  type AdminMemberSummary,
+  type ApplicationStatus,
+  type JobPostStatus,
+  type PenaltyReason,
+  type PointTransactionType,
+  type RatingRole,
 } from '@fixer/shared';
+import { AdminError } from './admin-job-post.service';
 
 /**
  * 목록 한 줄에 필요한 것들. (이슈 #32, `spec-fixed.md` §11.3)
@@ -101,12 +106,91 @@ export class AdminMemberService {
   constructor(private readonly store: AdminMemberStore) {}
 
   /** 비활성화 회원도 사라지지 않는다. 상태로 구분해서 함께 준다 (AC4) */
-  list(_filter: AdminMemberFilter): Promise<AdminMemberList> {
-    throw new Error('not implemented');
+  async list(filter: AdminMemberFilter): Promise<AdminMemberList> {
+    const { items, total } = await this.store.list(
+      filter,
+      ADMIN_MEMBER_PAGE_SIZE,
+      new Date(),
+    );
+
+    return {
+      items: items.map(toSummary),
+      total,
+      page: filter.page,
+      pageSize: ADMIN_MEMBER_PAGE_SIZE,
+    };
   }
 
   /** @throws AdminError(`ADMIN_MEMBER_NOT_FOUND`) */
-  detail(_userId: string): Promise<AdminMemberDetail> {
-    throw new Error('not implemented');
+  async detail(userId: string): Promise<AdminMemberDetail> {
+    const row = await this.store.findDetail(userId, new Date());
+    if (row === null) {
+      throw new AdminError(ADMIN_ERRORS.MEMBER_NOT_FOUND);
+    }
+
+    return {
+      ...toSummaryWithoutPenalty(row),
+      address: row.address,
+      reviews: row.reviews.map((review) => ({
+        id: review.id,
+        score: review.score,
+        rateeRole: review.rateeRole,
+        raterName: review.raterName,
+        jobPostTitle: review.jobPostTitle,
+        createdAt: review.createdAt.toISOString(),
+      })),
+      jobPosts: row.jobPosts.map((post) => ({
+        id: post.id,
+        title: post.title,
+        status: post.status,
+        createdAt: post.createdAt.toISOString(),
+      })),
+      applications: row.applications.map((application) => ({
+        id: application.id,
+        jobPostId: application.jobPostId,
+        jobPostTitle: application.jobPostTitle,
+        status: application.status,
+        createdAt: application.createdAt.toISOString(),
+      })),
+      pointBalance: row.pointBalance,
+      ledger: row.ledger.map((entry) => ({
+        id: entry.id,
+        type: entry.type,
+        amount: entry.amount,
+        createdAt: entry.createdAt.toISOString(),
+      })),
+      penalties: row.penalties.map((penalty) => ({
+        id: penalty.id,
+        reason: penalty.reason,
+        jobPostId: penalty.jobPostId,
+        occurredAt: penalty.occurredAt.toISOString(),
+      })),
+      suspensions: row.suspensions.map((suspension) => ({
+        id: suspension.id,
+        startAt: suspension.startAt.toISOString(),
+        endAt: suspension.endAt.toISOString(),
+        releasedAt: suspension.releasedAt?.toISOString() ?? null,
+      })),
+    };
   }
+}
+
+/** 상세와 목록이 함께 쓰는 여섯 칸. 경고 수는 목록에만 있다 */
+function toSummaryWithoutPenalty(
+  row: AdminMemberRow,
+): Omit<AdminMemberSummary, 'penaltyCount'> {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    joinedAt: row.joinedAt.toISOString(),
+    asPoster: { average: row.ratingAsPoster, count: row.ratingAsPosterCount },
+    asWorker: { average: row.ratingAsWorker, count: row.ratingAsWorkerCount },
+    // **상태 컬럼이 없다** (`ADR-AUTH-3`). 두 재료에서 계산한다
+    status: memberStatusOf(row),
+  };
+}
+
+function toSummary(row: AdminMemberRow): AdminMemberSummary {
+  return { ...toSummaryWithoutPenalty(row), penaltyCount: row.penaltyCount };
 }

@@ -216,11 +216,12 @@ export type AdminMemberStatus = (typeof ADMIN_MEMBER_STATUSES)[number];
  * 서버와 화면이 같은 함수를 쓴다. 화면이 따로 판정하면 "목록은 정상인데
  * 배지는 제재중"인 줄이 생긴다.
  */
-export function memberStatusOf(_member: {
+export function memberStatusOf(member: {
   deactivatedAt: Date | null;
   hasActiveSuspension: boolean;
 }): AdminMemberStatus {
-  throw new Error('not implemented');
+  if (member.deactivatedAt !== null) return 'DEACTIVATED';
+  return member.hasActiveSuspension ? 'SUSPENDED' : 'ACTIVE';
 }
 
 /**
@@ -237,7 +238,7 @@ export const adminMemberFilterSchema = z.object({
   sigungu: z.string().trim().min(1).optional(),
   status: z.enum(ADMIN_MEMBER_STATUSES).optional(),
   /** 1부터. 범위를 넘으면 오류가 아니라 빈 목록이다 (관리자 목록 셋과 같다) */
-  page: z.coerce.number().int(),
+  page: z.coerce.number().int().min(1).catch(1).default(1),
 });
 
 export type AdminMemberFilter = z.infer<typeof adminMemberFilterSchema>;

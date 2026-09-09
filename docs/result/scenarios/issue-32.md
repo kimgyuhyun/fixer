@@ -395,52 +395,52 @@ export interface AdminMemberDetailProps {
 
 ### 정상
 
-- [ ] [정상] `list` — should return name, email, joinedAt, both role ratings, penalty count and status for every member
-- [ ] [정상] `list` — should report the filtered total, the requested page and the page size
-- [ ] [정상] `list` — should return only members whose name partially matches the search word
-- [ ] [정상] `list` — should also match a partial email with the same search word
-- [ ] [정상] `list` — should return only members living in the chosen sido
-- [ ] [정상] `list` — should narrow further with sigungu
-- [ ] [정상] `list` — should apply the search word and the region together as AND
-- [ ] [정상] `list` — should still return a deactivated member and mark the row DEACTIVATED
-- [ ] [정상] `list` — should return only deactivated members when the status filter is DEACTIVATED
-- [ ] [정상] `memberStatusOf` — should report ACTIVE when the member is neither deactivated nor suspended
-- [ ] [정상] `memberStatusOf` — should report SUSPENDED when an active suspension exists
-- [ ] [정상] `detail` — should return the name, email, joined date, address and status
-- [ ] [정상] `detail` — should return both role averages with their sample counts
-- [ ] [정상] `detail` — should return every rating received with the rater name, the job post title and the date
-- [ ] [정상] `detail` — should return the job posts the member registered and the applications they made
-- [ ] [정상] `detail` — should return the ledger entries and a balance summed from the ledger
-- [ ] [정상] `detail` — should return penalties with their reason and job post and the suspension history
-- [ ] [정상] `GET /admin/members` — should answer 200 with the list body when an admin calls it with a filter
-- [ ] [정상] `통합` — should filter by name, email and region against the real database
-- [ ] [정상] `통합` — should gather ratings, job posts, applications, ledger and penalties for one member
-- [ ] [정상] `목록 화면` — should render name, email, joined date, both ratings, penalty count and status for each row
-- [ ] [정상] `목록 화면` — should show a "비활성화" badge on a deactivated row
-- [ ] [정상] `목록 화면` — should put the applied search word and region into the URL
-- [ ] [정상] `목록 화면` — should link each row to that member's detail page
-- [ ] [정상] `상세 화면` — should render the rating, review, trade, point and penalty sections
+- [x] [정상] `list` — should return name, email, joinedAt, both role ratings, penalty count and status for every member
+- [x] [정상] `list` — should report the filtered total, the requested page and the page size
+- [x] [정상] `list` — should return only members whose name partially matches the search word
+- [x] [정상] `list` — should also match a partial email with the same search word
+- [x] [정상] `list` — should return only members living in the chosen sido
+- [x] [정상] `list` — should narrow further with sigungu
+- [x] [정상] `list` — should apply the search word and the region together as AND
+- [x] [정상] `list` — should still return a deactivated member and mark the row DEACTIVATED
+- [x] [정상] `list` — should return only deactivated members when the status filter is DEACTIVATED
+- [x] [정상] `memberStatusOf` — should report ACTIVE when the member is neither deactivated nor suspended
+- [x] [정상] `memberStatusOf` — should report SUSPENDED when an active suspension exists
+- [x] [정상] `detail` — should return the name, email, joined date, address and status
+- [x] [정상] `detail` — should return both role averages with their sample counts
+- [x] [정상] `detail` — should return every rating received with the rater name, the job post title and the date
+- [x] [정상] `detail` — should return the job posts the member registered and the applications they made
+- [x] [정상] `detail` — should return the ledger entries and a balance summed from the ledger
+- [x] [정상] `detail` — should return penalties with their reason and job post and the suspension history
+- [x] [정상] `GET /admin/members` — should answer 200 with the list body when an admin calls it with a filter
+- [x] [정상] `통합` — should filter by name, email and region against the real database
+- [x] [정상] `통합` — should gather ratings, job posts, applications, ledger and penalties for one member
+- [x] [정상] `목록 화면` — should render name, email, joined date, both ratings, penalty count and status for each row
+- [x] [정상] `목록 화면` — should show a "비활성화" badge on a deactivated row
+- [x] [정상] `목록 화면` — should put the applied search word and region into the URL
+- [x] [정상] `목록 화면` — should link each row to that member's detail page
+- [x] [정상] `상세 화면` — should render the rating, review, trade, point and penalty sections
 
 ### 경계
 
-- [ ] [경계] `adminMemberFilterSchema` — should fall back to page 1 when page is 0 or not a number
-- [ ] [경계] `list` — should return every member when neither a search word nor a region is given
-- [ ] [경계] `list` — should filter by sigungu alone when no sido was chosen
-- [ ] [경계] `list` — should exclude a member who has no address at all when a region is chosen
-- [ ] [경계] `list` — should return an empty page instead of failing when the page is past the end
-- [ ] [경계] `list` — should report a null average and a zero count for a member who has never been rated
-- [ ] [경계] `memberStatusOf` — should report DEACTIVATED even when an active suspension also exists
-- [ ] [경계] `detail` — should return empty lists and a zero balance for a member with no activity
-- [ ] [경계] `통합` — should count only the penalties inside the 180-day window
-- [ ] [경계] `통합` — should not treat an expired or released suspension as SUSPENDED
+- [x] [경계] `adminMemberFilterSchema` — should fall back to page 1 when page is 0 or not a number
+- [x] [경계] `list` — should return every member when neither a search word nor a region is given
+- [x] [경계] `list` — should filter by sigungu alone when no sido was chosen
+- [x] [경계] `list` — should exclude a member who has no address at all when a region is chosen
+- [x] [경계] `list` — should return an empty page instead of failing when the page is past the end
+- [x] [경계] `list` — should report a null average and a zero count for a member who has never been rated
+- [x] [경계] `memberStatusOf` — should report DEACTIVATED even when an active suspension also exists
+- [x] [경계] `detail` — should return empty lists and a zero balance for a member with no activity
+- [x] [경계] `통합` — should count only the penalties inside the 180-day window
+- [x] [경계] `통합` — should not treat an expired or released suspension as SUSPENDED
 
 ### 예외
 
-- [ ] [예외] `detail` — should throw `ADMIN_MEMBER_NOT_FOUND` when no such member exists
-- [ ] [예외] `GET /admin/members` — should answer 403 with `ADMIN_FORBIDDEN` when a non-admin calls the list
-- [ ] [예외] `GET /admin/members/:id` — should answer 403 with `ADMIN_FORBIDDEN` when a non-admin calls the detail
-- [ ] [예외] `GET /admin/members/:id` — should answer 404 with `ADMIN_MEMBER_NOT_FOUND` when there is no such member
-- [ ] [예외] `목록 화면` — should render a "권한이 없습니다" notice instead of the table when forbidden is true
+- [x] [예외] `detail` — should throw `ADMIN_MEMBER_NOT_FOUND` when no such member exists
+- [x] [예외] `GET /admin/members` — should answer 403 with `ADMIN_FORBIDDEN` when a non-admin calls the list
+- [x] [예외] `GET /admin/members/:id` — should answer 403 with `ADMIN_FORBIDDEN` when a non-admin calls the detail
+- [x] [예외] `GET /admin/members/:id` — should answer 404 with `ADMIN_MEMBER_NOT_FOUND` when there is no such member
+- [x] [예외] `목록 화면` — should render a "권한이 없습니다" notice instead of the table when forbidden is true
 
 ---
 

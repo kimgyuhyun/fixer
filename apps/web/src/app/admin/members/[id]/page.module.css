@@ -1,0 +1,76 @@
+/*
+ * 이슈 #32 · 관리자 회원 상세.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  width: 100%;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.notice {
+  padding: var(--space-4);
+
+  color: var(--color-text-muted);
+  text-align: center;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  padding: var(--space-3);
+
+  background: var(--color-surface);
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.sectionTitle {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.info {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: var(--space-1) var(--space-2);
+}
+
+.info dt {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+
+  font-size: 0.875rem;
+}
+
+.balance {
+  font-weight: 600;
+}
+
+.score {
+  font-weight: 600;
+}
