@@ -61,6 +61,44 @@ export interface NotificationStore {
   markRead(userId: string, id: string): Promise<NotificationRecord | null>;
 }
 
+/** 알림 메일 한 통. 제목·본문은 발행자가 만든 문구 그대로다 (ADR-NOT-3) */
+export interface NotificationMail {
+  to: string;
+  subject: string;
+  body: string;
+  /** 앱 내부 경로. 어댑터가 여기에 도메인을 붙여 링크로 만든다 */
+  linkUrl: string;
+}
+
+/**
+ * 메일 발송 포트. (이슈 #37)
+ *
+ * **던져도 된다.** 실패를 삼키는 것은 서비스의 일이다 — 어댑터마다
+ * try/catch를 쓰게 하면 한 곳은 반드시 빠뜨린다.
+ */
+export interface NotificationMailer {
+  send(mail: NotificationMail): Promise<void>;
+}
+
+/** 발송 이력 한 줄. 본문은 담지 않는다 — 개인정보를 한 벌 더 만들지 않는다 */
+export interface MailDeliveryEntry {
+  userId: string;
+  type: NotificationType;
+  /** 보낸 주소. 회원이 나중에 주소를 바꿔도 이력은 그때 그대로다 */
+  to: string;
+  subject: string;
+  status: 'SENT' | 'FAILED';
+  /** 실패 사유. 성공이면 null (ADR-NOT-4 — 재시도하지 않고 기록만 한다) */
+  error: string | null;
+}
+
+/** 메일 쪽 저장소. 받는 주소를 찾고 이력을 남긴다 */
+export interface NotificationMailStore {
+  /** 없는 회원이면 `null` */
+  findRecipientEmail(userId: string): Promise<string | null>;
+  recordDelivery(entry: MailDeliveryEntry): Promise<void>;
+}
+
 export class NotificationError extends Error {
   constructor(readonly code: NotificationErrorCode) {
     super(code);
@@ -69,15 +107,19 @@ export class NotificationError extends Error {
 }
 
 /**
- * 인앱 알림. (이슈 #36, `spec-fixed.md` §8)
+ * 인앱 알림 + 알림 메일. (이슈 #36·#37, `spec-fixed.md` §8)
  *
- * 이메일 병행은 #37이다. 여기는 DB에 쌓고 읽는 것까지다.
+ * 두 채널이 여기서 갈라진다. 발행자는 채널을 모른다 (ADR-NOT-1).
  */
 @Injectable()
 export class NotificationService implements NotificationPublisher {
   private readonly logger = new Logger(NotificationService.name);
 
-  constructor(private readonly store: NotificationStore) {}
+  constructor(
+    private readonly store: NotificationStore,
+    private readonly mailStore: NotificationMailStore,
+    private readonly mailer: NotificationMailer,
+  ) {}
 
   async publish(input: PublishNotificationInput): Promise<void> {
     try {

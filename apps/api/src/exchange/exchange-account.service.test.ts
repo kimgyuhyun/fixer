@@ -2,9 +2,10 @@ import { ConfigService } from '@nestjs/config';
 import { ACCOUNT_ERRORS } from '@fixer/shared';
 import { describe, expect, it } from 'vitest';
 import { EnvAccountCipher, type AccountCipher } from './account-cipher';
-import type {
-  NotificationPublisher,
-  PublishNotificationInput,
+import {
+  NotificationService,
+  type NotificationPublisher,
+  type PublishNotificationInput,
 } from '../notification/notification.service';
 import {
   AccountError,
@@ -369,5 +370,48 @@ describe('검증 완료 알림 (#30 마무리)', () => {
     );
 
     expect(notifications.published).toEqual([]);
+  });
+});
+
+/**
+ * #37 AC3 — 메일이 안 나갔다고 도메인이 되돌아가면 안 된다.
+ *
+ * 알림 안쪽에서만 확인하면 **실제 도메인 동작이 살아남는지**는 증명이 안 된다.
+ * 그래서 발행자 한 곳에서 진짜 `NotificationService`를 끼워 끝까지 본다.
+ */
+describe('알림 메일이 실패해도 계좌 등록은 되돌아가지 않는다 (#37)', () => {
+  it('should keep the verified account when the notification mail fails', async () => {
+    const store = new FakeStore();
+    const attempts: string[] = [];
+    const notifications = new NotificationService(
+      {
+        insert: () => Promise.resolve(),
+        listRecent: () => Promise.resolve([]),
+        countUnread: () => Promise.resolve(0),
+        markRead: () => Promise.resolve(null),
+      },
+      {
+        findRecipientEmail: () => Promise.resolve('worker@example.com'),
+        recordDelivery: () => Promise.resolve(),
+      },
+      {
+        send: () => {
+          attempts.push('보내려 했다');
+          return Promise.reject(new Error('smtp down'));
+        },
+      },
+    );
+    const service = new ExchangeAccountService(
+      store,
+      cipher(),
+      new StubAccountVerifier(),
+      notifications,
+    );
+
+    const account = await service.register(USER, VALID);
+
+    expect(attempts).toHaveLength(1);
+    expect(account.verificationStatus).toBe('VERIFIED');
+    expect(store.rows).toHaveLength(1);
   });
 });
