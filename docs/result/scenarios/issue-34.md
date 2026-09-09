@@ -349,7 +349,9 @@ AC2가 "`REQUESTED` 건"이라 못 박은 것과 달리 AC5는 "요청 건"이�
 - [x] [정상] `list` — should return the requester name, amount, masked account and verification status of every row
 - [x] [정상] `approve` — should move a REQUESTED request to APPROVED
 - [x] [정상] `approve` — should record an EXCHANGE_APPROVE audit log carrying the admin id and the request id
+- [x] [정상] `approve` — should ask the store for the EXCHANGE_APPROVE action rather than EXCHANGE_COMPLETE
 - [x] [정상] `complete` — should move an APPROVED request to COMPLETED
+- [x] [정상] `complete` — should ask the store for the EXCHANGE_COMPLETE action rather than EXCHANGE_APPROVE
 - [x] [정상] `reject` — should move the request to REJECTED and append a +amount EXCHANGE_REVERT ledger entry
 - [x] [정상] `reject` — should publish an EXCHANGE_REJECTED notification to the requester
 - [x] [정상] `revealAccount` — should return the full account number
@@ -408,5 +410,13 @@ AC2가 "`REQUESTED` 건"이라 못 박은 것과 달리 AC5는 "요청 건"이�
 | `list` — 범위를 넘은 페이지는 빈 목록                     | #35·#13과 같은 규칙이다. 오류로 만들면 관리자 화면이 페이지 이동에서 깨진다                                                    |
 | `POST .../approve` — 403                                  | 가드가 이 컨트롤러에도 실제로 걸렸는지는 서비스 테스트가 못 잡는다                                                             |
 | HTTP 상태 코드 매핑 3건 (404·409·400)                     | 서비스가 던지는 코드와 화면이 받는 상태 코드의 대응은 컨트롤러에서만 검증된다                                                  |
+| `approve`·`complete` — 저장소에 넘기는 조치 이름          | `@ac-verifier`가 AC2를 부분 충족으로 판정해 더했다. 아래 참조                                                                  |
 
-**커버리지:** AC 5개 / 시나리오 31개 / 미커버 0개
+**커버리지:** AC 5개 / 시나리오 33개 / 미커버 0개
+
+> 뒤의 2개는 Green을 마친 뒤 `@ac-verifier`의 AC2 판정에서 나왔다. 승인과 이체
+> 완료는 같은 몸통(`move`)을 공유하고 **다른 것이 조치 이름 하나뿐**이라, 둘이
+> 뒤바뀌어도 나머지 32개가 전부 초록불로 남았다. 그러면 감사 로그의 "무엇을
+> 했나"가 틀린 채로 쌓인다. 구현이 이미 있었으므로 **승인의 조치 이름을 잠시
+> `EXCHANGE_COMPLETE`로 바꿔 빨간불을 확인하고 되돌리는** 방식으로 새 테스트가
+> 실제로 무언가를 지키는지 증명했다 (#31과 같은 절차).

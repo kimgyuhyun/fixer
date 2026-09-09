@@ -153,6 +153,28 @@ describe('approve', () => {
     ).resolves.toEqual({ id: 'exr_1', status: 'APPROVED' });
   });
 
+  /**
+   * `@ac-verifier`가 AC2를 부분 충족으로 판정해 더한 것. (Green 이후)
+   *
+   * 승인과 이체 완료는 같은 몸통을 공유하고 **다른 것이 조치 이름 하나뿐**이라,
+   * 둘이 뒤바뀌어도 나머지 테스트는 전부 초록불로 남았다. 그러면 감사 로그에
+   * 남는 "무엇을 했나"가 틀린 채로 쌓인다.
+   */
+  it('should ask the store for the EXCHANGE_APPROVE action rather than EXCHANGE_COMPLETE', async () => {
+    const service = makeService(makeStore({ found: recordOf('REQUESTED') }));
+
+    await service.approve({ adminId: 'adm_1', requestId: 'exr_1' });
+
+    expect(calls.updateStatus).toEqual([
+      {
+        requestId: 'exr_1',
+        nextStatus: 'APPROVED',
+        adminId: 'adm_1',
+        action: ADMIN_ACTIONS.EXCHANGE_APPROVE,
+      },
+    ]);
+  });
+
   it('should throw EXCHANGE_REQUEST_NOT_FOUND when no such request exists', async () => {
     const service = makeService(makeStore({ found: null }));
 
@@ -188,6 +210,22 @@ describe('complete', () => {
     await expect(
       service.complete({ adminId: 'adm_1', requestId: 'exr_1' }),
     ).resolves.toEqual({ id: 'exr_1', status: 'COMPLETED' });
+  });
+
+  /** 같은 이유로 더한 짝. 승인과 완료가 서로의 조치 이름을 쓰지 않는지 본다 */
+  it('should ask the store for the EXCHANGE_COMPLETE action rather than EXCHANGE_APPROVE', async () => {
+    const service = makeService(makeStore({ found: recordOf('APPROVED') }));
+
+    await service.complete({ adminId: 'adm_1', requestId: 'exr_1' });
+
+    expect(calls.updateStatus).toEqual([
+      {
+        requestId: 'exr_1',
+        nextStatus: 'COMPLETED',
+        adminId: 'adm_1',
+        action: ADMIN_ACTIONS.EXCHANGE_COMPLETE,
+      },
+    ]);
   });
 
   it('should throw EXCHANGE_INVALID_TRANSITION when the request is still REQUESTED', async () => {
