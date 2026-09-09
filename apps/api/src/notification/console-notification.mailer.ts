@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type {
   NotificationMail,
   NotificationMailer,
@@ -13,7 +13,11 @@ import type {
  */
 @Injectable()
 export class ConsoleNotificationMailer implements NotificationMailer {
-  send(_mail: NotificationMail): Promise<void> {
-    throw new Error('not implemented');
+  private readonly logger = new Logger(ConsoleNotificationMailer.name);
+
+  async send(mail: NotificationMail): Promise<void> {
+    await Promise.resolve();
+    // 본문은 찍지 않는다. 알림 본문에는 계좌 뒤 4자리 같은 개인정보가 담긴다.
+    this.logger.log(`[개발용] ${mail.to} 알림 메일: ${mail.subject}`);
   }
 }

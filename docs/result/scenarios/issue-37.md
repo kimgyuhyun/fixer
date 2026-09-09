@@ -182,14 +182,16 @@ enum MailDeliveryStatus {
 
 ### 기존 파일 변경 예고
 
-| 파일                                                         | 무엇이 바뀌나                                             |
-| ------------------------------------------------------------ | --------------------------------------------------------- |
-| `apps/api/prisma/schema.prisma`                              | `MailDelivery` 모델 + enum + `User.mailDeliveries`        |
-| `apps/api/src/notification/notification.service.ts`          | 생성자에 메일 포트 2개 추가 + `publish`가 메일까지 보낸다 |
-| `apps/api/src/notification/notification.module.ts`           | 새 어댑터 2개 배선                                        |
-| `apps/api/src/notification/notification.service.test.ts`     | 생성자 인자가 늘어 기존 테스트가 깨진다 → 함께 고침       |
-| `apps/api/src/notification/notification.integration.test.ts` | 같은 이유                                                 |
-| `apps/api/src/exchange/exchange-account.service.test.ts`     | AC3을 도메인 경계에서 증명하는 시나리오 1개 추가          |
+| 파일                                                              | 무엇이 바뀌나                                             |
+| ----------------------------------------------------------------- | --------------------------------------------------------- |
+| `apps/api/prisma/schema.prisma`                                   | `MailDelivery` 모델 + enum + `User.mailDeliveries`        |
+| `apps/api/src/notification/notification.service.ts`               | 생성자에 메일 포트 2개 추가 + `publish`가 메일까지 보낸다 |
+| `apps/api/src/notification/notification.module.ts`                | 새 어댑터 2개 배선                                        |
+| `apps/api/src/notification/notification.service.test.ts`          | 생성자 인자가 늘어 기존 테스트가 깨진다 → 함께 고침       |
+| `apps/api/src/notification/notification.integration.test.ts`      | 같은 이유                                                 |
+| `apps/api/src/exchange/exchange-account.service.test.ts`          | AC3을 도메인 경계에서 증명하는 시나리오 1개 추가          |
+| `apps/api/src/job-post/job-post.integration.test.ts`              | 같은 이유 (생성자 인자)                                   |
+| `apps/api/src/notification/job-post-schedule.integration.test.ts` | 같은 이유 (생성자 인자)                                   |
 
 발행자 7곳(`admin-exchange` · `admin-suspension` · `application` ·
 `exchange-account` · `job-post` · `job-post-schedule`)은 **안 바뀐다.**
@@ -201,28 +203,28 @@ enum MailDeliveryStatus {
 
 ### 정상
 
-- [ ] [정상] `NotificationService.publish` — should send an email to the member alongside the in-app notification
-- [ ] [정상] `NotificationService.publish` — should address the mail to the notified member and carry the title, body and link
-- [ ] [정상] `NotificationService.publish` — should record a SENT delivery after the mail goes out
-- [ ] [정상] `PrismaNotificationMailStore` — should find the notified member's email address from the real database
-- [ ] [정상] `PrismaNotificationMailStore` — should persist a sent delivery and read it back from the real database
+- [x] [정상] `NotificationService.publish` — should send an email to the member alongside the in-app notification
+- [x] [정상] `NotificationService.publish` — should address the mail to the notified member and carry the title, body and link
+- [x] [정상] `NotificationService.publish` — should record a SENT delivery after the mail goes out
+- [x] [정상] `PrismaNotificationMailStore` — should find the notified member's email address from the real database
+- [x] [정상] `PrismaNotificationMailStore` — should persist a sent delivery and read it back from the real database
 
 ### 경계
 
-- [ ] [경계] `NotificationService.publish` — should send an email for every notification type
-- [ ] [경계] `NotificationService.publish` — should record one delivery per published notification when several go out
+- [x] [경계] `NotificationService.publish` — should send an email for every notification type
+- [x] [경계] `NotificationService.publish` — should record one delivery per published notification when several go out
 
 ### 예외
 
-- [ ] [예외] `NotificationService.publish` — should still send the email when storing the in-app notification fails
-- [ ] [예외] `NotificationService.publish` — should send nothing when the member has no address on record
-- [ ] [예외] `NotificationService.publish` — should record a FAILED delivery carrying the reason when the mailer throws
-- [ ] [예외] `NotificationService.publish` — should resolve without throwing when the mailer throws
-- [ ] [예외] `NotificationService.publish` — should keep the in-app notification when the mail fails
-- [ ] [예외] `NotificationService.publish` — should resolve without throwing when recording the delivery fails
-- [ ] [예외] `NotificationService.publish` — should resolve without throwing when looking up the recipient fails
-- [ ] [예외] `PrismaNotificationMailStore` — should persist a failed delivery with its reason in the real database
-- [ ] [예외] `ExchangeAccountService.register` — should keep the verified account when the notification mail fails
+- [x] [예외] `NotificationService.publish` — should still send the email when storing the in-app notification fails
+- [x] [예외] `NotificationService.publish` — should send nothing when the member has no address on record
+- [x] [예외] `NotificationService.publish` — should record a FAILED delivery carrying the reason when the mailer throws
+- [x] [예외] `NotificationService.publish` — should resolve without throwing when the mailer throws
+- [x] [예외] `NotificationService.publish` — should keep the in-app notification when the mail fails
+- [x] [예외] `NotificationService.publish` — should resolve without throwing when recording the delivery fails
+- [x] [예외] `NotificationService.publish` — should resolve without throwing when looking up the recipient fails
+- [x] [예외] `PrismaNotificationMailStore` — should persist a failed delivery with its reason in the real database
+- [x] [예외] `ExchangeAccountService.register` — should keep the verified account when the notification mail fails
 
 ### 파일 배치
 

@@ -10,11 +10,16 @@ import type {
 export class PrismaNotificationMailStore implements NotificationMailStore {
   constructor(private readonly prisma: PrismaService) {}
 
-  findRecipientEmail(_userId: string): Promise<string | null> {
-    throw new Error('not implemented');
+  async findRecipientEmail(userId: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      // 주소 하나만 꺼낸다. 회원 전체를 읽으면 해시와 잔액까지 딸려 온다.
+      select: { email: true },
+    });
+    return user?.email ?? null;
   }
 
-  recordDelivery(_entry: MailDeliveryEntry): Promise<void> {
-    throw new Error('not implemented');
+  async recordDelivery(entry: MailDeliveryEntry): Promise<void> {
+    await this.prisma.mailDelivery.create({ data: entry });
   }
 }
