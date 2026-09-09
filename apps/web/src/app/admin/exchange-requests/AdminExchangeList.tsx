@@ -3,7 +3,6 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type ReactElement } from 'react';
 import {
-  ACCOUNT_VERIFICATION_STATUSES,
   EXCHANGE_REQUEST_STATUSES,
   type AccountVerificationStatus,
   type AdminExchangeFilter,
