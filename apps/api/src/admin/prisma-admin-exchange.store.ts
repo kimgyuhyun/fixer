@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  AdminAction,
-  AdminExchangeFilter,
-  ExchangeRequestStatus,
+import {
+  ADMIN_ACTIONS,
+  type AdminAction,
+  type AdminExchangeFilter,
+  type ExchangeRequestStatus,
 } from '@fixer/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ExchangeRequestRecord } from '../exchange/exchange-request.service';
@@ -74,13 +75,7 @@ export class PrismaAdminExchangeStore implements AdminExchangeStore {
   async findById(id: string): Promise<ExchangeRequestRecord | null> {
     const row = await this.prisma.exchangeRequest.findUnique({
       where: { id },
-      select: {
-        id: true,
-        userId: true,
-        amount: true,
-        status: true,
-        createdAt: true,
-      },
+      select: RECORD_COLUMNS,
     });
     return row;
   }
@@ -117,13 +112,7 @@ export class PrismaAdminExchangeStore implements AdminExchangeStore {
 
         return await tx.exchangeRequest.findUniqueOrThrow({
           where: { id: input.requestId },
-          select: {
-            id: true,
-            userId: true,
-            amount: true,
-            status: true,
-            createdAt: true,
-          },
+          select: RECORD_COLUMNS,
         });
       });
     } catch (error) {
@@ -171,7 +160,7 @@ export class PrismaAdminExchangeStore implements AdminExchangeStore {
         await tx.adminAuditLog.create({
           data: {
             adminId: input.adminId,
-            action: 'EXCHANGE_REJECT',
+            action: ADMIN_ACTIONS.EXCHANGE_REJECT,
             targetType: 'ExchangeRequest',
             targetId: input.requestId,
             reason: input.reason,
@@ -180,13 +169,7 @@ export class PrismaAdminExchangeStore implements AdminExchangeStore {
 
         return await tx.exchangeRequest.findUniqueOrThrow({
           where: { id: input.requestId },
-          select: {
-            id: true,
-            userId: true,
-            amount: true,
-            status: true,
-            createdAt: true,
-          },
+          select: RECORD_COLUMNS,
         });
       });
     } catch (error) {
@@ -210,6 +193,20 @@ export class PrismaAdminExchangeStore implements AdminExchangeStore {
     });
   }
 }
+
+/**
+ * `ExchangeRequestRecord`가 되는 컬럼들. 세 곳이 같은 목록을 쓴다.
+ *
+ * **`select`를 빼면 안 된다.** 없으면 행 전체가 오는데, 이 표에는 나중에
+ * 컬럼이 더 붙을 수 있고 그때 서비스가 모르는 값이 조용히 딸려 온다.
+ */
+const RECORD_COLUMNS = {
+  id: true,
+  userId: true,
+  amount: true,
+  status: true,
+  createdAt: true,
+} as const;
 
 /** 트랜잭션을 되돌리기 위한 내부 신호. 밖으로 새지 않는다 */
 class Stale extends Error {}
