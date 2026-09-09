@@ -14,6 +14,9 @@ import { AdminExchangeController } from './admin-exchange.controller';
 import { AdminExchangeService } from './admin-exchange.service';
 import { AdminJobPostController } from './admin-job-post.controller';
 import { AdminJobPostService } from './admin-job-post.service';
+import { AdminMemberController } from './admin-member.controller';
+import { AdminMemberService } from './admin-member.service';
+import { PrismaAdminMemberStore } from './prisma-admin-member.store';
 import { AdminSuspensionController } from './admin-suspension.controller';
 import { AdminSuspensionService } from './admin-suspension.service';
 import { AdminGuard, ROLE_READER } from './admin.guard';
@@ -41,12 +44,14 @@ import {
     AdminJobPostController,
     AdminExchangeController,
     AdminSuspensionController,
+    AdminMemberController,
   ],
   providers: [
     PrismaRoleReader,
     PrismaAdminJobPostStore,
     PrismaAdminExchangeStore,
     PrismaAdminSuspensionStore,
+    PrismaAdminMemberStore,
     AdminGuard,
     { provide: ROLE_READER, useExisting: PrismaRoleReader },
     {
@@ -85,6 +90,13 @@ import {
         notifications: NotificationService,
       ) => new AdminSuspensionService(store, notifications),
       inject: [PrismaAdminSuspensionStore, NotificationService],
+    },
+    {
+      // 읽기 전용이라 알림도 감사 로그도 물리지 않는다 (#32).
+      provide: AdminMemberService,
+      useFactory: (store: PrismaAdminMemberStore) =>
+        new AdminMemberService(store),
+      inject: [PrismaAdminMemberStore],
     },
   ],
 })
