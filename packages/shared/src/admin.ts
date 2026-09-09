@@ -1,5 +1,8 @@
 import { z } from 'zod';
+import { APPLICATION_STATUSES } from './application.js';
 import { JOB_POST_STATUSES, PENALTY_REASONS } from './job-post.js';
+import { POINT_TRANSACTION_TYPES } from './point.js';
+import { RATING_ROLES, roleRatingSchema } from './rating.js';
 
 /**
  * 회원 등급. (`spec-fixed.md` §11.1)
@@ -31,6 +34,13 @@ export const ADMIN_ERRORS = {
   SUSPENSION_NOT_FOUND: 'ADMIN_SUSPENSION_NOT_FOUND',
   /** 이미 풀린 제재다 (#33). 두 번 풀면 감사 로그가 두 줄 남는다 */
   SUSPENSION_ALREADY_RELEASED: 'ADMIN_SUSPENSION_ALREADY_RELEASED',
+  /**
+   * 그런 회원이 없다 (#32).
+   *
+   * 상세 라우트가 `:id`를 받는 이상 없는 id가 반드시 온다. 없으면 500이
+   * 나가고 화면이 "잘못된 링크"와 "서버 고장"을 구분하지 못한다.
+   */
+  MEMBER_NOT_FOUND: 'ADMIN_MEMBER_NOT_FOUND',
 } as const;
 
 export type AdminErrorCode = (typeof ADMIN_ERRORS)[keyof typeof ADMIN_ERRORS];
@@ -179,3 +189,172 @@ export const releaseSuspensionResultSchema = z.object({
 export type ReleaseSuspensionResult = z.infer<
   typeof releaseSuspensionResultSchema
 >;
+
+/** 관리자 회원 목록 한 페이지 건수. 관리자 목록 셋과 같은 20 (#32) */
+export const ADMIN_MEMBER_PAGE_SIZE = 20;
+
+/**
+ * 회원 상태. (#32, `spec-fixed.md` §11.3 "정상 / 제재중 / 비활성화")
+ *
+ * **DB 컬럼이 아니다** (`ADR-AUTH-3`). `deactivatedAt`과 유효 제재 여부에서
+ * 계산해 만든 표시용 값이다 — 컬럼으로 두면 두 벌이 되어 어긋날 자리가 생긴다.
+ */
+export const ADMIN_MEMBER_STATUSES = [
+  'ACTIVE',
+  'SUSPENDED',
+  'DEACTIVATED',
+] as const;
+
+export type AdminMemberStatus = (typeof ADMIN_MEMBER_STATUSES)[number];
+
+/**
+ * 두 사실에서 상태 하나를 낸다.
+ *
+ * **비활성화가 제재를 이긴다.** 둘 다인 회원에게 "제재중"을 붙이면 관리자가
+ * 제재 해제를 눌러 볼 텐데, 그 계정은 애초에 로그인이 안 된다 (§2.6).
+ *
+ * 서버와 화면이 같은 함수를 쓴다. 화면이 따로 판정하면 "목록은 정상인데
+ * 배지는 제재중"인 줄이 생긴다.
+ */
+export function memberStatusOf(_member: {
+  deactivatedAt: Date | null;
+  hasActiveSuspension: boolean;
+}): AdminMemberStatus {
+  throw new Error('not implemented');
+}
+
+/**
+ * 회원 목록 필터. **URL 쿼리스트링이 이 모양 그대로다** (`ADR-JOB-4`).
+ *
+ * 가입 기간 필터와 컬럼 정렬(§11.2)은 이 이슈의 AC에 없어 넣지 않는다.
+ */
+export const adminMemberFilterSchema = z.object({
+  /** 이름 **또는** 이메일 부분 일치 (§11.2). 검색칸은 하나다 */
+  q: z.string().trim().min(1).optional(),
+  /** 주소지 1단계 (`ADR-AUTH-2`) */
+  sido: z.string().trim().min(1).optional(),
+  /** 주소지 2단계. 시/도 없이 단독으로도 걸린다 (#13이 정한 규칙) */
+  sigungu: z.string().trim().min(1).optional(),
+  status: z.enum(ADMIN_MEMBER_STATUSES).optional(),
+  /** 1부터. 범위를 넘으면 오류가 아니라 빈 목록이다 (관리자 목록 셋과 같다) */
+  page: z.coerce.number().int(),
+});
+
+export type AdminMemberFilter = z.infer<typeof adminMemberFilterSchema>;
+
+/** 목록 한 줄. §11.3이 요구하는 일곱 칸이 그대로 필드다 */
+export const adminMemberSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  joinedAt: z.iso.datetime(),
+  /** 구인자로서 평점. 평균과 표본 수를 함께 준다 — "신규" 판정은 화면 몫 (#26) */
+  asPoster: roleRatingSchema,
+  /** 구직자로서 평점 */
+  asWorker: roleRatingSchema,
+  /** 180일 창 안 누적 경고 수 (§5) */
+  penaltyCount: z.number().int(),
+  status: z.enum(ADMIN_MEMBER_STATUSES),
+});
+
+export type AdminMemberSummary = z.infer<typeof adminMemberSummarySchema>;
+
+/** 목록 응답. 오프셋 페이징이라 전체 건수를 함께 준다 (§11.2) */
+export const adminMemberListSchema = z.object({
+  items: z.array(adminMemberSummarySchema),
+  /** **필터를 적용한 뒤의** 건수 */
+  total: z.number().int(),
+  page: z.number().int(),
+  pageSize: z.number().int(),
+});
+
+export type AdminMemberList = z.infer<typeof adminMemberListSchema>;
+
+/** 받은 별점 한 건. 거래 상대·공고·일시를 함께 준다 (§11.3) */
+export const adminMemberReviewSchema = z.object({
+  id: z.string(),
+  score: z.number().int(),
+  /** 그 거래에서 **평가받은 사람의** 역할 (#26) */
+  rateeRole: z.enum(RATING_ROLES),
+  raterName: z.string(),
+  jobPostTitle: z.string(),
+  createdAt: z.iso.datetime(),
+});
+
+export type AdminMemberReview = z.infer<typeof adminMemberReviewSchema>;
+
+/** 등록한 공고 한 줄 */
+export const adminMemberJobPostSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.enum(JOB_POST_STATUSES),
+  createdAt: z.iso.datetime(),
+});
+
+/** 신청 이력 한 줄 */
+export const adminMemberApplicationSchema = z.object({
+  id: z.string(),
+  jobPostId: z.string(),
+  jobPostTitle: z.string(),
+  status: z.enum(APPLICATION_STATUSES),
+  createdAt: z.iso.datetime(),
+});
+
+/** 원장 한 줄. 부호는 `amount`에 담긴다 (§6.1) */
+export const adminMemberLedgerEntrySchema = z.object({
+  id: z.string(),
+  type: z.enum(POINT_TRANSACTION_TYPES),
+  amount: z.number().int(),
+  createdAt: z.iso.datetime(),
+});
+
+/** 경고 한 건. 사유·시각·관련 공고 (§11.3) */
+export const adminMemberPenaltySchema = z.object({
+  id: z.string(),
+  reason: z.enum(PENALTY_REASONS),
+  /** 공고와 무관한 경고도 있을 수 있다 */
+  jobPostId: z.string().nullable(),
+  occurredAt: z.iso.datetime(),
+});
+
+/** 제재 한 건. 해제됐으면 해제 시각이 있다 (#33) */
+export const adminMemberSuspensionSchema = z.object({
+  id: z.string(),
+  startAt: z.iso.datetime(),
+  endAt: z.iso.datetime(),
+  releasedAt: z.iso.datetime().nullable(),
+});
+
+/**
+ * 회원 상세. AC5가 요구하는 다섯 덩이가 그대로 필드다.
+ *
+ * **한 번에 준다.** 화면이 덩이마다 따로 부르면 상세 한 번에 여섯 번을
+ * 부른다 — #33·#35가 목록에서 내린 판단과 같다.
+ */
+export const adminMemberDetailSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  joinedAt: z.iso.datetime(),
+  status: z.enum(ADMIN_MEMBER_STATUSES),
+  /** 가입 주소. 주소를 아직 안 넣은 회원이 있을 수 있어 nullable이다 */
+  address: z
+    .object({
+      sido: z.string(),
+      sigungu: z.string(),
+      roadAddress: z.string(),
+    })
+    .nullable(),
+  asPoster: roleRatingSchema,
+  asWorker: roleRatingSchema,
+  reviews: z.array(adminMemberReviewSchema),
+  jobPosts: z.array(adminMemberJobPostSchema),
+  applications: z.array(adminMemberApplicationSchema),
+  /** **원장 합이다** (`ADR-PAY-1`). `cachedBalance`를 그대로 내지 않는다 */
+  pointBalance: z.number().int(),
+  ledger: z.array(adminMemberLedgerEntrySchema),
+  penalties: z.array(adminMemberPenaltySchema),
+  suspensions: z.array(adminMemberSuspensionSchema),
+});
+
+export type AdminMemberDetail = z.infer<typeof adminMemberDetailSchema>;
