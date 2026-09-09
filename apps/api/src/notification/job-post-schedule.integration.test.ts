@@ -11,6 +11,7 @@ import { PostgresJobLock } from '../retention/prisma-purge.store';
 import { JobPostScheduleService } from './job-post-schedule.service';
 import { NotificationService } from './notification.service';
 import { PrismaJobPostScheduleStore } from './prisma-job-post-schedule.store';
+import { PrismaNotificationMailStore } from './prisma-notification-mail.store';
 import { PrismaNotificationStore } from './prisma-notification.store';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -51,6 +52,9 @@ beforeAll(async () => {
     // 진짜 알림 저장소를 쓴다. 알림이 실제로 행으로 남는지가 AC1이다.
     new NotificationService(
       new PrismaNotificationStore(prisma as unknown as PrismaService),
+      new PrismaNotificationMailStore(prisma as unknown as PrismaService),
+      // 실제 메일은 나가지 않는다 (#37).
+      { send: () => Promise.resolve() },
     ),
     new PostgresJobLock(prisma as unknown as PrismaService),
   );

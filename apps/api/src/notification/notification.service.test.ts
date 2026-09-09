@@ -1,8 +1,16 @@
-import { NOTIFICATION_ERRORS, NOTIFICATION_PAGE_SIZE } from '@fixer/shared';
+import {
+  NOTIFICATION_ERRORS,
+  NOTIFICATION_PAGE_SIZE,
+  NOTIFICATION_TYPES,
+} from '@fixer/shared';
 import { describe, expect, it } from 'vitest';
 import {
   NotificationError,
   NotificationService,
+  type MailDeliveryEntry,
+  type NotificationMail,
+  type NotificationMailStore,
+  type NotificationMailer,
   type NotificationRecord,
   type NotificationStore,
   type PublishNotificationInput,
@@ -10,6 +18,7 @@ import {
 
 const USER = 'usr_1';
 const OTHER = 'usr_2';
+const EMAIL = 'worker@example.com';
 
 function publishInput(
   overrides: Partial<PublishNotificationInput> = {},
@@ -82,9 +91,99 @@ class BrokenStore implements NotificationStore {
   }
 }
 
-function setup(): { service: NotificationService; store: FakeStore } {
+/**
+ * 메일 쪽 저장소 대역. (이슈 #37)
+ *
+ * `broken`으로 어느 호출이 터지는지를 고른다 — 주소 조회와 이력 기록은
+ * 둘 다 DB 호출이라 각각 실패할 수 있고, AC3의 구멍이 거기 있다.
+ */
+class FakeMailStore implements NotificationMailStore {
+  lookups: string[] = [];
+  recorded: MailDeliveryEntry[] = [];
+
+  constructor(
+    private readonly options: {
+      emails?: Map<string, string>;
+      broken?: 'lookup' | 'record';
+    } = {},
+  ) {}
+
+  findRecipientEmail(userId: string): Promise<string | null> {
+    this.lookups.push(userId);
+    if (this.options.broken === 'lookup') {
+      return Promise.reject(new Error('db is down'));
+    }
+    const emails =
+      this.options.emails ??
+      new Map([
+        [USER, EMAIL],
+        [OTHER, 'other@example.com'],
+      ]);
+    return Promise.resolve(emails.get(userId) ?? null);
+  }
+
+  recordDelivery(entry: MailDeliveryEntry): Promise<void> {
+    if (this.options.broken === 'record') {
+      return Promise.reject(new Error('db is down'));
+    }
+    this.recorded.push(entry);
+    return Promise.resolve();
+  }
+}
+
+/** 보낸 메일을 모아 두는 메일러 */
+class SpyMailer implements NotificationMailer {
+  sent: NotificationMail[] = [];
+
+  send(mail: NotificationMail): Promise<void> {
+    this.sent.push(mail);
+    return Promise.resolve();
+  }
+}
+
+/** 보내려 할 때마다 터지는 메일러. **시도했다는 것은 남긴다** */
+class BrokenMailer implements NotificationMailer {
+  attempts: NotificationMail[] = [];
+
+  send(mail: NotificationMail): Promise<void> {
+    this.attempts.push(mail);
+    return Promise.reject(new Error('smtp down'));
+  }
+}
+
+function setup(mailStore: FakeMailStore = new FakeMailStore()): {
+  service: NotificationService;
+  store: FakeStore;
+  mailStore: FakeMailStore;
+  mailer: SpyMailer;
+} {
   const store = new FakeStore();
-  return { service: new NotificationService(store), store };
+  const mailer = new SpyMailer();
+  return {
+    service: new NotificationService(store, mailStore, mailer),
+    store,
+    mailStore,
+    mailer,
+  };
+}
+
+/** 메일이 실패하는 판. AC3은 전부 이 판에서 본다 */
+function setupWithBrokenMailer(
+  mailStore: FakeMailStore = new FakeMailStore(),
+): {
+  service: NotificationService;
+  store: FakeStore;
+  mailStore: FakeMailStore;
+  mailer: BrokenMailer;
+} {
+  const store = new FakeStore();
+  const mailer = new BrokenMailer();
+  return {
+    service: new NotificationService(store, mailStore, mailer),
+    store,
+    mailStore,
+    mailer,
+  };
 }
 
 async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
@@ -122,9 +221,168 @@ describe('publish', () => {
    * 통째로 실패한다 — #37 AC3가 이메일에 대해 못 박은 것과 같은 규칙이다.
    */
   it('should resolve without throwing when the store fails', async () => {
-    const service = new NotificationService(new BrokenStore());
+    const service = new NotificationService(
+      new BrokenStore(),
+      new FakeMailStore(),
+      new SpyMailer(),
+    );
 
     await expect(service.publish(publishInput())).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * 이메일 병행. (이슈 #37)
+ *
+ * 발행자는 채널을 모른다 — `publish` 한 번이 인앱과 메일 양쪽으로 갈라진다.
+ */
+describe('publish — 이메일 병행', () => {
+  it('should send an email to the member alongside the in-app notification', async () => {
+    const { service, store, mailer } = setup();
+
+    await service.publish(publishInput());
+
+    expect(store.rows).toHaveLength(1);
+    expect(mailer.sent).toHaveLength(1);
+  });
+
+  it('should address the mail to the notified member and carry the title, body and link', async () => {
+    const { service, mailer } = setup();
+
+    await service.publish(publishInput());
+
+    expect(mailer.sent[0]).toEqual({
+      to: EMAIL,
+      subject: '계좌 검증이 끝났습니다',
+      body: '신한은행 ****5678 계좌를 쓸 수 있습니다.',
+      linkUrl: '/my/account',
+    });
+  });
+
+  it('should record a SENT delivery after the mail goes out', async () => {
+    const { service, mailStore } = setup();
+
+    await service.publish(publishInput());
+
+    expect(mailStore.recorded).toEqual([
+      {
+        userId: USER,
+        type: 'ACCOUNT_VERIFIED',
+        to: EMAIL,
+        subject: '계좌 검증이 끝났습니다',
+        status: 'SENT',
+        error: null,
+      },
+    ]);
+  });
+
+  /**
+   * 지금 선언된 7종이 전부 `prd/notification.md` §5의 이메일 병행 6종에
+   * 대응한다. 종류별 분기표를 두지 않기로 한 결정을 여기에 못 박는다.
+   */
+  it('should send an email for every notification type', async () => {
+    const { service, mailer } = setup();
+
+    for (const type of NOTIFICATION_TYPES) {
+      await service.publish(publishInput({ type }));
+    }
+
+    expect(mailer.sent).toHaveLength(NOTIFICATION_TYPES.length);
+  });
+
+  it('should record one delivery per published notification when several go out', async () => {
+    const { service, mailStore } = setup();
+
+    await service.publish(publishInput({ title: '하나' }));
+    await service.publish(publishInput({ title: '둘' }));
+    await service.publish(publishInput({ title: '셋' }));
+
+    expect(mailStore.recorded).toHaveLength(3);
+  });
+
+  /** 인앱이 죽었을 때야말로 메일이 필요하다. 두 채널이 서로를 막지 않는다 */
+  it('should still send the email when storing the in-app notification fails', async () => {
+    const mailer = new SpyMailer();
+    const service = new NotificationService(
+      new BrokenStore(),
+      new FakeMailStore(),
+      mailer,
+    );
+
+    await service.publish(publishInput());
+
+    expect(mailer.sent).toHaveLength(1);
+  });
+
+  /** 파기된 계정(#39)은 주소가 없다. 보낼 곳이 없으면 이력도 남지 않는다 */
+  it('should send nothing when the member has no address on record', async () => {
+    const { service, mailStore, mailer } = setup(
+      new FakeMailStore({ emails: new Map() }),
+    );
+
+    await service.publish(publishInput());
+
+    // 주소를 찾아보긴 했다. 없어서 안 보낸 것이지 아예 시도를 안 한 게 아니다.
+    expect(mailStore.lookups).toEqual([USER]);
+    expect(mailer.sent).toEqual([]);
+    expect(mailStore.recorded).toEqual([]);
+  });
+
+  it('should record a FAILED delivery carrying the reason when the mailer throws', async () => {
+    const { service, mailStore } = setupWithBrokenMailer();
+
+    await service.publish(publishInput());
+
+    expect(mailStore.recorded).toEqual([
+      {
+        userId: USER,
+        type: 'ACCOUNT_VERIFIED',
+        to: EMAIL,
+        subject: '계좌 검증이 끝났습니다',
+        status: 'FAILED',
+        error: 'smtp down',
+      },
+    ]);
+  });
+});
+
+/**
+ * AC3 — 메일이 안 나갔다고 도메인이 되돌아가면 안 된다.
+ *
+ * 이 묶음의 테스트는 전부 "실패 경로를 실제로 밟았는가"를 먼저 확인한다.
+ * 그게 없으면 메일을 아예 안 보내는 코드도 초록불이 된다.
+ */
+describe('publish — 메일이 실패해도 도메인은 되돌아가지 않는다', () => {
+  it('should resolve without throwing when the mailer throws', async () => {
+    const { service, mailer } = setupWithBrokenMailer();
+
+    await expect(service.publish(publishInput())).resolves.toBeUndefined();
+    expect(mailer.attempts).toHaveLength(1);
+  });
+
+  it('should keep the in-app notification when the mail fails', async () => {
+    const { service, store, mailer } = setupWithBrokenMailer();
+
+    await service.publish(publishInput());
+
+    expect(mailer.attempts).toHaveLength(1);
+    expect(store.rows).toHaveLength(1);
+  });
+
+  /** 실패를 기록하려다 실패하는 경로가 AC3의 가장 흔한 구멍이다 */
+  it('should resolve without throwing when recording the delivery fails', async () => {
+    const { service, mailer } = setup(new FakeMailStore({ broken: 'record' }));
+
+    await expect(service.publish(publishInput())).resolves.toBeUndefined();
+    expect(mailer.sent).toHaveLength(1);
+  });
+
+  it('should resolve without throwing when looking up the recipient fails', async () => {
+    const mailStore = new FakeMailStore({ broken: 'lookup' });
+    const { service } = setup(mailStore);
+
+    await expect(service.publish(publishInput())).resolves.toBeUndefined();
+    expect(mailStore.lookups).toEqual([USER]);
   });
 });
 

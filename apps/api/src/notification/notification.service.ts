@@ -61,6 +61,44 @@ export interface NotificationStore {
   markRead(userId: string, id: string): Promise<NotificationRecord | null>;
 }
 
+/** 알림 메일 한 통. 제목·본문은 발행자가 만든 문구 그대로다 (ADR-NOT-3) */
+export interface NotificationMail {
+  to: string;
+  subject: string;
+  body: string;
+  /** 앱 내부 경로. 어댑터가 여기에 도메인을 붙여 링크로 만든다 */
+  linkUrl: string;
+}
+
+/**
+ * 메일 발송 포트. (이슈 #37)
+ *
+ * **던져도 된다.** 실패를 삼키는 것은 서비스의 일이다 — 어댑터마다
+ * try/catch를 쓰게 하면 한 곳은 반드시 빠뜨린다.
+ */
+export interface NotificationMailer {
+  send(mail: NotificationMail): Promise<void>;
+}
+
+/** 발송 이력 한 줄. 본문은 담지 않는다 — 개인정보를 한 벌 더 만들지 않는다 */
+export interface MailDeliveryEntry {
+  userId: string;
+  type: NotificationType;
+  /** 보낸 주소. 회원이 나중에 주소를 바꿔도 이력은 그때 그대로다 */
+  to: string;
+  subject: string;
+  status: 'SENT' | 'FAILED';
+  /** 실패 사유. 성공이면 null (ADR-NOT-4 — 재시도하지 않고 기록만 한다) */
+  error: string | null;
+}
+
+/** 메일 쪽 저장소. 받는 주소를 찾고 이력을 남긴다 */
+export interface NotificationMailStore {
+  /** 없는 회원이면 `null` */
+  findRecipientEmail(userId: string): Promise<string | null>;
+  recordDelivery(entry: MailDeliveryEntry): Promise<void>;
+}
+
 export class NotificationError extends Error {
   constructor(readonly code: NotificationErrorCode) {
     super(code);
@@ -69,17 +107,32 @@ export class NotificationError extends Error {
 }
 
 /**
- * 인앱 알림. (이슈 #36, `spec-fixed.md` §8)
+ * 인앱 알림 + 알림 메일. (이슈 #36·#37, `spec-fixed.md` §8)
  *
- * 이메일 병행은 #37이다. 여기는 DB에 쌓고 읽는 것까지다.
+ * 두 채널이 여기서 갈라진다. 발행자는 채널을 모른다 (ADR-NOT-1).
  */
 @Injectable()
 export class NotificationService implements NotificationPublisher {
   private readonly logger = new Logger(NotificationService.name);
 
-  constructor(private readonly store: NotificationStore) {}
+  constructor(
+    private readonly store: NotificationStore,
+    private readonly mailStore: NotificationMailStore,
+    private readonly mailer: NotificationMailer,
+  ) {}
 
+  /**
+   * 인앱과 메일 **양쪽으로** 내보낸다 (#37 AC1).
+   *
+   * 두 채널은 서로를 막지 않는다 — 인앱 저장이 실패해도 메일은 나간다.
+   * 인앱이 죽었을 때야말로 메일이 필요하기 때문이다.
+   */
   async publish(input: PublishNotificationInput): Promise<void> {
+    await this.storeInApp(input);
+    await this.deliverMail(input);
+  }
+
+  private async storeInApp(input: PublishNotificationInput): Promise<void> {
     try {
       await this.store.insert(input);
     } catch (error) {
@@ -87,7 +140,67 @@ export class NotificationService implements NotificationPublisher {
       // 회원 id만 적고 문구는 적지 않는다 — 알림 본문에는 개인정보가 담긴다.
       this.logger.error(
         `알림 발행 실패 (userId=${input.userId}, type=${input.type})`,
-        error instanceof Error ? error.stack : undefined,
+        stackOf(error),
+      );
+    }
+  }
+
+  /**
+   * **던지지 않는다.** 메일이 안 나갔다고 수락이 취소되면 안 된다 (#37 AC3).
+   *
+   * 실패는 되돌리는 대신 `MailDelivery`에 남긴다 (ADR-NOT-4).
+   */
+  private async deliverMail(input: PublishNotificationInput): Promise<void> {
+    let to: string | null = null;
+    try {
+      to = await this.mailStore.findRecipientEmail(input.userId);
+      if (to === null) {
+        // 파기된 계정(#39)은 주소가 없다. 보낸 적이 없으니 이력도 남기지 않는다.
+        this.logger.warn(
+          `받는 주소가 없어 알림 메일을 보내지 않는다 (userId=${input.userId})`,
+        );
+        return;
+      }
+
+      await this.mailer.send({
+        to,
+        subject: input.title,
+        body: input.body,
+        linkUrl: input.linkUrl,
+      });
+      await this.recordDeliveryQuietly(input, to, 'SENT', null);
+    } catch (error) {
+      this.logger.error(
+        `알림 메일 발송 실패 (userId=${input.userId}, type=${input.type})`,
+        stackOf(error),
+      );
+      // 주소를 못 찾았으면 보낸 적이 없으므로 이력도 없다.
+      if (to !== null) {
+        await this.recordDeliveryQuietly(input, to, 'FAILED', reasonOf(error));
+      }
+    }
+  }
+
+  /** 이력 기록도 DB 호출이라 실패할 수 있다. **여기서 끝낸다** */
+  private async recordDeliveryQuietly(
+    input: PublishNotificationInput,
+    to: string,
+    status: MailDeliveryEntry['status'],
+    error: string | null,
+  ): Promise<void> {
+    try {
+      await this.mailStore.recordDelivery({
+        userId: input.userId,
+        type: input.type,
+        to,
+        subject: input.title,
+        status,
+        error,
+      });
+    } catch (recordError) {
+      this.logger.error(
+        `알림 메일 이력 기록 실패 (userId=${input.userId}, type=${input.type})`,
+        stackOf(recordError),
       );
     }
   }
@@ -111,6 +224,16 @@ export class NotificationService implements NotificationPublisher {
     }
     return toItem(read);
   }
+}
+
+/** 이력에 남길 실패 사유 한 줄 */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** 로그에 붙일 스택. 에러가 아닌 것이 던져지면 붙일 것이 없다 */
+function stackOf(error: unknown): string | undefined {
+  return error instanceof Error ? error.stack : undefined;
 }
 
 function toItem(record: NotificationRecord): NotificationItem {

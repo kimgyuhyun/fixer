@@ -8,6 +8,7 @@ import { JOB_POST_ERRORS, holdIdempotencyKey } from '@fixer/shared';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../generated/prisma/client';
 import { NotificationService } from '../notification/notification.service';
+import { PrismaNotificationMailStore } from '../notification/prisma-notification-mail.store';
 import { PrismaNotificationStore } from '../notification/prisma-notification.store';
 import { JobPostError, JobPostService } from './job-post.service';
 import {
@@ -51,6 +52,9 @@ beforeAll(async () => {
     // 진짜 알림 저장소를 쓴다. 재동의 알림이 실제로 행으로 남는지가 #21 AC4다.
     new NotificationService(
       new PrismaNotificationStore(prisma as unknown as PrismaService),
+      new PrismaNotificationMailStore(prisma as unknown as PrismaService),
+      // 실제 메일은 나가지 않는다 (#37).
+      { send: () => Promise.resolve() },
     ),
     // 진짜 판정 쿼리를 쓴다. 끝난 제재를 걸러 내는 것이 §5.1의 부등호다 (#25)
     new PrismaSuspensionReader(prisma as unknown as PrismaService),

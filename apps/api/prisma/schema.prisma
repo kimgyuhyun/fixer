@@ -72,6 +72,7 @@ model User {
   exchangeRequests  ExchangeRequest[]
   applications      Application[]
   notifications     Notification[]
+  mailDeliveries    MailDelivery[]
   adminAuditLogs    AdminAuditLog[]
   ratingsGiven      Rating[]           @relation("RatingsGiven")
   ratingsReceived   Rating[]           @relation("RatingsReceived")
@@ -648,6 +649,42 @@ model Notification {
   @@index([userId, readAt])
   /// 목록은 최신순
   @@index([userId, createdAt])
+}
+
+/// 알림 메일 발송 이력. (이슈 #37, `spec-fixed.md` §8 "발송 이력을 DB에 남겨")
+///
+/// 인앱 알림 한 건마다 메일도 한 통 나가고, 그 결과가 여기 한 줄로 남는다.
+/// "안 왔다"는 문의에 답하려면 나갔는지 아닌지가 DB에 있어야 한다.
+///
+/// **본문은 담지 않는다.** 알림 본문에는 계좌 뒤 4자리·공고 제목 같은
+/// 개인정보가 들어간다. 나갔는지 확인하는 데 필요한 것은 받는 주소·제목·
+/// 성패까지고, 본문까지 복사하면 개인정보가 한 벌 더 생긴다.
+model MailDelivery {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type    NotificationType
+  /// 보낸 주소를 굳혀 둔다. 회원이 나중에 주소를 바꿔도 이력은 그때 그대로다.
+  to      String
+  subject String
+
+  status MailDeliveryStatus
+  /// 실패 사유. 성공이면 null (ADR-NOT-4 — 재시도하지 않고 기록만 한다)
+  error  String?
+
+  createdAt DateTime @default(now())
+
+  /// "이 회원에게 뭐가 나갔나" — 문의 대응 경로
+  @@index([userId, createdAt])
+  /// "실패한 게 뭐가 있나" — 운영 점검 경로
+  @@index([status, createdAt])
+}
+
+/// 메일 발송 결과. 재시도가 없으므로 중간 상태(PENDING)를 두지 않는다.
+enum MailDeliveryStatus {
+  SENT
+  FAILED
 }
 
 /// 알림 종류. `packages/shared/src/notification.ts`의 목록과 같아야 한다.
