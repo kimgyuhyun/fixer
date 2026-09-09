@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { JOB_POST_STATUSES } from './job-post.js';
+import { JOB_POST_STATUSES, PENALTY_REASONS } from './job-post.js';
 
 /**
  * 회원 등급. (`spec-fixed.md` §11.1)
@@ -22,6 +22,15 @@ export const ADMIN_ERRORS = {
   FORBIDDEN: 'ADMIN_FORBIDDEN',
   /** 사유가 필수인 조치인데 비었다 (§11.6) */
   REASON_REQUIRED: 'ADMIN_REASON_REQUIRED',
+  /**
+   * 그런 제재 건이 없다 (#33).
+   *
+   * `PENALTY_ERRORS`가 아니라 여기다. `PENALTY_SUSPENDED`는 "제재 때문에
+   * 회원이 막혔다"는 회원용 코드고, 이건 **관리자 조치의 실패**다.
+   */
+  SUSPENSION_NOT_FOUND: 'ADMIN_SUSPENSION_NOT_FOUND',
+  /** 이미 풀린 제재다 (#33). 두 번 풀면 감사 로그가 두 줄 남는다 */
+  SUSPENSION_ALREADY_RELEASED: 'ADMIN_SUSPENSION_ALREADY_RELEASED',
 } as const;
 
 export type AdminErrorCode = (typeof ADMIN_ERRORS)[keyof typeof ADMIN_ERRORS];
@@ -34,6 +43,8 @@ export type AdminErrorCode = (typeof ADMIN_ERRORS)[keyof typeof ADMIN_ERRORS];
  */
 export const ADMIN_ACTIONS = {
   JOB_POST_FORCE_CANCEL: 'JOB_POST_FORCE_CANCEL',
+  /** 관리자가 제재를 만료 전에 풀었다 (#33, §11.4) */
+  SUSPENSION_RELEASE: 'SUSPENSION_RELEASE',
   /** 환전 승인 (#34) */
   EXCHANGE_APPROVE: 'EXCHANGE_APPROVE',
   /** 이체 완료 (#34) */
@@ -98,3 +109,73 @@ export const forceCancelRequestSchema = z.object({
 });
 
 export type ForceCancelRequest = z.infer<typeof forceCancelRequestSchema>;
+
+/** 블랙리스트 한 페이지 건수. 관리자 공고 목록과 같은 20 (#33) */
+export const ADMIN_SUSPENSION_PAGE_SIZE = 20;
+
+/**
+ * 블랙리스트 필터. (#33, `spec-fixed.md` §11.4)
+ *
+ * **상태 필터가 없다.** 이 목록은 정의상 "현재 제재 중"만 보여준다 —
+ * 해제된 이력 탭은 이 이슈 범위 밖이다.
+ */
+export const adminSuspensionFilterSchema = z.object({
+  /** 회원 이름 부분 일치 (§11.4 "이름 검색") */
+  q: z.string().trim().min(1).optional(),
+  /** 1부터. 범위를 넘으면 오류가 아니라 빈 목록이다 (관리자 공고 목록과 같다) */
+  page: z.coerce.number().int().min(1).catch(1).default(1),
+});
+
+export type AdminSuspensionFilter = z.infer<typeof adminSuspensionFilterSchema>;
+
+/** 블랙리스트 한 줄. §11.4가 요구하는 다섯 칸이 그대로 필드다 */
+export const adminSuspensionSummarySchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  userName: z.string(),
+  startAt: z.iso.datetime(),
+  endAt: z.iso.datetime(),
+  /**
+   * 사유 요약. **문자열이 아니라 코드 배열이다** — 문구를 서버가 만들면
+   * 화면 문구를 바꿀 때 API를 고치게 된다. 라벨은 화면이 붙인다.
+   */
+  reasons: z.array(z.enum(PENALTY_REASONS)),
+  /** 180일 창 안 누적 경고 수. 창 밖 경고는 세지 않는다 (§5) */
+  penaltyCount: z.number().int(),
+});
+
+export type AdminSuspensionSummary = z.infer<
+  typeof adminSuspensionSummarySchema
+>;
+
+/** 목록 응답. 오프셋 페이징이라 전체 건수를 함께 준다 (ADR-JOB-5) */
+export const adminSuspensionListSchema = z.object({
+  items: z.array(adminSuspensionSummarySchema),
+  /** **필터를 적용한 뒤의** 건수 */
+  total: z.number().int(),
+  page: z.number().int(),
+  pageSize: z.number().int(),
+});
+
+export type AdminSuspensionList = z.infer<typeof adminSuspensionListSchema>;
+
+/** 제재 해제 요청. **사유가 필수다** (§11.4) */
+export const releaseSuspensionRequestSchema = z.object({
+  reason: z.string().trim().min(1, { error: '해제 사유를 입력해 주세요.' }),
+});
+
+export type ReleaseSuspensionRequest = z.infer<
+  typeof releaseSuspensionRequestSchema
+>;
+
+/** 해제 결과. AC3이 요구하는 두 값이 그대로 필드다 */
+export const releaseSuspensionResultSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  releasedAt: z.iso.datetime(),
+  releasedBy: z.string(),
+});
+
+export type ReleaseSuspensionResult = z.infer<
+  typeof releaseSuspensionResultSchema
+>;

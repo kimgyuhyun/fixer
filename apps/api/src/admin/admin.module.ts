@@ -14,10 +14,13 @@ import { AdminExchangeController } from './admin-exchange.controller';
 import { AdminExchangeService } from './admin-exchange.service';
 import { AdminJobPostController } from './admin-job-post.controller';
 import { AdminJobPostService } from './admin-job-post.service';
+import { AdminSuspensionController } from './admin-suspension.controller';
+import { AdminSuspensionService } from './admin-suspension.service';
 import { AdminGuard, ROLE_READER } from './admin.guard';
 import { PrismaAdminExchangeStore } from './prisma-admin-exchange.store';
 import {
   PrismaAdminJobPostStore,
+  PrismaAdminSuspensionStore,
   PrismaRoleReader,
 } from './prisma-admin.store';
 
@@ -34,11 +37,16 @@ import {
     ExchangeModule,
     NotificationModule,
   ],
-  controllers: [AdminJobPostController, AdminExchangeController],
+  controllers: [
+    AdminJobPostController,
+    AdminExchangeController,
+    AdminSuspensionController,
+  ],
   providers: [
     PrismaRoleReader,
     PrismaAdminJobPostStore,
     PrismaAdminExchangeStore,
+    PrismaAdminSuspensionStore,
     AdminGuard,
     { provide: ROLE_READER, useExisting: PrismaRoleReader },
     {
@@ -68,6 +76,15 @@ import {
         PrismaJobPostStore,
         PrismaAcceptedCounter,
       ],
+    },
+    {
+      provide: AdminSuspensionService,
+      useFactory: (
+        store: PrismaAdminSuspensionStore,
+        // 포트로 받는다. 이 서비스는 알림이 인앱인지 메일인지 모른다 (ADR-NOT-1).
+        notifications: NotificationService,
+      ) => new AdminSuspensionService(store, notifications),
+      inject: [PrismaAdminSuspensionStore, NotificationService],
     },
   ],
 })
