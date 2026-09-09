@@ -45,6 +45,19 @@ export const ADMIN_ACTIONS = {
   JOB_POST_FORCE_CANCEL: 'JOB_POST_FORCE_CANCEL',
   /** 관리자가 제재를 만료 전에 풀었다 (#33, §11.4) */
   SUSPENSION_RELEASE: 'SUSPENSION_RELEASE',
+  /** 환전 승인 (#34) */
+  EXCHANGE_APPROVE: 'EXCHANGE_APPROVE',
+  /** 이체 완료 (#34) */
+  EXCHANGE_COMPLETE: 'EXCHANGE_COMPLETE',
+  /** 환전 반려 (#34) */
+  EXCHANGE_REJECT: 'EXCHANGE_REJECT',
+  /**
+   * 계좌번호 전체 열람 (#34, §11.5).
+   *
+   * **아무것도 바꾸지 않는데 남긴다.** 평문 계좌번호를 본 사실 자체가
+   * 나중에 답해야 할 질문이라 조치와 같은 표에 쌓는다.
+   */
+  EXCHANGE_ACCOUNT_REVEAL: 'EXCHANGE_ACCOUNT_REVEAL',
 } as const;
 
 export type AdminAction = (typeof ADMIN_ACTIONS)[keyof typeof ADMIN_ACTIONS];

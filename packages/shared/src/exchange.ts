@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ACCOUNT_VERIFICATION_STATUSES } from './exchange-account.js';
 
 /** 환전 최소 금액 (`spec-fixed.md` §6.4.1) */
 export const EXCHANGE_MIN_AMOUNT = 5_000;
@@ -32,6 +33,10 @@ export const EXCHANGE_ERRORS = {
   NOT_MATURED: 'EXCHANGE_NOT_MATURED',
   /** 계좌가 검증되지 않았거나 등록조차 안 됐다 */
   ACCOUNT_NOT_VERIFIED: 'EXCHANGE_ACCOUNT_NOT_VERIFIED',
+  /** 그런 환전 요청이 없다 (#34) */
+  REQUEST_NOT_FOUND: 'EXCHANGE_REQUEST_NOT_FOUND',
+  /** 전이표에 없는 상태 변경이다 (#34) */
+  INVALID_TRANSITION: 'EXCHANGE_INVALID_TRANSITION',
 } as const;
 
 export type ExchangeErrorCode =
@@ -92,3 +97,112 @@ export function checkExchangeAmount(
   }
   return { ok: true };
 }
+
+/**
+ * 관리자 환전 목록 한 페이지 건수. (#34, §11.5)
+ *
+ * 공고 목록(`JOB_POST_PAGE_SIZE`)과 값이 같지만 상수를 공유하지 않는다 —
+ * 한쪽을 늘릴 이유와 다른 쪽을 늘릴 이유가 다르다.
+ */
+export const EXCHANGE_PAGE_SIZE = 20;
+
+/**
+ * 환전 상태 전이표. (#34, §6.4.1)
+ *
+ * **`COMPLETED`와 `REJECTED`는 종착역이다.** 이체가 끝난 건을 반려하면
+ * 돈은 나갔는데 포인트까지 돌려주게 되고, 원복된 건을 다시 승인하면
+ * 없는 돈이 나간다.
+ */
+export function canTransitionExchange(
+  from: ExchangeRequestStatus,
+  to: ExchangeRequestStatus,
+): boolean {
+  return EXCHANGE_TRANSITIONS[from].includes(to);
+}
+
+const EXCHANGE_TRANSITIONS: Record<
+  ExchangeRequestStatus,
+  readonly ExchangeRequestStatus[]
+> = {
+  REQUESTED: ['APPROVED', 'REJECTED'],
+  APPROVED: ['COMPLETED', 'REJECTED'],
+  COMPLETED: [],
+  REJECTED: [],
+};
+
+/** 관리자 환전 목록 필터. 상태와 페이지만 본다 (#34) */
+export const adminExchangeFilterSchema = z.object({
+  /** 없으면 전부 */
+  status: z.enum(EXCHANGE_REQUEST_STATUSES).optional(),
+  /** 1부터. 범위를 넘으면 오류가 아니라 빈 목록이다 (#35와 같은 규칙) */
+  page: z.coerce.number().int().min(1).catch(1).default(1),
+});
+export type AdminExchangeFilter = z.infer<typeof adminExchangeFilterSchema>;
+
+/**
+ * 관리자 목록 한 줄. AC1이 요구하는 네 칸이 그대로 필드다.
+ *
+ * **계좌 블록이 통째로 nullable이다.** 파기 배치(#39)가 계좌를 지운 뒤에도
+ * 환전 이력은 남는다 — 그때 빈 문자열을 채우면 "없음"과 "빈 값"이 섞인다.
+ */
+export const adminExchangeRequestSummarySchema = z.object({
+  id: z.string(),
+  requesterName: z.string(),
+  amount: z.number().int(),
+  status: z.enum(EXCHANGE_REQUEST_STATUSES),
+  requestedAt: z.iso.datetime(),
+  account: z
+    .object({
+      bankName: z.string(),
+      /** `****1234`. **평문은 이 스키마를 통과하지 못한다** */
+      maskedAccountNumber: z.string(),
+      holderName: z.string(),
+      verificationStatus: z.enum(ACCOUNT_VERIFICATION_STATUSES),
+    })
+    .nullable(),
+});
+export type AdminExchangeRequestSummary = z.infer<
+  typeof adminExchangeRequestSummarySchema
+>;
+
+/** 목록 응답. 오프셋 페이징이라 전체 건수를 함께 준다 */
+export const adminExchangeListSchema = z.object({
+  items: z.array(adminExchangeRequestSummarySchema),
+  /** **필터를 적용한 뒤의** 건수 */
+  total: z.number().int(),
+  page: z.number().int(),
+  pageSize: z.number().int(),
+});
+export type AdminExchangeList = z.infer<typeof adminExchangeListSchema>;
+
+/** 승인·이체 완료의 응답. 바뀐 상태만 돌려준다 */
+export const exchangeActionResultSchema = z.object({
+  id: z.string(),
+  status: z.enum(EXCHANGE_REQUEST_STATUSES),
+});
+export type ExchangeActionResult = z.infer<typeof exchangeActionResultSchema>;
+
+/** 반려 요청. **사유가 필수다** (§11.5) */
+export const rejectExchangeRequestSchema = z.object({
+  reason: z.string().trim().min(1, { error: '반려 사유를 입력해 주세요.' }),
+});
+export type RejectExchangeRequest = z.infer<typeof rejectExchangeRequestSchema>;
+
+/** 반려 응답. 되돌린 금액을 함께 준다 — 화면이 다시 묻지 않아도 된다 */
+export const rejectExchangeResultSchema = z.object({
+  id: z.string(),
+  status: z.enum(EXCHANGE_REQUEST_STATUSES),
+  reverted: z.number().int(),
+});
+export type RejectExchangeResult = z.infer<typeof rejectExchangeResultSchema>;
+
+/**
+ * 계좌번호 전체 열람의 응답. (#34 AC4)
+ *
+ * **은행명·예금주는 담지 않는다.** 목록에 이미 있고, 한 벌 더 실으면 평문
+ * 계좌번호가 담긴 페이로드만 커진다.
+ */
+export const revealedAccountSchema = z.object({
+  accountNumber: z.string(),
+});
+export type RevealedAccount = z.infer<typeof revealedAccountSchema>;

@@ -52,6 +52,10 @@ const MESSAGES: Record<ExchangeErrorCode, string> = {
   [EXCHANGE_ERRORS.NOT_MATURED]:
     '지급받은 지 7일이 지난 포인트만 환전할 수 있습니다.',
   [EXCHANGE_ERRORS.ACCOUNT_NOT_VERIFIED]: '검증된 계좌를 먼저 등록해 주세요.',
+  // 아래 둘은 관리자 경로(#34)에서 나온다. 이 표는 코드 전체를 덮어야 하므로
+  // 여기서도 문구를 갖는다 — 빠뜨리면 `Record`가 타입 오류를 낸다.
+  [EXCHANGE_ERRORS.REQUEST_NOT_FOUND]: '환전 요청을 찾을 수 없습니다.',
+  [EXCHANGE_ERRORS.INVALID_TRANSITION]: '지금 상태에서는 처리할 수 없습니다.',
 };
 
 function toHttpError(error: unknown): unknown {
