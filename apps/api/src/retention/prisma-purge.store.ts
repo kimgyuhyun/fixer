@@ -50,6 +50,9 @@ export class PrismaPurgeStore implements PurgeStore {
           email: { equals: input.previousEmail, mode: 'insensitive' },
         },
       }),
+      // 알림 메일 이력도 **받는 주소를 평문으로** 굳혀 들고 있다 (#37).
+      // 위 인증 이력과 같은 이유로 남겨 두면 파기가 반쪽이 된다.
+      this.prisma.mailDelivery.deleteMany({ where: { userId: input.userId } }),
       this.prisma.user.update({
         where: { id: input.userId },
         data: {
