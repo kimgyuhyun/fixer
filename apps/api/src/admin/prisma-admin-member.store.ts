@@ -249,13 +249,11 @@ function statusWhere(status: AdminMemberStatus | undefined, now: Date) {
   if (status === undefined) return {};
   if (status === 'DEACTIVATED') return { deactivatedAt: { not: null } };
 
-  const active = { suspensions: { some: activeSuspensionAtWhere(now) } };
+  const active = activeSuspensionAtWhere(now);
+  // 남은 둘은 **비활성화가 아닌** 회원을 유효 제재 유무로 가른다.
   return status === 'SUSPENDED'
-    ? { deactivatedAt: null, ...active }
-    : {
-        deactivatedAt: null,
-        suspensions: { none: activeSuspensionAtWhere(now) },
-      };
+    ? { deactivatedAt: null, suspensions: { some: active } }
+    : { deactivatedAt: null, suspensions: { none: active } };
 }
 
 /** `User` 컬럼을 목록 한 줄의 이름으로 옮긴다 */
