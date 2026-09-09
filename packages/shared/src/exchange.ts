@@ -117,8 +117,18 @@ export function canTransitionExchange(
   from: ExchangeRequestStatus,
   to: ExchangeRequestStatus,
 ): boolean {
-  throw new Error('not implemented');
+  return EXCHANGE_TRANSITIONS[from].includes(to);
 }
+
+const EXCHANGE_TRANSITIONS: Record<
+  ExchangeRequestStatus,
+  readonly ExchangeRequestStatus[]
+> = {
+  REQUESTED: ['APPROVED', 'REJECTED'],
+  APPROVED: ['COMPLETED', 'REJECTED'],
+  COMPLETED: [],
+  REJECTED: [],
+};
 
 /** 관리자 환전 목록 필터. 상태와 페이지만 본다 (#34) */
 export const adminExchangeFilterSchema = z.object({

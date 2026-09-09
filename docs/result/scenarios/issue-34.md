@@ -4,7 +4,7 @@
 > PRD: `docs/result/prd/point-money.md` · 사양: `spec-fixed.md` §6.4.1 §6.4.2 §11.5
 > 담당: A · 선행 #31(환전을 요청한다) — 머지 완료
 > 브랜치 `feat/point-money/issue-34` (base: `main`)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: Green 완료 — 시나리오 31개 전부 통과
 
 ---
 
@@ -346,43 +346,43 @@ AC2가 "`REQUESTED` 건"이라 못 박은 것과 달리 AC5는 "요청 건"이�
 
 ### 정상
 
-- [ ] [정상] `list` — should return the requester name, amount, masked account and verification status of every row
-- [ ] [정상] `approve` — should move a REQUESTED request to APPROVED
-- [ ] [정상] `approve` — should record an EXCHANGE_APPROVE audit log carrying the admin id and the request id
-- [ ] [정상] `complete` — should move an APPROVED request to COMPLETED
-- [ ] [정상] `reject` — should move the request to REJECTED and append a +amount EXCHANGE_REVERT ledger entry
-- [ ] [정상] `reject` — should publish an EXCHANGE_REJECTED notification to the requester
-- [ ] [정상] `revealAccount` — should return the full account number
-- [ ] [정상] `revealAccount` — should record an EXCHANGE_ACCOUNT_REVEAL audit log naming the admin and the request
-- [ ] [정상] `AdminExchangeList` — should render the requester, amount, masked account and verification status of each row
-- [ ] [정상] `GET /admin/exchange-requests` — should respond 200 with the list for an admin
+- [x] [정상] `list` — should return the requester name, amount, masked account and verification status of every row
+- [x] [정상] `approve` — should move a REQUESTED request to APPROVED
+- [x] [정상] `approve` — should record an EXCHANGE_APPROVE audit log carrying the admin id and the request id
+- [x] [정상] `complete` — should move an APPROVED request to COMPLETED
+- [x] [정상] `reject` — should move the request to REJECTED and append a +amount EXCHANGE_REVERT ledger entry
+- [x] [정상] `reject` — should publish an EXCHANGE_REJECTED notification to the requester
+- [x] [정상] `revealAccount` — should return the full account number
+- [x] [정상] `revealAccount` — should record an EXCHANGE_ACCOUNT_REVEAL audit log naming the admin and the request
+- [x] [정상] `AdminExchangeList` — should render the requester, amount, masked account and verification status of each row
+- [x] [정상] `GET /admin/exchange-requests` — should respond 200 with the list for an admin
 
 ### 경계
 
-- [ ] [경계] `canTransitionExchange` — should allow REQUESTED to APPROVED and APPROVED to COMPLETED
-- [ ] [경계] `canTransitionExchange` — should allow rejecting from REQUESTED and from APPROVED
-- [ ] [경계] `canTransitionExchange` — should refuse every transition out of COMPLETED and out of REJECTED
-- [ ] [경계] `list` — should return an empty page instead of an error when the page is past the last one
-- [ ] [경계] `reject` — should restore the balance to exactly the amount it held before the request
-- [ ] [경계] `reject` — should make the reverted amount exchangeable again through `maturedBalanceOf`
-- [ ] [경계] `updateStatus` — should let only one of two concurrent approvals of the same request succeed
-- [ ] [경계] `AdminExchangeList` — should keep the account number masked until the reveal button is pressed
+- [x] [경계] `canTransitionExchange` — should allow REQUESTED to APPROVED and APPROVED to COMPLETED
+- [x] [경계] `canTransitionExchange` — should allow rejecting from REQUESTED and from APPROVED
+- [x] [경계] `canTransitionExchange` — should refuse every transition out of COMPLETED and out of REJECTED
+- [x] [경계] `list` — should return an empty page instead of an error when the page is past the last one
+- [x] [경계] `reject` — should restore the balance to exactly the amount it held before the request
+- [x] [경계] `reject` — should make the reverted amount exchangeable again through `maturedBalanceOf`
+- [x] [경계] `updateStatus` — should let only one of two concurrent approvals of the same request succeed
+- [x] [경계] `AdminExchangeList` — should keep the account number masked until the reveal button is pressed
 
 ### 예외
 
-- [ ] [예외] `approve` — should throw `EXCHANGE_REQUEST_NOT_FOUND` when no such request exists
-- [ ] [예외] `approve` — should throw `EXCHANGE_INVALID_TRANSITION` when the request is already APPROVED
-- [ ] [예외] `approve` — should throw `EXCHANGE_INVALID_TRANSITION` when the store reports STALE after another admin committed first
-- [ ] [예외] `complete` — should throw `EXCHANGE_INVALID_TRANSITION` when the request is still REQUESTED
-- [ ] [예외] `reject` — should throw `EXCHANGE_INVALID_TRANSITION` when the request is already COMPLETED
-- [ ] [예외] `reject` — should throw `ADMIN_REASON_REQUIRED` when the reason is blank
-- [ ] [예외] `reject` — should touch neither the request nor the ledger when the reason is blank
-- [ ] [예외] `reject` — should not notify the requester when the store reports STALE
-- [ ] [예외] `revealAccount` — should throw `ACCOUNT_NOT_REGISTERED` and record no audit log when the requester has no account
-- [ ] [예외] `POST /admin/exchange-requests/:id/approve` — should respond 403 with `ADMIN_FORBIDDEN` for a member who is not an admin
-- [ ] [예외] `POST /admin/exchange-requests/:id/approve` — should respond 404 with `EXCHANGE_REQUEST_NOT_FOUND`
-- [ ] [예외] `POST /admin/exchange-requests/:id/complete` — should respond 409 with `EXCHANGE_INVALID_TRANSITION`
-- [ ] [예외] `POST /admin/exchange-requests/:id/reject` — should respond 400 with `ADMIN_REASON_REQUIRED` when the reason is missing
+- [x] [예외] `approve` — should throw `EXCHANGE_REQUEST_NOT_FOUND` when no such request exists
+- [x] [예외] `approve` — should throw `EXCHANGE_INVALID_TRANSITION` when the request is already APPROVED
+- [x] [예외] `approve` — should throw `EXCHANGE_INVALID_TRANSITION` when the store reports STALE after another admin committed first
+- [x] [예외] `complete` — should throw `EXCHANGE_INVALID_TRANSITION` when the request is still REQUESTED
+- [x] [예외] `reject` — should throw `EXCHANGE_INVALID_TRANSITION` when the request is already COMPLETED
+- [x] [예외] `reject` — should throw `ADMIN_REASON_REQUIRED` when the reason is blank
+- [x] [예외] `reject` — should touch neither the request nor the ledger when the reason is blank
+- [x] [예외] `reject` — should not notify the requester when the store reports STALE
+- [x] [예외] `revealAccount` — should throw `ACCOUNT_NOT_REGISTERED` and record no audit log when the requester has no account
+- [x] [예외] `POST /admin/exchange-requests/:id/approve` — should respond 403 with `ADMIN_FORBIDDEN` for a member who is not an admin
+- [x] [예외] `POST /admin/exchange-requests/:id/approve` — should respond 404 with `EXCHANGE_REQUEST_NOT_FOUND`
+- [x] [예외] `POST /admin/exchange-requests/:id/complete` — should respond 409 with `EXCHANGE_INVALID_TRANSITION`
+- [x] [예외] `POST /admin/exchange-requests/:id/reject` — should respond 400 with `ADMIN_REASON_REQUIRED` when the reason is missing
 
 ---
 
