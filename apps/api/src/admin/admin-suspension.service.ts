@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  AdminSuspensionFilter,
-  AdminSuspensionList,
-  PenaltyReason,
-  ReleaseSuspensionResult,
+import {
+  ADMIN_ERRORS,
+  ADMIN_SUSPENSION_PAGE_SIZE,
+  type AdminSuspensionFilter,
+  type AdminSuspensionList,
+  type AdminSuspensionSummary,
+  type PenaltyReason,
+  type ReleaseSuspensionResult,
 } from '@fixer/shared';
 import type { NotificationPublisher } from '../notification/notification.service';
+import { AdminError } from './admin-job-post.service';
 
 /** 블랙리스트 한 줄에 필요한 것들. 이름과 경고 집계를 조인해서 함께 온다 */
 export interface AdminSuspensionRow {
@@ -78,16 +82,77 @@ export class AdminSuspensionService {
   ) {}
 
   /** 현재 제재 중인 회원만. 만료된 건도 해제된 건도 나오지 않는다 */
-  list(filter: AdminSuspensionFilter): Promise<AdminSuspensionList> {
-    throw new Error('not implemented');
+  async list(filter: AdminSuspensionFilter): Promise<AdminSuspensionList> {
+    const { items, total } = await this.store.listActive(
+      filter,
+      ADMIN_SUSPENSION_PAGE_SIZE,
+      new Date(),
+    );
+
+    return {
+      items: items.map(toSummary),
+      total,
+      page: filter.page,
+      pageSize: ADMIN_SUSPENSION_PAGE_SIZE,
+    };
   }
 
   /** 사유를 남기고 조기 해제한다. 사유 없는 해제는 막힌다 (§11.4) */
-  release(input: {
+  async release(input: {
     adminId: string;
     suspensionId: string;
     reason: string;
   }): Promise<ReleaseSuspensionResult> {
-    throw new Error('not implemented');
+    const reason = input.reason.trim();
+    // 사유 검증이 가장 먼저다. 사유 없는 조치는 저장소도 알림도 건드리지 않는다.
+    if (reason === '') {
+      throw new AdminError(ADMIN_ERRORS.REASON_REQUIRED);
+    }
+
+    const released = await this.store.release({
+      suspensionId: input.suspensionId,
+      adminId: input.adminId,
+      reason,
+      now: new Date(),
+    });
+
+    if (released === 'NOT_FOUND') {
+      throw new AdminError(ADMIN_ERRORS.SUSPENSION_NOT_FOUND);
+    }
+    if (released === 'ALREADY_RELEASED') {
+      // 두 번 풀면 감사 로그가 두 줄 남고 알림도 두 번 간다. 동시에 두
+      // 관리자가 눌렀을 때 진 쪽도 여기로 온다.
+      throw new AdminError(ADMIN_ERRORS.SUSPENSION_ALREADY_RELEASED);
+    }
+
+    // 트랜잭션 밖이다. 발행은 던지지 않으므로(ADR-NOT-1) 이 줄이 해제를
+    // 되돌리지 않는다 — #25의 제재 발생 알림과 같은 자리다.
+    await this.notifications.publish({
+      userId: released.userId,
+      type: 'SUSPENSION_RELEASED',
+      title: '이용 제한이 해제되었습니다',
+      body: '관리자가 제재를 해제했습니다. 공고 등록과 지원을 다시 할 수 있습니다.',
+      // 제재 이력 화면은 아직 없다(#32). 없는 경로를 넣지 않는다 — #25와 같다.
+      linkUrl: '/my/account',
+    });
+
+    return {
+      id: released.id,
+      userId: released.userId,
+      releasedAt: released.releasedAt.toISOString(),
+      releasedBy: released.releasedBy,
+    };
   }
+}
+
+function toSummary(row: AdminSuspensionRow): AdminSuspensionSummary {
+  return {
+    id: row.id,
+    userId: row.userId,
+    userName: row.userName,
+    startAt: row.startAt.toISOString(),
+    endAt: row.endAt.toISOString(),
+    reasons: row.reasons,
+    penaltyCount: row.penaltyCount,
+  };
 }

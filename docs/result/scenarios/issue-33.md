@@ -4,7 +4,7 @@
 > PRD: `docs/result/prd/penalty-rating.md` · 사양: `spec-fixed.md` §5.1 §11.1 §11.4
 > 담당: B · 선행 #25(경고 5건 → 제재) — 머지 완료
 > 브랜치 `feat/penalty-rating/issue-33` (base: `main`)
-> 상태: 시그니처 확정 / 시나리오 도출 완료
+> 상태: Green 완료 — 시나리오 31개 전부 통과
 
 ---
 
@@ -325,43 +325,43 @@ export interface AdminSuspensionListProps {
 
 ### 정상
 
-- [ ] [정상] `AdminSuspensionService.list` — should return userName, startAt, endAt, reasons and penaltyCount for every active suspension
-- [ ] [정상] `AdminSuspensionService.list` — should return only that member's row when q matches a member name partially and case-insensitively
-- [ ] [정상] `AdminSuspensionService.release` — should record releasedAt, releasedBy and releaseReason on the suspension
-- [ ] [정상] `AdminSuspensionService.release` — should publish a SUSPENSION_RELEASED notification to the released member
-- [ ] [정상] `AdminSuspensionService.release` — should record an AdminAuditLog row carrying the admin id, the reason and the time
-- [ ] [정상] `AdminSuspensionService.release` — should keep every Penalty row of the released member with its original reason and occurredAt
-- [ ] [정상] `AdminSuspensionService.release` — should keep the released Suspension row instead of deleting it
-- [ ] [정상] `JobPostService.create` — should create the post when the member's only suspension was released early
-- [ ] [정상] `AdminSuspensionService.release` — should let the member post a job right after the admin releases the suspension
-- [ ] [정상] `AdminSuspensionController` — should answer 200 with the list body when an admin calls the list endpoint
-- [ ] [정상] `AdminSuspensionController` — should pass the session user id to release rather than any value from the request body
-- [ ] [정상] `AdminSuspensionList` — should render name, start, end, reason summary and penalty count columns for each row
+- [x] [정상] `AdminSuspensionService.list` — should return userName, startAt, endAt, reasons and penaltyCount for every active suspension
+- [x] [정상] `AdminSuspensionService.list` — should return only that member's row when q matches a member name partially and case-insensitively
+- [x] [정상] `AdminSuspensionService.release` — should record releasedAt, releasedBy and releaseReason on the suspension
+- [x] [정상] `AdminSuspensionService.release` — should publish a SUSPENSION_RELEASED notification to the released member
+- [x] [정상] `AdminSuspensionService.release` — should record an AdminAuditLog row carrying the admin id, the reason and the time
+- [x] [정상] `AdminSuspensionService.release` — should keep every Penalty row of the released member with its original reason and occurredAt
+- [x] [정상] `AdminSuspensionService.release` — should keep the released Suspension row instead of deleting it
+- [x] [정상] `JobPostService.create` — should create the post when the member's only suspension was released early
+- [x] [정상] `AdminSuspensionService.release` — should let the member post a job right after the admin releases the suspension
+- [x] [정상] `AdminSuspensionController` — should answer 200 with the list body when an admin calls the list endpoint
+- [x] [정상] `AdminSuspensionController` — should pass the session user id to release rather than any value from the request body
+- [x] [정상] `AdminSuspensionList` — should render name, start, end, reason summary and penalty count columns for each row
 
 ### 경계
 
-- [ ] [경계] `AdminSuspensionService.list` — should exclude a suspension whose endAt has already passed
-- [ ] [경계] `AdminSuspensionService.list` — should exclude a suspension that an admin already released
-- [ ] [경계] `AdminSuspensionService.list` — should include a suspension whose endAt is one millisecond after now
-- [ ] [경계] `AdminSuspensionService.list` — should count only the penalties inside the 180-day window as penaltyCount
-- [ ] [경계] `AdminSuspensionService.release` — should release exactly once when the same suspension is released twice concurrently
-- [ ] [경계] `AdminSuspensionService.release` — should leave the suspension unreleased when writing the audit log fails
-- [ ] [경계] `AdminSuspensionService.release` — should keep the member's 180-day penalty count unchanged after the release
-- [ ] [경계] `JobPostService.create` — should still block the member when a second suspension of theirs is still active
-- [ ] [경계] `JobPostService.create` — should still block a member whose own suspension is untouched while another member's was released
-- [ ] [경계] `adminSuspensionFilterSchema` — should fall back to page 1 when page is 0 or not a number
+- [x] [경계] `AdminSuspensionService.list` — should exclude a suspension whose endAt has already passed
+- [x] [경계] `AdminSuspensionService.list` — should exclude a suspension that an admin already released
+- [x] [경계] `AdminSuspensionService.list` — should include a suspension whose endAt is one millisecond after now
+- [x] [경계] `AdminSuspensionService.list` — should count only the penalties inside the 180-day window as penaltyCount
+- [x] [경계] `AdminSuspensionService.release` — should release exactly once when the same suspension is released twice concurrently
+- [x] [경계] `AdminSuspensionService.release` — should leave the suspension unreleased when writing the audit log fails
+- [x] [경계] `AdminSuspensionService.release` — should keep the member's 180-day penalty count unchanged after the release
+- [x] [경계] `JobPostService.create` — should still block the member when a second suspension of theirs is still active
+- [x] [경계] `JobPostService.create` — should still block a member whose own suspension is untouched while another member's was released
+- [x] [경계] `adminSuspensionFilterSchema` — should fall back to page 1 when page is 0 or not a number
 
 ### 예외
 
-- [ ] [예외] `AdminSuspensionService.release` — should throw ADMIN_REASON_REQUIRED when the reason is empty or only whitespace
-- [ ] [예외] `AdminSuspensionService.release` — should leave releasedAt null when the reason is rejected
-- [ ] [예외] `AdminSuspensionService.release` — should write no audit log and publish no notification when the reason is rejected
-- [ ] [예외] `AdminSuspensionService.release` — should throw ADMIN_SUSPENSION_NOT_FOUND when the suspension does not exist
-- [ ] [예외] `AdminSuspensionService.release` — should throw ADMIN_SUSPENSION_ALREADY_RELEASED when the suspension was already released
-- [ ] [예외] `AdminSuspensionController` — should answer 400 with ADMIN_REASON_REQUIRED when the release body has no reason
-- [ ] [예외] `AdminSuspensionController` — should answer 403 with ADMIN_FORBIDDEN when a non-admin calls the list endpoint
-- [ ] [예외] `AdminSuspensionList` — should keep the confirm button disabled until a reason is typed
-- [ ] [예외] `AdminSuspensionList` — should render a "권한이 없습니다" notice instead of the table when forbidden is true
+- [x] [예외] `AdminSuspensionService.release` — should throw ADMIN_REASON_REQUIRED when the reason is empty or only whitespace
+- [x] [예외] `AdminSuspensionService.release` — should leave releasedAt null when the reason is rejected
+- [x] [예외] `AdminSuspensionService.release` — should write no audit log and publish no notification when the reason is rejected
+- [x] [예외] `AdminSuspensionService.release` — should throw ADMIN_SUSPENSION_NOT_FOUND when the suspension does not exist
+- [x] [예외] `AdminSuspensionService.release` — should throw ADMIN_SUSPENSION_ALREADY_RELEASED when the suspension was already released
+- [x] [예외] `AdminSuspensionController` — should answer 400 with ADMIN_REASON_REQUIRED when the release body has no reason
+- [x] [예외] `AdminSuspensionController` — should answer 403 with ADMIN_FORBIDDEN when a non-admin calls the list endpoint
+- [x] [예외] `AdminSuspensionList` — should keep the confirm button disabled until a reason is typed
+- [x] [예외] `AdminSuspensionList` — should render a "권한이 없습니다" notice instead of the table when forbidden is true
 
 ---
 

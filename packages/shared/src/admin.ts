@@ -106,19 +106,14 @@ export const ADMIN_SUSPENSION_PAGE_SIZE = 20;
  * **상태 필터가 없다.** 이 목록은 정의상 "현재 제재 중"만 보여준다 —
  * 해제된 이력 탭은 이 이슈 범위 밖이다.
  */
-export interface AdminSuspensionFilter {
+export const adminSuspensionFilterSchema = z.object({
   /** 회원 이름 부분 일치 (§11.4 "이름 검색") */
-  q?: string;
-  /** 1부터. 범위를 넘으면 오류가 아니라 빈 목록이다 */
-  page: number;
-}
+  q: z.string().trim().min(1).optional(),
+  /** 1부터. 범위를 넘으면 오류가 아니라 빈 목록이다 (관리자 공고 목록과 같다) */
+  page: z.coerce.number().int().min(1).catch(1).default(1),
+});
 
-// Red stub. 파싱 규칙(page 폴백·trim)은 Green이 채운다.
-export const adminSuspensionFilterSchema = z.custom<AdminSuspensionFilter>(
-  () => {
-    throw new Error('not implemented');
-  },
-);
+export type AdminSuspensionFilter = z.infer<typeof adminSuspensionFilterSchema>;
 
 /** 블랙리스트 한 줄. §11.4가 요구하는 다섯 칸이 그대로 필드다 */
 export const adminSuspensionSummarySchema = z.object({
