@@ -140,7 +140,7 @@ export class NotificationService implements NotificationPublisher {
       // 회원 id만 적고 문구는 적지 않는다 — 알림 본문에는 개인정보가 담긴다.
       this.logger.error(
         `알림 발행 실패 (userId=${input.userId}, type=${input.type})`,
-        error instanceof Error ? error.stack : undefined,
+        stackOf(error),
       );
     }
   }
@@ -168,21 +168,21 @@ export class NotificationService implements NotificationPublisher {
         body: input.body,
         linkUrl: input.linkUrl,
       });
-      await this.record(input, to, 'SENT', null);
+      await this.recordDeliveryQuietly(input, to, 'SENT', null);
     } catch (error) {
       this.logger.error(
         `알림 메일 발송 실패 (userId=${input.userId}, type=${input.type})`,
-        error instanceof Error ? error.stack : undefined,
+        stackOf(error),
       );
       // 주소를 못 찾았으면 보낸 적이 없으므로 이력도 없다.
       if (to !== null) {
-        await this.record(input, to, 'FAILED', reasonOf(error));
+        await this.recordDeliveryQuietly(input, to, 'FAILED', reasonOf(error));
       }
     }
   }
 
   /** 이력 기록도 DB 호출이라 실패할 수 있다. **여기서 끝낸다** */
-  private async record(
+  private async recordDeliveryQuietly(
     input: PublishNotificationInput,
     to: string,
     status: MailDeliveryEntry['status'],
@@ -200,7 +200,7 @@ export class NotificationService implements NotificationPublisher {
     } catch (recordError) {
       this.logger.error(
         `알림 메일 이력 기록 실패 (userId=${input.userId}, type=${input.type})`,
-        recordError instanceof Error ? recordError.stack : undefined,
+        stackOf(recordError),
       );
     }
   }
@@ -229,6 +229,11 @@ export class NotificationService implements NotificationPublisher {
 /** 이력에 남길 실패 사유 한 줄 */
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** 로그에 붙일 스택. 에러가 아닌 것이 던져지면 붙일 것이 없다 */
+function stackOf(error: unknown): string | undefined {
+  return error instanceof Error ? error.stack : undefined;
 }
 
 function toItem(record: NotificationRecord): NotificationItem {
