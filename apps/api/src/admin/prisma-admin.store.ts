@@ -5,6 +5,7 @@ import {
   penaltyWindowStart,
   type AdminJobPostFilter,
   type AdminSuspensionFilter,
+  type PenaltyReason,
   type UserRole,
 } from '@fixer/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -174,8 +175,17 @@ export class PrismaAdminSuspensionStore implements AdminSuspensionStore {
             select: { userId: true, reason: true },
           });
 
+    // 회원별로 한 번만 가른다. 줄마다 전체를 훑으면 "한 번에 붙인다"는
+    // 위 설명과 코드가 어긋난다.
+    const byUser = new Map<string, PenaltyReason[]>();
+    for (const penalty of penalties) {
+      const mine = byUser.get(penalty.userId) ?? [];
+      mine.push(penalty.reason);
+      byUser.set(penalty.userId, mine);
+    }
+
     return rows.map((row) => {
-      const mine = penalties.filter((p) => p.userId === row.userId);
+      const mine = byUser.get(row.userId) ?? [];
       return {
         id: row.id,
         userId: row.userId,
@@ -184,9 +194,7 @@ export class PrismaAdminSuspensionStore implements AdminSuspensionStore {
         endAt: row.endAt,
         // 선언 순서로 고정한다. 조회 순서에 맡기면 같은 회원이 새로고침마다
         // 다른 순서로 보인다.
-        reasons: PENALTY_REASONS.filter((reason) =>
-          mine.some((p) => p.reason === reason),
-        ),
+        reasons: PENALTY_REASONS.filter((reason) => mine.includes(reason)),
         penaltyCount: mine.length,
       };
     });
