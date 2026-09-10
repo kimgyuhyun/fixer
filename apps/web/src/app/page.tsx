@@ -76,12 +76,96 @@ const READY: Feature[] = [
     summary: '카테고리를 고르면 그 업종에서 적어야 할 것이 안내된다.',
     href: '/job-posts/new',
   },
+  {
+    issue: 4,
+    title: '로그인',
+    summary: '로그인하면 마이페이지에서 내 정보와 별점을 본다.',
+    href: '/login',
+  },
+  {
+    issue: 5,
+    title: '보호 페이지',
+    summary: '로그아웃하면 뒤로가기로도 마이페이지를 못 본다.',
+    href: '/my',
+  },
+  {
+    issue: 6,
+    title: '비밀번호 재설정',
+    summary: '메일로 받은 링크로 비밀번호를 다시 정한다.',
+    href: '/password-reset',
+  },
+  {
+    issue: 13,
+    title: '공고 목록·검색',
+    summary: '카테고리·지역으로 목록을 좁혀 본다.',
+    href: '/job-posts',
+  },
+  {
+    issue: 17,
+    title: '지원과 수락',
+    summary: '공고에 지원하고, 구인자가 수락하면 계약이 된다.',
+    href: '/job-posts',
+  },
+  {
+    issue: 26,
+    title: '별점',
+    summary: '거래가 끝나면 서로 1~5점을 남긴다. 마이페이지에 쌓인다.',
+    href: '/my',
+  },
+  {
+    issue: 36,
+    title: '알림',
+    summary: '중요한 일이 생기면 벨에 쌓이고, 눌러 읽으면 그 화면으로 간다.',
+    href: '/notifications',
+  },
+  {
+    issue: 32,
+    title: '관리자 · 회원',
+    summary: '회원을 검색해 상세와 제재 이력을 본다.',
+    href: '/admin/members',
+  },
+  {
+    issue: 35,
+    title: '관리자 · 공고',
+    summary: '공고를 검색해 사유를 남기고 강제 취소한다.',
+    href: '/admin/job-posts',
+  },
+  {
+    issue: 34,
+    title: '관리자 · 환전',
+    summary: '환전 요청을 승인하고 이체 완료를 찍는다.',
+    href: '/admin/exchange-requests',
+  },
+  {
+    issue: 33,
+    title: '관리자 · 제재',
+    summary: '제재를 사유와 함께 조기 해제한다.',
+    href: '/admin/suspensions',
+  },
 ];
 
-/** 아직 만들지 않은 것. 이 화면이 "무엇이 없는지"까지 말하게 한다. */
+/**
+ * 화면과 서버는 다 됐는데 **외부 키가 없어 절반만 도는 것.**
+ * 이 화면이 "무엇이 안 되는지"까지 말하게 한다.
+ */
 const PLANNED: Feature[] = [
-  { issue: 4, title: '로그인', summary: '로그인하고 내 정보를 본다.' },
-  { issue: 6, title: '비밀번호 재설정', summary: '비밀번호를 다시 정한다.' },
+  {
+    issue: 28,
+    title: '결제창',
+    summary:
+      '포트원 채널키가 없어 결제창이 뜨지 않는다. 서버가 결제 건을 만들고 바로 확정한다.',
+  },
+  {
+    issue: 37,
+    title: '알림 이메일',
+    summary:
+      '인앱 알림은 쌓이지만 메일은 나가지 않는다. 인증 코드와 함께 서버 로그에만 찍힌다.',
+  },
+  {
+    issue: 30,
+    title: '계좌 실명 확인',
+    summary: '형식만 보고 통과시킨다. 실명 대조는 포트원을 붙일 때 켜진다.',
+  },
 ];
 
 export default function Home() {
@@ -133,7 +217,7 @@ export default function Home() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.heading}>아직 만들지 않은 것</h2>
+        <h2 className={styles.heading}>아직 반쪽인 것</h2>
         <ul className={styles.list}>
           {PLANNED.map((feature) => (
             <li key={feature.issue}>
