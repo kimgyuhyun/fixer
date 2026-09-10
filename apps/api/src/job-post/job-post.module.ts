@@ -64,6 +64,14 @@ import {
       ],
     },
   ],
-  exports: [CategoryService, JobPostService],
+  // 저장소 둘은 AdminModule이 강제 취소(#35)에 쓴다. ExchangeModule이
+  // ExchangeAccountService를 내보내는 것과 같은 자리다 — 관리자 쪽이 자기
+  // 저장소를 새로 만들면 공고 상태 전이 규칙이 두 곳으로 갈린다.
+  exports: [
+    CategoryService,
+    JobPostService,
+    PrismaJobPostStore,
+    PrismaAcceptedCounter,
+  ],
 })
 export class JobPostModule {}
