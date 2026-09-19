@@ -36,17 +36,16 @@ export function ApplicantList({
 }: {
   jobPostId: string;
 }): React.JSX.Element {
-  // #4의 토큰 주체로 바꾸기 전까지는 손으로 받는다 (ApplyPanel과 같다)
-  const [employerId, setEmployerId] = useState('');
   const [list, setList] = useState<ApplicantListData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
-    const query = new URLSearchParams({ jobPostId, employerId });
+    // 구인자는 쿠키에서 온다 (#69). 화면이 보낼 것은 어느 공고인지뿐이다.
+    const query = new URLSearchParams({ jobPostId });
     const res = await fetch(`/api/applications?${query.toString()}`);
     if (!res.ok) throw new Error('지원자 목록을 불러오지 못했습니다.');
     setList(applicantListSchema.parse(await res.json()));
-  }, [jobPostId, employerId]);
+  }, [jobPostId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,7 +70,7 @@ export function ApplicantList({
       const res = await fetch(`/api/applications/${applicationId}/accept`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ employerId }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         setError(messageOf(await res.json()));
@@ -97,7 +96,7 @@ export function ApplicantList({
       const res = await fetch(`/api/applications/${applicationId}/reject`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ employerId }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         setError(messageOf(await res.json()));
@@ -121,7 +120,7 @@ export function ApplicantList({
       const res = await fetch('/api/applications/complete', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jobPostId, employerId }),
+        body: JSON.stringify({ jobPostId }),
       });
       if (!res.ok) {
         setError(messageOf(await res.json()));
@@ -139,16 +138,6 @@ export function ApplicantList({
 
   return (
     <section className={styles.panel}>
-      <label className={styles.label} htmlFor="employerId">
-        내 회원 id
-      </label>
-      <input
-        className={styles.input}
-        id="employerId"
-        value={employerId}
-        onChange={(e) => setEmployerId(e.target.value)}
-      />
-
       {list !== null && (
         <p className={styles.seats}>
           {list.acceptedCount} / {list.headcount}

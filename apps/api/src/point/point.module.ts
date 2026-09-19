@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { ConfigService } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ChargeService } from './charge.service';
@@ -21,7 +22,7 @@ import { RefundService } from './refund.service';
  * `FakePaymentGateway`를 `PortOneGateway`로 바꿔 끼우는 것으로 끝난다.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AuthModule],
   controllers: [PointController],
   providers: [
     PrismaPointLedgerStore,

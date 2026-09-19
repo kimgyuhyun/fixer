@@ -6,7 +6,7 @@ import {
   registerAccountRequestSchema,
   type MaskedAccount,
 } from '@fixer/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import styles from './page.module.css';
 
 /** 검증 상태를 사람 말로 */
@@ -23,8 +23,6 @@ const STATUS_LABELS: Record<string, string> = {
  * 서버가 평문을 내려보내지 않으므로 화면이 그것을 다시 보여줄 방법도 없다.
  */
 export default function ExchangeAccountPage() {
-  // #4가 머지되면 토큰 주체로 바뀐다. 지금은 화면에서 받는다.
-  const [userId, setUserId] = useState('');
   const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [holderName, setHolderName] = useState('');
@@ -33,26 +31,29 @@ export default function ExchangeAccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  /** 회원 id가 바뀌면 그 회원의 계좌를 읽는다 */
-  async function changeUserId(next: string) {
-    setUserId(next);
-    setAccount(null);
-    setError(null);
-    if (next === '') return;
+  /** 화면에 들어오면 내 계좌를 읽는다. 회원은 쿠키에서 온다 (#69) */
+  useEffect(() => {
+    let cancelled = false;
 
-    try {
-      const res = await fetch(
-        `/api/exchange-accounts/me?userId=${encodeURIComponent(next)}`,
-      );
-      const json: unknown = await res.json();
-      // 404는 오류가 아니다. 아직 등록을 안 한 것뿐이다.
-      if (res.status === 404) return;
-      if (!res.ok) throw new Error('조회 실패');
-      setAccount(maskedAccountSchema.parse(json));
-    } catch {
-      setError('계좌를 불러오지 못했습니다.');
+    async function load() {
+      try {
+        const res = await fetch('/api/exchange-accounts/me');
+        const json: unknown = await res.json();
+        if (cancelled) return;
+        // 404는 오류가 아니다. 아직 등록을 안 한 것뿐이다.
+        if (res.status === 404) return;
+        if (!res.ok) throw new Error('조회 실패');
+        setAccount(maskedAccountSchema.parse(json));
+      } catch {
+        if (!cancelled) setError('계좌를 불러오지 못했습니다.');
+      }
     }
-  }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,7 +76,7 @@ export default function ExchangeAccountPage() {
       const res = await fetch('/api/exchange-accounts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, ...parsed.data }),
+        body: JSON.stringify(parsed.data),
       });
       const json: unknown = await res.json();
       if (!res.ok) {
@@ -99,19 +100,6 @@ export default function ExchangeAccountPage() {
         환전받을 계좌를 등록합니다. 계좌번호는 암호화되어 저장되고, 화면에는 뒤
         4자리만 보입니다.
       </p>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="userId">
-          회원 id
-        </label>
-        <input
-          id="userId"
-          className={styles.input}
-          value={userId}
-          onChange={(e) => void changeUserId(e.target.value)}
-          placeholder="로그인이 붙기 전까지 직접 입력합니다"
-        />
-      </div>
 
       {account && (
         <dl className={styles.registered}>
@@ -199,11 +187,7 @@ export default function ExchangeAccountPage() {
           </p>
         )}
 
-        <button
-          className={styles.submit}
-          type="submit"
-          disabled={loading || userId === ''}
-        >
+        <button className={styles.submit} type="submit" disabled={loading}>
           {loading ? '등록하는 중…' : '계좌 등록'}
         </button>
       </form>

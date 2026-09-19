@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   EXCHANGE_ERRORS,
@@ -15,6 +16,7 @@ import {
   type ExchangeRequestSummary,
 } from '@fixer/shared';
 import { ZodError } from 'zod';
+import { CurrentMember, MemberGuard } from '../auth/member.guard';
 import { PointError } from '../point/point-ledger.service';
 import {
   ExchangeError,
@@ -24,20 +26,24 @@ import {
 /**
  * 환전 요청의 HTTP 경계. (이슈 #31)
  *
- * 회원 식별은 #30과 마찬가지로 아직 본문으로 받는다. #4의 토큰 주체로 바꾸는
- * 것은 그 배선이 머지된 뒤다.
+ * **회원은 쿠키에서 온다** (#69). 남의 포인트를 내 계좌로 빼는 길을 막는 것이
+ * 이 도메인에서는 특히 직접적이다.
  */
 @Controller('exchange-requests')
+@UseGuards(MemberGuard)
 export class ExchangeRequestController {
   constructor(private readonly service: ExchangeRequestService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async request(@Body() body: unknown): Promise<ExchangeRequestSummary> {
+  async request(
+    @CurrentMember() userId: string,
+    @Body() body: unknown,
+  ): Promise<ExchangeRequestSummary> {
     try {
       const input = requestExchangeSchema.parse(body);
       return exchangeRequestSummarySchema.parse(
-        await this.service.request(input),
+        await this.service.request({ ...input, userId }),
       );
     } catch (error) {
       throw toHttpError(error);

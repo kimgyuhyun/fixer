@@ -10,9 +10,9 @@ import {
   NotFoundException,
   Param,
   Post,
-  Query,
   Req,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import {
   PAYMENT_ERRORS,
@@ -29,6 +29,7 @@ import {
 } from '@fixer/shared';
 import type { Request } from 'express';
 import { ZodError } from 'zod';
+import { CurrentMember, MemberGuard } from '../auth/member.guard';
 import { ChargeService, PaymentError } from './charge.service';
 import { PointHistoryService } from './point-history.service';
 import { RefundService } from './refund.service';
@@ -36,8 +37,8 @@ import { RefundService } from './refund.service';
 /**
  * 충전과 포인트 내역의 HTTP 경계. (이슈 #28)
  *
- * 회원 식별은 아직 본문·쿼리로 받는다. #4의 토큰 주체로 바꾸는 것은 그
- * 브랜치가 머지된 뒤다 — 지금 흉내 내면 두 벌이 된다.
+ * **회원은 쿠키에서 온다** (#69). 웹훅만 예외다 — 포트원은 쿠키를 들고
+ * 오지 않고, 그쪽은 서명 검증이 인증 역할을 한다 (ADR-PAY-3).
  */
 @Controller()
 export class PointController {
@@ -49,9 +50,12 @@ export class PointController {
 
   /** 결제창을 열기 전에 서버가 금액을 정한다 */
   @Post('payments')
+  @UseGuards(MemberGuard)
   @HttpCode(HttpStatus.CREATED)
-  async start(@Body() body: unknown): Promise<StartedCharge> {
-    const userId = userIdOf(body);
+  async start(
+    @CurrentMember() userId: string,
+    @Body() body: unknown,
+  ): Promise<StartedCharge> {
     try {
       return startedChargeSchema.parse(await this.charge.start(userId, body));
     } catch (error) {
@@ -61,9 +65,12 @@ export class PointController {
 
   /** 결제 확정. 클라이언트가 보내는 것은 식별자 하나뿐이다 */
   @Post('payments/confirm')
+  @UseGuards(MemberGuard)
   @HttpCode(HttpStatus.OK)
-  async confirm(@Body() body: unknown): Promise<ChargeResult> {
-    const userId = userIdOf(body);
+  async confirm(
+    @CurrentMember() userId: string,
+    @Body() body: unknown,
+  ): Promise<ChargeResult> {
     try {
       const input = confirmChargeRequestSchema.parse(body);
       return chargeResultSchema.parse(
@@ -105,12 +112,12 @@ export class PointController {
 
   /** 결제 건 하나를 통째로 취소한다. 두 번 불러도 한 번만 반영된다 (#29) */
   @Post('payments/:id/cancel')
+  @UseGuards(MemberGuard)
   @HttpCode(HttpStatus.OK)
   async cancel(
+    @CurrentMember() userId: string,
     @Param('id') paymentId: string,
-    @Body() body: unknown,
   ): Promise<RefundResult> {
-    const userId = userIdOf(body);
     try {
       return refundResultSchema.parse(
         await this.refunds.cancelPayment({ userId, paymentId }),
@@ -122,9 +129,12 @@ export class PointController {
 
   /** 금액만큼 환불한다. 오래된 결제 건부터 소진한다 (ADR-PAY-7) */
   @Post('refunds')
+  @UseGuards(MemberGuard)
   @HttpCode(HttpStatus.OK)
-  async refund(@Body() body: unknown): Promise<RefundResult> {
-    const userId = userIdOf(body);
+  async refund(
+    @CurrentMember() userId: string,
+    @Body() body: unknown,
+  ): Promise<RefundResult> {
     try {
       const input = refundRequestSchema.parse(body);
       return refundResultSchema.parse(
@@ -137,27 +147,10 @@ export class PointController {
 
   /** 포인트 잔액과 내역 */
   @Get('points/me')
-  async myPoints(@Query('userId') userId?: string): Promise<PointHistory> {
-    if (!userId) {
-      throw new BadRequestException({
-        errorCode: 'VALIDATION_FAILED',
-        message: '회원 정보가 없습니다.',
-      });
-    }
+  @UseGuards(MemberGuard)
+  async myPoints(@CurrentMember() userId: string): Promise<PointHistory> {
     return pointHistorySchema.parse(await this.history.read(userId));
   }
-}
-
-/** 본문에서 회원 id를 꺼낸다. #4 머지 후 토큰 주체로 바뀐다 */
-function userIdOf(body: unknown): string {
-  const userId = (body as { userId?: unknown } | null)?.userId;
-  if (typeof userId !== 'string' || userId.length === 0) {
-    throw new BadRequestException({
-      errorCode: 'VALIDATION_FAILED',
-      message: '회원 정보가 없습니다.',
-    });
-  }
-  return userId;
 }
 
 function rawBodyOf(req: Request): string {

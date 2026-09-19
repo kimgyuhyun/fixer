@@ -240,7 +240,12 @@ describe('POST /applications/:id/reject', () => {
 
 describe('GET /applications', () => {
   it('should list applicants for the caller when the query carries only jobPostId', async () => {
-    const listForEmployer = vi.fn().mockResolvedValue({ items: [] });
+    const listForEmployer = vi.fn().mockResolvedValue({
+      jobPostId: 'job_1',
+      headcount: 3,
+      acceptedCount: 0,
+      applicants: [],
+    });
     const controller = controllerWith({ listForEmployer });
 
     await controller.listForEmployer('usr_employer', { jobPostId: 'job_1' });

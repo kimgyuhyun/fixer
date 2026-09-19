@@ -7,7 +7,7 @@ import {
   startedChargeSchema,
   type PointHistory,
 } from '@fixer/shared';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import styles from './page.module.css';
 
 /** 화면에 띄울 금액 버튼. 자주 쓰는 값만 둔다 */
@@ -22,8 +22,6 @@ const PRESETS = [10_000, 30_000, 50_000, 100_000];
  * 결제창 호출 한 줄이 들어간다.
  */
 export default function PointsPage() {
-  // #4가 머지되면 토큰 주체로 바뀐다. 지금은 화면에서 받는다.
-  const [userId, setUserId] = useState('');
   const [history, setHistory] = useState<PointHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,12 +30,10 @@ export default function PointsPage() {
     { paymentId: string; amount: number }[] | null
   >(null);
 
-  const load = useCallback(async (id: string) => {
-    if (id === '') return;
+  const load = useCallback(async () => {
     try {
-      const res = await fetch(
-        `/api/points/me?userId=${encodeURIComponent(id)}`,
-      );
+      // 회원은 쿠키에서 온다 (#69). 화면이 회원을 고르지 않는다.
+      const res = await fetch('/api/points/me');
       const json: unknown = await res.json();
       if (!res.ok) {
         setError(messageOf(json));
@@ -50,17 +46,20 @@ export default function PointsPage() {
     }
   }, []);
 
-  /**
-   * 회원 id가 바뀔 때 내역을 다시 읽는다.
-   *
-   * 효과(useEffect)에서 부르지 않는 이유는 그 안의 setState를 React가
-   * 연쇄 렌더로 보기 때문이다(react-hooks 규칙). 사용자가 값을 바꾼
-   * 사건에 붙이는 것이 사실에도 더 가깝다.
-   */
-  function changeUserId(next: string) {
-    setUserId(next);
-    void load(next);
-  }
+  // 화면에 들어오면 내 잔액을 읽는다. 고를 회원이 없으므로 기다릴 것도 없다.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      await load();
+      if (cancelled) return;
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
 
   /**
    * 금액만큼 환불한다. **오래된 결제 건부터 소진된다** (ADR-PAY-7).
@@ -77,7 +76,7 @@ export default function PointsPage() {
       const res = await fetch('/api/refunds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, amount }),
+        body: JSON.stringify({ amount }),
       });
       const json: unknown = await res.json();
       if (!res.ok) {
@@ -85,7 +84,7 @@ export default function PointsPage() {
         return;
       }
       setRefunded(refundResultSchema.parse(json).lots);
-      await load(userId);
+      await load();
     } catch {
       setError('요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
@@ -100,7 +99,7 @@ export default function PointsPage() {
       const startRes = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, amount }),
+        body: JSON.stringify({ amount }),
       });
       const startJson: unknown = await startRes.json();
       if (!startRes.ok) {
@@ -113,7 +112,7 @@ export default function PointsPage() {
       const confirmRes = await fetch('/api/payments/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, paymentId: started.paymentId }),
+        body: JSON.stringify({ paymentId: started.paymentId }),
       });
       const confirmJson: unknown = await confirmRes.json();
       if (!confirmRes.ok) {
@@ -121,7 +120,7 @@ export default function PointsPage() {
         return;
       }
 
-      await load(userId);
+      await load();
     } catch {
       setError('요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
@@ -137,19 +136,6 @@ export default function PointsPage() {
         전환 시 이 자리에 결제창이 뜹니다.
       </p>
 
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="userId">
-          회원 id
-        </label>
-        <input
-          id="userId"
-          className={styles.input}
-          value={userId}
-          onChange={(e) => changeUserId(e.target.value)}
-          placeholder="로그인이 붙기 전까지 직접 입력합니다"
-        />
-      </div>
-
       <p className={styles.balance}>
         잔액 <strong>{(history?.balance ?? 0).toLocaleString()}</strong> 포인트
       </p>
@@ -160,7 +146,7 @@ export default function PointsPage() {
             key={amount}
             className={styles.preset}
             type="button"
-            disabled={loading || userId === ''}
+            disabled={loading}
             onClick={() => void charge(amount)}
           >
             {(amount / CHARGE_UNIT).toLocaleString()}천원
@@ -179,7 +165,7 @@ export default function PointsPage() {
             key={`refund-${amount}`}
             className={styles.preset}
             type="button"
-            disabled={loading || userId === ''}
+            disabled={loading}
             onClick={() => void refund(amount)}
           >
             {(amount / CHARGE_UNIT).toLocaleString()}천원 환불

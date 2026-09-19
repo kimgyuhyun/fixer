@@ -17,8 +17,8 @@ const ACCOUNT = {
   bankName: '신한은행',
   maskedAccountNumber: '****5678',
   holderName: '김규현',
-  status: 'VERIFIED' as const,
-  verifiedAt: '2026-09-06T00:00:00.000Z',
+  verificationStatus: 'VERIFIED' as const,
+  rejectedReason: null,
 };
 
 function controllerWith(

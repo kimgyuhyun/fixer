@@ -99,8 +99,14 @@ async refund(
 ): Promise<RefundResult>;
 ```
 
-서비스 계층의 시그니처는 **하나도 바뀌지 않는다.** 서비스는 지금도 회원 id를 인자로 받고,
-그 값이 어디서 왔는지 모른다. 이 이슈는 "누가 그 인자를 채우는가"만 바꾼다.
+서비스 계층은 지금도 회원 id를 인자로 받고, 그 값이 어디서 왔는지 모른다. 이 이슈는
+"누가 그 인자를 채우는가"만 바꾼다.
+
+> **Green에서 드러난 예외 (2026-09-19).** 세 서비스(`rating`·`exchange-request`·`application`)는
+> 받은 입력을 **wire 스키마로 직접 `parse`하고 있었다.** 그 스키마에서 신원 칸을 빼면 컨트롤러가
+> 얹어 준 회원 id가 서비스의 `parse`에서 도로 떨어져 나간다. 그래서 각 서비스에 입력 스키마
+> (`rateInputSchema`·`exchangeInputSchema`·`applyInputSchema`·`completeInputSchema`)를 두고
+> **wire 스키마 + 회원 id**로 확장했다. 몸체에 무엇이 실려 오든 경계에서 버려지는 것은 그대로다.
 
 ### 에러 케이스
 
@@ -154,43 +160,43 @@ interface ReacceptPanelProps {
 
 ### 정상
 
-- [ ] [정상] `MemberGuard` — should put the token subject on the request when the access cookie is valid
-- [ ] [정상] `MemberGuard` — should renew the access cookie and continue when the access token expired but the refresh token is alive
-- [ ] [정상] `CurrentMember` — should return the userId that the guard put on the request
-- [ ] [정상] `PointController.refund` — should refund for the caller when the body carries no userId
-- [ ] [정상] `PointController.myPoints` — should read the caller's balance without a userId query
-- [ ] [정상] `JobPostController.create` — should create the post for the caller when the body carries no employerId
-- [ ] [정상] `ApplicationController.apply` — should apply as the caller when the body carries only jobPostId
-- [ ] [정상] `ApplicationController.listForEmployer` — should list applicants for the caller when the query carries only jobPostId
-- [ ] [정상] `RatingController.rate` — should rate as the caller when the body carries no raterId
-- [ ] [정상] `ExchangeRequestController.request` — should request the exchange for the caller when the body carries only amount
-- [ ] [정상] `ExchangeAccountController.mine` — should read the caller's account without a userId query
-- [ ] [정상] `PointController.webhook` — should accept the webhook with a valid signature and no cookie
-- [ ] [정상] `PointsPage` — should show the balance with no member id input on the screen
-- [ ] [정상] `NewJobPostPage` — should post the job post without employerId in the body
-- [ ] [정상] `ApplyPanel` — should post the application with only jobPostId in the body
-- [ ] [정상] `ApplicantList` — should request the applicant list with only jobPostId in the query
-- [ ] [정상] `ExchangeAccountPage` — should load the registered account without a userId query
+- [x] [정상] `MemberGuard` — should put the token subject on the request when the access cookie is valid
+- [x] [정상] `MemberGuard` — should renew the access cookie and continue when the access token expired but the refresh token is alive
+- [x] [정상] `CurrentMember` — should return the userId that the guard put on the request
+- [x] [정상] `PointController.refund` — should refund for the caller when the body carries no userId
+- [x] [정상] `PointController.myPoints` — should read the caller's balance without a userId query
+- [x] [정상] `JobPostController.create` — should create the post for the caller when the body carries no employerId
+- [x] [정상] `ApplicationController.apply` — should apply as the caller when the body carries only jobPostId
+- [x] [정상] `ApplicationController.listForEmployer` — should list applicants for the caller when the query carries only jobPostId
+- [x] [정상] `RatingController.rate` — should rate as the caller when the body carries no raterId
+- [x] [정상] `ExchangeRequestController.request` — should request the exchange for the caller when the body carries only amount
+- [x] [정상] `ExchangeAccountController.mine` — should read the caller's account without a userId query
+- [x] [정상] `PointController.webhook` — should accept the webhook with a valid signature and no cookie
+- [x] [정상] `PointsPage` — should show the balance with no member id input on the screen
+- [x] [정상] `NewJobPostPage` — should post the job post without employerId in the body
+- [x] [정상] `ApplyPanel` — should post the application with only jobPostId in the body
+- [x] [정상] `ApplicantList` — should request the applicant list with only jobPostId in the query
+- [x] [정상] `ExchangeAccountPage` — should load the registered account without a userId query
 
 ### 경계
 
-- [ ] [경계] `MemberGuard` — should not set a renewed cookie when the access token is still valid
-- [ ] [경계] `MemberGuard` — should authenticate from the refresh cookie alone when the access cookie is absent
-- [ ] [경계] `applyRequestSchema` — should drop applicantId when the body still carries it
-- [ ] [경계] `rateRequestSchema` — should drop raterId when the body still carries it
-- [ ] [경계] `requestExchangeSchema` — should drop userId when the body still carries it
-- [ ] [경계] `JobPostController.list` — should stay public and answer without any cookie
-- [ ] [경계] `RatingController.summary` — should stay public and answer without any cookie
-- [ ] [경계] `CurrentMember` — should throw when the route has no MemberGuard
+- [x] [경계] `MemberGuard` — should not set a renewed cookie when the access token is still valid
+- [x] [경계] `MemberGuard` — should authenticate from the refresh cookie alone when the access cookie is absent
+- [x] [경계] `applyRequestSchema` — should drop applicantId when the body still carries it
+- [x] [경계] `rateRequestSchema` — should drop raterId when the body still carries it
+- [x] [경계] `requestExchangeSchema` — should drop userId when the body still carries it
+- [x] [경계] `JobPostController.list` — should stay public and answer without any cookie
+- [x] [경계] `RatingController.summary` — should stay public and answer without any cookie
+- [x] [경계] `CurrentMember` — should throw when the route has no MemberGuard
 
 ### 예외
 
-- [ ] [예외] `MemberGuard` — should answer 401 LOGIN_UNAUTHENTICATED when the request carries no cookie header
-- [ ] [예외] `MemberGuard` — should answer 401 when both cookies are present but neither is valid
-- [ ] [예외] `PointController.refund` — should answer 401 when unauthenticated even though the body carries a userId
-- [ ] [예외] `ApplicationController.accept` — should answer 401 when unauthenticated even though the body carries an employerId
-- [ ] [예외] `JobPostController.create` — should answer 401 when unauthenticated even though the body carries an employerId
-- [ ] [예외] `MemberGuard` — should answer 401 for the same request after logout, when the browser no longer sends the auth cookies
+- [x] [예외] `MemberGuard` — should answer 401 LOGIN_UNAUTHENTICATED when the request carries no cookie header
+- [x] [예외] `MemberGuard` — should answer 401 when both cookies are present but neither is valid
+- [x] [예외] `PointController.refund` — should answer 401 when unauthenticated even though the body carries a userId
+- [x] [예외] `ApplicationController.accept` — should answer 401 when unauthenticated even though the body carries an employerId
+- [x] [예외] `JobPostController.create` — should answer 401 when unauthenticated even though the body carries an employerId
+- [x] [예외] `MemberGuard` — should answer 401 for the same request after logout, when the browser no longer sends the auth cookies
 
 ---
 

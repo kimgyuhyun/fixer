@@ -83,7 +83,7 @@ describe('POST /job-posts', () => {
     const controller = controllerWith({ create: vi.fn() });
 
     const error = await rejectionOf(
-      controller.create({ ...VALID_BODY, title: '' }),
+      controller.create(EMPLOYER, { ...VALID_BODY, title: '' }),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);

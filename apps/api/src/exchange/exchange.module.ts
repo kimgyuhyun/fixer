@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { ConfigService } from '@nestjs/config';
 import { NotificationModule } from '../notification/notification.module';
 import { NotificationService } from '../notification/notification.service';
@@ -22,7 +23,7 @@ import { PrismaExchangeRequestStore } from './prisma-exchange-request.store';
  * 키 관리를 강화할 때는 `EnvAccountCipher`를 KMS 구현체로 바꿔 끼운다.
  */
 @Module({
-  imports: [PrismaModule, NotificationModule],
+  imports: [PrismaModule, AuthModule, NotificationModule],
   controllers: [ExchangeAccountController, ExchangeRequestController],
   providers: [
     PrismaExchangeAccountStore,

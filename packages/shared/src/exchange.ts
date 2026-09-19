@@ -51,7 +51,7 @@ export type ExchangeErrorCode =
  * `EXCHANGE_BELOW_MIN_AMOUNT`다.
  */
 export const requestExchangeSchema = z.object({
-  userId: z.string().min(1),
+  // 회원은 토큰 주체에서 온다. 몸체에 실려 와도 여기서 버려진다 (#69).
   amount: z
     .number()
     .int({ error: '포인트는 정수여야 합니다.' })

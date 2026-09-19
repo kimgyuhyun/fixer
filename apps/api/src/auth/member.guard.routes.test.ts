@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { HttpException, HttpStatus } from '@nestjs/common';
-import type { CanActivate, ExecutionContext } from '@nestjs/common';
+import type { CanActivate, ExecutionContext, Type } from '@nestjs/common';
 import { LOGIN_ERRORS } from '@fixer/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { ApplicationController } from '../application/application.controller';
@@ -19,12 +19,24 @@ import { MemberGuard, type RequestWithMember } from './member.guard';
  * 안 막는 것을 함께** 못 박는다.
  */
 
-/** Nest가 `@UseGuards`를 라우트 핸들러에 남기는 자리 */
+/** Nest가 `@UseGuards`를 남기는 자리. 라우트와 컨트롤러 양쪽에 붙을 수 있다 */
 const GUARDS_METADATA = '__guards__';
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-function guardsOf(handler: Function): unknown[] {
-  return (Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[]) ?? [];
+/**
+ * 그 라우트에 걸린 가드. **컨트롤러 통째로 붙인 것까지 센다** — Nest가
+ * 라우트마다 둘을 합쳐 실행하므로 어느 쪽에 적었는지는 요청자에게 차이가 없다.
+ */
+function guardsOf(controller: Type<unknown>, route: string): unknown[] {
+  const prototype = controller.prototype as Record<string, unknown>;
+  const handler = prototype[route];
+  if (typeof handler !== 'function') {
+    throw new Error(`${controller.name}에 ${route} 라우트가 없다`);
+  }
+
+  return [
+    ...((Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[]) ?? []),
+    ...((Reflect.getMetadata(GUARDS_METADATA, controller) as unknown[]) ?? []),
+  ];
 }
 
 /** 무엇을 들고 와도 로그인 안 된 것으로 보는 가짜 */
@@ -48,15 +60,17 @@ function cookielessContext(body: unknown): ExecutionContext {
 }
 
 /**
- * 그 라우트에 걸린 `MemberGuard`를 실제로 돌려 401을 확인한다.
+ * 그 라우트에 걸린 `MemberGuard`를 실제로 돌려 상태 코드를 본다.
  *
  * 메타데이터만 보면 "가드가 붙어 있다"까지만 알 수 있고, 그 가드가 무엇을
  * 돌려주는지는 모른다. 붙어 있는 가드를 꺼내 직접 돌린다.
  */
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-async function statusFor(handler: Function, body: unknown): Promise<number> {
-  const guards = guardsOf(handler);
-  expect(guards).toContain(MemberGuard);
+async function statusFor(
+  controller: Type<unknown>,
+  route: string,
+  body: unknown,
+): Promise<number> {
+  expect(guardsOf(controller, route)).toContain(MemberGuard);
 
   const guard: CanActivate = new MemberGuard(rejectingLogins());
   const error = await Promise.resolve(
@@ -69,7 +83,7 @@ async function statusFor(handler: Function, body: unknown): Promise<number> {
 
 describe('PointController.refund', () => {
   it('should answer 401 when unauthenticated even though the body carries a userId', async () => {
-    const status = await statusFor(PointController.prototype.refund, {
+    const status = await statusFor(PointController, 'refund', {
       userId: 'usr_someone_else',
       amount: 50_000,
     });
@@ -80,7 +94,7 @@ describe('PointController.refund', () => {
 
 describe('ApplicationController.accept', () => {
   it('should answer 401 when unauthenticated even though the body carries an employerId', async () => {
-    const status = await statusFor(ApplicationController.prototype.accept, {
+    const status = await statusFor(ApplicationController, 'accept', {
       employerId: 'usr_someone_else',
     });
 
@@ -90,7 +104,7 @@ describe('ApplicationController.accept', () => {
 
 describe('JobPostController.create', () => {
   it('should answer 401 when unauthenticated even though the body carries an employerId', async () => {
-    const status = await statusFor(JobPostController.prototype.create, {
+    const status = await statusFor(JobPostController, 'create', {
       employerId: 'usr_someone_else',
     });
 
@@ -102,26 +116,20 @@ describe('JobPostController.list', () => {
   it('should stay public and answer without any cookie', () => {
     // 공고 열람은 로그인 전에도 된다. 가드가 붙으면 첫 화면이 로그인 벽 뒤로
     // 들어간다.
-    expect(guardsOf(JobPostController.prototype.list)).not.toContain(
-      MemberGuard,
-    );
+    expect(guardsOf(JobPostController, 'list')).not.toContain(MemberGuard);
   });
 });
 
 describe('RatingController.summary', () => {
   it('should stay public and answer without any cookie', () => {
     // 프로필 평점은 공개다. `MemberRating`이 남의 화면에서도 읽는다.
-    expect(guardsOf(RatingController.prototype.summary)).not.toContain(
-      MemberGuard,
-    );
+    expect(guardsOf(RatingController, 'summary')).not.toContain(MemberGuard);
   });
 });
 
 describe('PointController.webhook', () => {
   it('should accept the webhook with a valid signature and no cookie', () => {
     // 포트원은 쿠키를 들고 오지 않는다. 서명 검증이 인증 역할을 한다 (AC5).
-    expect(guardsOf(PointController.prototype.webhook)).not.toContain(
-      MemberGuard,
-    );
+    expect(guardsOf(PointController, 'webhook')).not.toContain(MemberGuard);
   });
 });
