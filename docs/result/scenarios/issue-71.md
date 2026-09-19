@@ -136,3 +136,98 @@ async withdraw(@CurrentMember() userId: string): Promise<void>;
 테스트가 아니라 장식이 된다.
 
 **커버리지:** AC 4개 / 시나리오 13개 / 미커버 0개
+
+---
+
+## AC 검증
+
+`ac-verifier` 에이전트의 판정 원문 (2026-09-19). **구현자가 이 표를 고치지 않는다.**
+
+### AC 1 — 쿠키 없는 요청에 `userId`를 담아 보내면 401
+
+✅ 충족
+
+- 테스트: `should answer 401 when the request carries no cookie even though the body carries a userId`, `should answer LOGIN_UNAUTHENTICATED rather than VALIDATION_FAILED when the caller cannot be identified`, `should not deactivate anyone when the request is unauthenticated` (`apps/api/src/auth/withdrawal.route.test.ts`)
+- 구현: `MemberGuard.callerOf` → `LoginError` → `LoginHttpError(UNAUTHENTICATED)`(401)
+- 근거: 쿠키 없이 몸체에 `userId`를 실어도 401이 나는 것과, **탈퇴가 실행되지 않는 것**을 따로 단언한다. "400이 아니라 401"이라는 회귀도 명시적으로 못 박았다.
+
+### AC 2 — 본문의 남의 `userId`는 무시되고 토큰 주체가 탈퇴한다
+
+✅ 충족
+
+- 테스트: `should withdraw the token subject when the body carries someone else's userId`, `should take the caller as its only parameter so nothing from the wire body reaches the service`
+- 구현: `withdraw(@CurrentMember() userId: string)` — `@Body()` 파라미터 자체가 없다
+- 근거: 목이 돌려준 값이 아니라 **실제 `MemberGuard.canActivate` → `memberOf` → 핸들러** 순서로 통과시켜 검증했다(`requestWithdraw` 헬퍼). 라우트 파라미터 메타데이터를 리플렉션으로 읽어 채우는 것이 `memberOf` 하나뿐임도 확인.
+
+### AC 3 — Access 만료 + Refresh 유효면 갱신하고 그대로 진행
+
+✅ 충족
+
+- 테스트: `should renew the access cookie and let the withdrawal continue when the access token expired but the refresh token is alive`, 경계 `should not set a renewed cookie when the access token is still valid`, `should authenticate from the refresh cookie alone when the access cookie is absent`
+- 구현: #69의 `MemberGuard`를 그대로 재사용한다. 갱신 쿠키 옵션이 `login.controller.ts`와 한 글자도 다르지 않다
+- 근거: 갱신과 **탈퇴가 그대로 이어지는 것**을 함께 단언하고, 갱신이 필요 없을 때 쿠키를 건드리지 않는 경계까지 본다.
+
+### AC 4 — 탈퇴 화면에서 회원 id를 보내는 코드가 사라진다
+
+✅ 충족 (범위를 넓힌 해석이 타당함 — 우회 아님)
+
+- 테스트: `should leave no code that puts a member id into the withdraw request` (`apps/api/src/auth/withdrawal.contract.test.ts`)
+- 근거: `apps/web`에 탈퇴 화면·호출 코드가 실제로 없음을 검증자가 직접 확인했다. 테스트는 "회원 id"라는 단어를 금지하는 것이 아니라 **요청에서 회원 id를 읽는 경로의 부재**를 본다 — `MEMBER_ID`와 `READS_REQUEST`가 동시에 맞을 때만 위반으로 잡으므로 오탐이 없다. 컨트롤러에 `@Body()`를 다시 붙이거나, 화면이 생겨 `auth/withdraw`에 회원 id를 실으면 그때 실패한다. 이 확장 해석의 근거가 시나리오 문서에 **미리** 적혀 있어 사후 합리화가 아니다.
+
+**가짜 테스트 점검:** 인자 없는 `rejects.toThrow()`, `await` 누락, 단언 없는 테스트, 목이 목을 확인하는 테스트를 세 파일 전체에서 찾았으나 없다.
+
+```
+AC 4개 중 — ✅ 4 / ⚠️ 0 / ❌ 0
+```
+
+### 구현자 이견
+
+없다.
+
+---
+
+## 리팩토링
+
+`/tdd-refactor 71` (2026-09-19). **고친 것이 없다.**
+
+이번 이슈가 바꾼 구현 파일은 `apps/api/src/auth/withdrawal.controller.ts` 하나다. 중복·네이밍·단일책임·복잡도·컨벤션 다섯 기준으로 봤을 때 걸리는 것이 없었다. 바뀐 것은 회원 id의 출처뿐이고, 에러 매핑은 #9가 쓴 그대로다. Red 단계의 `eslint-disable`도 남아 있지 않다.
+
+**손대지 않은 것**
+
+| 대상                                                                | 이유                                                                                                                                                                         |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `withdrawal.route.test.ts`의 헬퍼가 `member.guard.test.ts`와 겹친다 | 테스트 파일은 리팩토링 대상이 아니다(안전망을 움직이는 일이다). 겹치는 것은 `logins`·`contextWith`·`statusOf` 셋이고, 합치려면 테스트 전용 공용 모듈을 새로 만드는 일이 된다 |
+| `parseCookies` 네 벌                                                | #69가 이미 보류한 항목이고 이 이슈는 그 함수를 건드리지 않았다                                                                                                               |
+
+---
+
+## 보안 점검
+
+`/security-review 71` (2026-09-19). 타입 오류 0, 린트 오류 0, 전체 테스트 통과 상태에서 수행했다.
+
+### 🔴 즉시 수정 필요
+
+없다. 이 이슈의 변경에서 나온 🔴이 없고, #69가 남겼던 **Next.js 16.3.1 원격 코드 실행 2건은 `main`이 16.3.5로 올라가며 `pnpm audit`에서 사라졌다.**
+
+### 🟡 권장 수정 (이 이슈 범위 밖)
+
+| 항목                                                                      | 판단                                                                                                             |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `agreement.controller.ts` — `GET /agreements/mine?userId=`와 PDF 내려받기 | #69가 별도 이슈로 남긴 그대로다. 서명(POST)은 가입 중이라 세션이 없어 라우트별로 다르게 판단해야 한다            |
+| `apps/web/src/app/signup/address/kakao-postcode.ts:17` 린트 경고 1건      | 쓰이지 않는 `eslint-disable` 지시자다. 이 이슈가 만든 것이 아니고 범위 밖이라 손대지 않았다 — 보이는 대로 남긴다 |
+
+### ⚪ 무시 가능
+
+`pnpm audit` 14건(high 10 · moderate 3 · low 1)은 전부 `docs/result/security-exceptions.md`에 판정이 있는 `deepmerge-ts`·`mysql2`·`fast-uri`·`qs`·`js-yaml`·`multer`다. 재검토일(2026-11-30 · 2026-12-05) 전이고, 이번 변경이 의존성을 건드리지 않았다.
+
+### 이 이슈의 변경을 직접 본 것
+
+| 확인                  | 결과                                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 비밀값 노출           | 없음. 이번 diff에 하드코딩된 키·토큰·비밀번호가 없다                                                        |
+| `NEXT_PUBLIC_` 오용   | 없음. 환경변수를 건드리지 않는다                                                                            |
+| 개인정보 로깅         | 없음. `console.log` 추가 없음                                                                               |
+| 쿠키 옵션             | 이번 이슈가 쿠키를 직접 다루지 않는다. 갱신 쿠키는 #69의 `MemberGuard`가 그대로 내려준다                    |
+| 에러 응답의 내부 정보 | 401·404·409 응답 모두 `errorCode`와 안내 문구뿐이다                                                         |
+| 입력 검증             | 검증할 입력이 사라졌다. 핸들러가 받는 것은 가드가 얹은 회원 id 하나뿐이고 요청 몸체를 읽는 경로가 없다      |
+| 권한 상승 경로        | **이 이슈가 닫은 것이 그것이다.** id만 알면 남의 계정을 탈퇴시킬 수 있던 마지막 라우트가 가드 뒤로 들어갔다 |
