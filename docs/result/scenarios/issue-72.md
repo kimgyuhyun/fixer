@@ -179,35 +179,35 @@ href={`/api/agreements/${agreement.id}`}
 
 ### 정상
 
-- [ ] [정상] `GET /agreements/mine` — should read the agreement of the token subject when the query carries no userId
-- [ ] [정상] `GET /agreements/:id` — should send the pdf of the token subject when the query carries no userId
-- [ ] [정상] `MemberGuard` on `GET /agreements/mine` — should renew the access cookie and let the read continue when the access token expired but the refresh token is alive
-- [ ] [정상] `POST /agreements` — should still sign during signup when the request carries no cookie
-- [ ] [정상] `GET /agreements/template` — should still answer when the request carries no cookie
-- [ ] [정상] `MyAgreementPage` — should request the summary without a userId query
-- [ ] [정상] `MyAgreementPage` — should link to the signed pdf without a userId query
+- [x] [정상] `GET /agreements/mine` — should read the agreement of the token subject when the query carries no userId
+- [x] [정상] `GET /agreements/:id` — should send the pdf of the token subject when the query carries no userId
+- [x] [정상] `MemberGuard` on `GET /agreements/mine` — should renew the access cookie and let the read continue when the access token expired but the refresh token is alive
+- [x] [정상] `POST /agreements` — should still sign during signup when the request carries no cookie
+- [x] [정상] `GET /agreements/template` — should still answer when the request carries no cookie
+- [x] [정상] `MyAgreementPage` — should request the summary without a userId query
+- [x] [정상] `MyAgreementPage` — should link to the signed pdf without a userId query
 
 ### 경계
 
-- [ ] [경계] `GET /agreements/mine` — should carry MemberGuard on the route
-- [ ] [경계] `GET /agreements/:id` — should carry MemberGuard on the route
-- [ ] [경계] `POST /agreements` — should stay guardless so the signup flow is not blocked
-- [ ] [경계] `GET /agreements/template` — should stay guardless so the document is readable before signup
-- [ ] [경계] `GET /agreements/mine` — should ignore another member's userId in the query and answer for the token subject
-- [ ] [경계] `GET /agreements/:id` — should hand the token subject as requesterId even when the query carries another member's userId
-- [ ] [경계] `GET /agreements/mine` — should answer 204 when the token subject never signed
-- [ ] [경계] `MemberGuard` on `GET /agreements/mine` — should authenticate from the refresh cookie alone when the access cookie is absent
-- [ ] [경계] 동의서 조회 요청 — should leave no code that puts a member id into the agreement read request
+- [x] [경계] `GET /agreements/mine` — should carry MemberGuard on the route
+- [x] [경계] `GET /agreements/:id` — should carry MemberGuard on the route
+- [x] [경계] `POST /agreements` — should stay guardless so the signup flow is not blocked
+- [x] [경계] `GET /agreements/template` — should stay guardless so the document is readable before signup
+- [x] [경계] `GET /agreements/mine` — should ignore another member's userId in the query and answer for the token subject
+- [x] [경계] `GET /agreements/:id` — should hand the token subject as requesterId even when the query carries another member's userId
+- [x] [경계] `GET /agreements/mine` — should answer 204 when the token subject never signed
+- [x] [경계] `MemberGuard` on `GET /agreements/mine` — should authenticate from the refresh cookie alone when the access cookie is absent
+- [x] [경계] 동의서 조회 요청 — should leave no code that puts a member id into the agreement read request
 
 ### 예외
 
-- [ ] [예외] `GET /agreements/mine` — should answer 401 LOGIN_UNAUTHENTICATED when the request carries no cookie even though the query carries a userId
-- [ ] [예외] `GET /agreements/mine` — should not read anyone's agreement when the request is unauthenticated
-- [ ] [예외] `GET /agreements/:id` — should answer 401 when the request carries no cookie even though the query carries a userId
-- [ ] [예외] `GET /agreements/:id` — should answer 403 when the agreement belongs to another member
-- [ ] [예외] `GET /agreements/:id` — should send no pdf bytes when the agreement belongs to another member
-- [ ] [예외] `GET /agreements/:id` — should answer 404 when the id is unknown
-- [ ] [예외] `MyAgreementPage` — should show the server message when the read answers 401
+- [x] [예외] `GET /agreements/mine` — should answer 401 LOGIN_UNAUTHENTICATED when the request carries no cookie even though the query carries a userId
+- [x] [예외] `GET /agreements/mine` — should not read anyone's agreement when the request is unauthenticated
+- [x] [예외] `GET /agreements/:id` — should answer 401 when the request carries no cookie even though the query carries a userId
+- [x] [예외] `GET /agreements/:id` — should answer 403 when the agreement belongs to another member
+- [x] [예외] `GET /agreements/:id` — should send no pdf bytes when the agreement belongs to another member
+- [x] [예외] `GET /agreements/:id` — should answer 404 when the id is unknown
+- [x] [예외] `MyAgreementPage` — should show the server message when the read answers 401
 
 ---
 

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AgreementController } from './agreement.controller';
 import { AgreementService } from './agreement.service';
@@ -16,7 +17,8 @@ import {
  * 파일 저장소를 여기서 꽂으므로 S3로 옮길 때 이 파일 한 줄만 고친다 (ADR-AGR-3).
  */
 @Module({
-  imports: [PrismaModule],
+  // 조회 두 라우트가 `MemberGuard`를 쓴다 (#72). 가드는 `AuthModule`이 낸다.
+  imports: [PrismaModule, AuthModule],
   controllers: [AgreementController],
   providers: [
     PrismaAgreementTemplateStore,
