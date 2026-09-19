@@ -135,9 +135,8 @@ export const APPLICATION_ERRORS = {
 export type ApplicationErrorCode =
   (typeof APPLICATION_ERRORS)[keyof typeof APPLICATION_ERRORS];
 
-/** 지원 요청. 회원 식별은 #4의 토큰 배선이 끝나기 전까지 본문으로 받는다 */
+/** 지원 요청. 지원자는 본문이 아니라 토큰 주체에서 온다 (#69) */
 export const applyRequestSchema = z.object({
-  applicantId: z.string().min(1, { error: '지원자를 알 수 없습니다.' }),
   jobPostId: z.string().min(1, { error: '공고를 알 수 없습니다.' }),
 });
 export type ApplyRequest = z.infer<typeof applyRequestSchema>;
@@ -163,21 +162,8 @@ export const applicationSummarySchema = z.object({
 });
 export type ApplicationSummary = z.infer<typeof applicationSummarySchema>;
 
-/** 수락 요청. 회원 식별은 #17과 같이 아직 본문으로 받는다 */
-export const acceptApplicationRequestSchema = z.object({
-  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
-});
-export type AcceptApplicationRequest = z.infer<
-  typeof acceptApplicationRequestSchema
->;
-
-/** 거절 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#19) */
-export const rejectApplicationRequestSchema = z.object({
-  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
-});
-export type RejectApplicationRequest = z.infer<
-  typeof rejectApplicationRequestSchema
->;
+// 수락·거절 요청에는 더 이상 몸체가 없다. 구인자는 토큰 주체에서 오고
+// 대상은 경로의 신청 id다 (#69).
 
 /** 무상 취소 창. 수락 시각 + 2시간 (`spec-fixed.md` §4.3) */
 export const FREE_CANCEL_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -198,14 +184,6 @@ export function resolveCancelStatus(
     : 'CANCELLED_PENALTY';
 }
 
-/** 취소 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#20) */
-export const cancelApplicationRequestSchema = z.object({
-  actorId: z.string().min(1, { error: '회원 정보가 없습니다.' }),
-});
-export type CancelApplicationRequest = z.infer<
-  typeof cancelApplicationRequestSchema
->;
-
 /**
  * 근무가 시작됐나 (#24 AC3).
  *
@@ -217,16 +195,9 @@ export function hasWorkStarted(workStartAt: Date, now: Date): boolean {
   return now.getTime() >= workStartAt.getTime();
 }
 
-/** 노쇼 표시 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#24) */
-export const markNoShowRequestSchema = z.object({
-  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
-});
-export type MarkNoShowRequest = z.infer<typeof markNoShowRequestSchema>;
-
-/** 완료 확인 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#23) */
+/** 완료 확인 요청. 구인자는 토큰 주체에서 온다 (#69) */
 export const completeJobPostRequestSchema = z.object({
   jobPostId: z.string().min(1, { error: '공고를 알 수 없습니다.' }),
-  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
 });
 export type CompleteJobPostRequest = z.infer<
   typeof completeJobPostRequestSchema
@@ -316,12 +287,6 @@ export const reacceptDiffSchema = z.object({
   changedFields: z.array(z.enum(JOB_POST_REQUIRED_FIELDS)),
 });
 export type ReacceptDiff = z.infer<typeof reacceptDiffSchema>;
-
-/** 재동의·거절 요청. 회원 식별은 #17·#18과 같이 아직 본문으로 받는다 (#22) */
-export const reacceptRequestSchema = z.object({
-  applicantId: z.string().min(1, { error: '회원 정보가 없습니다.' }),
-});
-export type ReacceptRequest = z.infer<typeof reacceptRequestSchema>;
 
 /**
  * 구인자에게 보이는 상태.

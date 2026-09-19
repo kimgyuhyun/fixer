@@ -13,7 +13,6 @@ import styles from './ReacceptPanel.module.css';
 
 export interface ReacceptPanelProps {
   applicationId: string;
-  applicantId: string;
   /** 재동의·거절이 끝나면 바뀐 신청을 위로 올린다. 화면이 다시 그려진다 */
   onSettled: (application: ApplicationSummary) => void;
 }
@@ -29,7 +28,6 @@ export interface ReacceptPanelProps {
  */
 export function ReacceptPanel({
   applicationId,
-  applicantId,
   onSettled,
 }: ReacceptPanelProps): React.JSX.Element {
   const [diff, setDiff] = useState<ReacceptDiff | null>(null);
@@ -40,9 +38,9 @@ export function ReacceptPanel({
 
     async function load() {
       try {
-        const query = new URLSearchParams({ applicantId });
+        // 신청자는 쿠키에서 온다 (#69).
         const res = await fetch(
-          `/api/applications/${applicationId}/version-diff?${query.toString()}`,
+          `/api/applications/${applicationId}/version-diff`,
         );
         if (cancelled) return;
 
@@ -57,7 +55,7 @@ export function ReacceptPanel({
     return () => {
       cancelled = true;
     };
-  }, [applicationId, applicantId]);
+  }, [applicationId]);
 
   async function send(action: 'reaccept' | 'decline') {
     setError(null);
@@ -65,7 +63,7 @@ export function ReacceptPanel({
       const res = await fetch(`/api/applications/${applicationId}/${action}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ applicantId }),
+        body: JSON.stringify({}),
       });
       const json: unknown = await res.json();
       if (!res.ok) {

@@ -51,8 +51,6 @@ export type RatingErrorCode =
  */
 export const rateRequestSchema = z.object({
   applicationId: z.string().min(1, { error: '거래를 알 수 없습니다.' }),
-  /** 별점을 주는 사람. #4의 토큰 주체로 바꾸기 전까지는 본문으로 온다 */
-  raterId: z.string().min(1, { error: '회원 정보가 없습니다.' }),
   score: z
     .number()
     .int({ error: '별점은 1~5 사이의 정수여야 합니다.' })

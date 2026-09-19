@@ -38,15 +38,39 @@ const SUMMARY = {
 };
 
 describe('POST /applications', () => {
+  it('should apply as the caller when the body carries only jobPostId', async () => {
+    const apply = vi.fn().mockResolvedValue(SUMMARY);
+    const controller = controllerWith({ apply });
+
+    await controller.apply('usr_seeker', { jobPostId: 'job_1' });
+
+    expect(apply).toHaveBeenCalledWith({
+      applicantId: 'usr_seeker',
+      jobPostId: 'job_1',
+    });
+  });
+
+  it('should ignore an applicantId in the body and apply as the caller', async () => {
+    const apply = vi.fn().mockResolvedValue(SUMMARY);
+    const controller = controllerWith({ apply });
+
+    await controller.apply('usr_seeker', {
+      applicantId: 'usr_someone_else',
+      jobPostId: 'job_1',
+    });
+
+    expect(apply).toHaveBeenCalledWith({
+      applicantId: 'usr_seeker',
+      jobPostId: 'job_1',
+    });
+  });
+
   it('should respond 201 with the created application summary', async () => {
     const controller = controllerWith({
       apply: vi.fn().mockResolvedValue(SUMMARY),
     });
 
-    const result = await controller.apply({
-      applicantId: 'usr_seeker',
-      jobPostId: 'job_1',
-    });
+    const result = await controller.apply('usr_seeker', { jobPostId: 'job_1' });
 
     expect(result).toMatchObject({ id: 'app_1', status: 'APPLIED' });
   });
@@ -62,7 +86,7 @@ describe('POST /applications', () => {
     });
 
     const error = await rejectionOf(
-      controller.apply({ applicantId: 'usr_employer', jobPostId: 'job_1' }),
+      controller.apply('usr_employer', { jobPostId: 'job_1' }),
     );
 
     expect(statusOf(error)).toBe(403);
@@ -78,18 +102,10 @@ describe('POST /applications', () => {
     });
 
     const error = await rejectionOf(
-      controller.apply({ applicantId: 'usr_seeker', jobPostId: 'job_1' }),
+      controller.apply('usr_seeker', { jobPostId: 'job_1' }),
     );
 
     expect(statusOf(error)).toBe(409);
-  });
-
-  it('should respond 400 when the body has no applicantId', async () => {
-    const controller = controllerWith({ apply: vi.fn() });
-
-    const error = await rejectionOf(controller.apply({ jobPostId: 'job_1' }));
-
-    expect(statusOf(error)).toBe(400);
   });
 });
 
@@ -101,9 +117,7 @@ describe('POST /applications/:id/withdraw', () => {
         .mockResolvedValue({ ...SUMMARY, status: 'WITHDRAWN' as const }),
     });
 
-    const result = await controller.withdraw('app_1', {
-      applicantId: 'usr_seeker',
-    });
+    const result = await controller.withdraw('usr_seeker', 'app_1');
 
     expect(result.status).toBe('WITHDRAWN');
   });
@@ -118,9 +132,7 @@ describe('POST /applications/:id/withdraw', () => {
         ),
     });
 
-    const error = await rejectionOf(
-      controller.withdraw('app_1', { applicantId: 'usr_seeker' }),
-    );
+    const error = await rejectionOf(controller.withdraw('usr_seeker', 'app_1'));
 
     expect(statusOf(error)).toBe(409);
   });
@@ -132,10 +144,7 @@ describe('GET /applications/me', () => {
       findMine: vi.fn().mockResolvedValue(SUMMARY),
     });
 
-    const result = await controller.mine({
-      jobPostId: 'job_1',
-      applicantId: 'usr_seeker',
-    });
+    const result = await controller.mine('usr_seeker', { jobPostId: 'job_1' });
 
     expect(result).toMatchObject({ id: 'app_1' });
   });
@@ -146,7 +155,7 @@ describe('GET /applications/me', () => {
     });
 
     const error = await rejectionOf(
-      controller.mine({ jobPostId: 'job_1', applicantId: 'usr_seeker' }),
+      controller.mine('usr_seeker', { jobPostId: 'job_1' }),
     );
 
     expect(statusOf(error)).toBe(404);
@@ -163,9 +172,7 @@ describe('POST /applications/:id/accept', () => {
       }),
     });
 
-    const result = await controller.accept('app_1', {
-      employerId: 'usr_employer',
-    });
+    const result = await controller.accept('usr_employer', 'app_1');
 
     expect(result).toMatchObject({ id: 'app_1', status: 'ACCEPTED' });
   });
@@ -180,9 +187,7 @@ describe('POST /applications/:id/accept', () => {
         ),
     });
 
-    const error = await rejectionOf(
-      controller.accept('app_1', { employerId: 'usr_남' }),
-    );
+    const error = await rejectionOf(controller.accept('usr_남', 'app_1'));
 
     expect(statusOf(error)).toBe(403);
   });
@@ -196,21 +201,12 @@ describe('POST /applications/:id/accept', () => {
         ),
     });
 
-    const error = await rejectionOf(
-      controller.accept('app_1', { employerId: 'usr_employer' }),
-    );
+    const error = await rejectionOf(controller.accept('usr_employer', 'app_1'));
 
     expect(statusOf(error)).toBe(409);
   });
 
   // 없을 때 500이 나면 원인을 화면에서 알 수 없다.
-  it('should respond 400 when the body has no employerId', async () => {
-    const controller = controllerWith({ accept: vi.fn() });
-
-    const error = await rejectionOf(controller.accept('app_1', {}));
-
-    expect(statusOf(error)).toBe(400);
-  });
 });
 
 describe('POST /applications/:id/reject', () => {
@@ -219,9 +215,7 @@ describe('POST /applications/:id/reject', () => {
       reject: vi.fn().mockResolvedValue({ ...SUMMARY, status: 'REJECTED' }),
     });
 
-    const result = await controller.reject('app_1', {
-      employerId: 'usr_employer',
-    });
+    const result = await controller.reject('usr_employer', 'app_1');
 
     expect(result).toMatchObject({ id: 'app_1', status: 'REJECTED' });
   });
@@ -236,24 +230,32 @@ describe('POST /applications/:id/reject', () => {
         ),
     });
 
-    const error = await rejectionOf(
-      controller.reject('app_1', { employerId: 'usr_employer' }),
-    );
+    const error = await rejectionOf(controller.reject('usr_employer', 'app_1'));
 
     expect(statusOf(error)).toBe(409);
   });
 
   // 없을 때 500이 나면 원인을 화면에서 알 수 없다.
-  it('should respond 400 when the body has no employerId', async () => {
-    const controller = controllerWith({ reject: vi.fn() });
-
-    const error = await rejectionOf(controller.reject('app_1', {}));
-
-    expect(statusOf(error)).toBe(400);
-  });
 });
 
 describe('GET /applications', () => {
+  it('should list applicants for the caller when the query carries only jobPostId', async () => {
+    const listForEmployer = vi.fn().mockResolvedValue({
+      jobPostId: 'job_1',
+      headcount: 3,
+      acceptedCount: 0,
+      applicants: [],
+    });
+    const controller = controllerWith({ listForEmployer });
+
+    await controller.listForEmployer('usr_employer', { jobPostId: 'job_1' });
+
+    expect(listForEmployer).toHaveBeenCalledWith({
+      jobPostId: 'job_1',
+      employerId: 'usr_employer',
+    });
+  });
+
   it('should respond 200 with the applicant list', async () => {
     const controller = controllerWith({
       listForEmployer: vi.fn().mockResolvedValue({
@@ -264,9 +266,8 @@ describe('GET /applications', () => {
       }),
     });
 
-    const result = await controller.listForEmployer({
+    const result = await controller.listForEmployer('usr_employer', {
       jobPostId: 'job_1',
-      employerId: 'usr_employer',
     });
 
     expect(result).toMatchObject({ headcount: 3, acceptedCount: 1 });
@@ -282,7 +283,7 @@ describe('GET /applications', () => {
     });
 
     const error = await rejectionOf(
-      controller.listForEmployer({ jobPostId: 'job_1', employerId: 'usr_남' }),
+      controller.listForEmployer('usr_남', { jobPostId: 'job_1' }),
     );
 
     expect(statusOf(error)).toBe(403);
@@ -302,9 +303,8 @@ describe('POST /applications/complete', () => {
       complete: vi.fn().mockResolvedValue(COMPLETION),
     });
 
-    const result = await controller.complete({
+    const result = await controller.complete('usr_employer', {
       jobPostId: 'job_1',
-      employerId: 'usr_employer',
     });
 
     expect(result).toMatchObject({
@@ -324,7 +324,7 @@ describe('POST /applications/complete', () => {
     });
 
     const error = await rejectionOf(
-      controller.complete({ jobPostId: 'job_1', employerId: 'usr_employer' }),
+      controller.complete('usr_employer', { jobPostId: 'job_1' }),
     );
 
     expect(statusOf(error)).toBe(409);
@@ -343,23 +343,12 @@ describe('POST /applications/:id/cancel', () => {
       cancel: vi.fn().mockResolvedValue(CANCELLED),
     });
 
-    const result = await controller.cancel('app_1', {
-      actorId: 'usr_seeker',
-    });
+    const result = await controller.cancel('usr_seeker', 'app_1');
 
     expect(result).toMatchObject({ id: 'app_1', status: 'CANCELLED_FREE' });
   });
 
   // 회원 식별이 없으면 누가 취소했는지 모른 채 계약이 깨진다.
-  it('should answer 400 when actorId is missing', async () => {
-    const controller = controllerWith({
-      cancel: vi.fn().mockResolvedValue(CANCELLED),
-    });
-
-    const error = await rejectionOf(controller.cancel('app_1', {}));
-
-    expect(statusOf(error)).toBe(400);
-  });
 });
 
 describe('POST /applications/:id/no-show', () => {
@@ -370,19 +359,9 @@ describe('POST /applications/:id/no-show', () => {
         .mockResolvedValue({ ...SUMMARY, status: 'NO_SHOW' as const }),
     });
 
-    const result = await controller.markNoShow('app_1', {
-      employerId: 'usr_employer',
-    });
+    const result = await controller.markNoShow('usr_employer', 'app_1');
 
     expect(result).toMatchObject({ id: 'app_1', status: 'NO_SHOW' });
-  });
-
-  it('should answer 400 when employerId is missing', async () => {
-    const controller = controllerWith({ markNoShow: vi.fn() });
-
-    const error = await rejectionOf(controller.markNoShow('app_1', {}));
-
-    expect(statusOf(error)).toBe(400);
   });
 });
 
@@ -396,7 +375,7 @@ describe('POST /applications — 제재 중 (#25)', () => {
     });
 
     const error = await rejectionOf(
-      controller.apply({ applicantId: 'usr_seeker', jobPostId: 'job_1' }),
+      controller.apply('usr_seeker', { jobPostId: 'job_1' }),
     );
 
     expect(statusOf(error)).toBe(403);
@@ -434,9 +413,7 @@ describe('GET /applications/:id/version-diff', () => {
       versionDiff: vi.fn().mockResolvedValue(DIFF),
     });
 
-    const result = await controller.versionDiff('app_1', {
-      applicantId: 'usr_seeker',
-    });
+    const result = await controller.versionDiff('usr_seeker', 'app_1');
 
     expect(result).toMatchObject({
       applicationId: 'app_1',
@@ -455,9 +432,7 @@ describe('POST /applications/:id/reaccept', () => {
       }),
     });
 
-    const result = await controller.reaccept('app_1', {
-      applicantId: 'usr_seeker',
-    });
+    const result = await controller.reaccept('usr_seeker', 'app_1');
 
     expect(result).toMatchObject({ status: 'ACCEPTED', appliedVersion: 2 });
   });
@@ -472,9 +447,7 @@ describe('POST /applications/:id/decline', () => {
       }),
     });
 
-    const result = await controller.decline('app_1', {
-      applicantId: 'usr_seeker',
-    });
+    const result = await controller.decline('usr_seeker', 'app_1');
 
     expect(result).toMatchObject({ status: 'CANCELLED_BY_VERSION_CHANGE' });
   });

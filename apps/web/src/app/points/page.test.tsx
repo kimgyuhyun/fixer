@@ -3,8 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PointsPage from './page';
 
-const USER = 'usr_1';
-
 function historyBody(balance: number, transactions: unknown[] = []) {
   return { balance, transactions };
 }
@@ -39,10 +37,6 @@ function mockRoutes(routes: Record<string, { status: number; body: unknown }>) {
   return fetchMock;
 }
 
-async function typeUserId(id = USER) {
-  await userEvent.setup().type(screen.getByLabelText('회원 id'), id);
-}
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -53,8 +47,6 @@ describe('포인트 화면 — 잔액과 내역 (AC5)', () => {
       '/api/points/me': { status: 200, body: historyBody(50_000) },
     });
     render(<PointsPage />);
-
-    await typeUserId();
 
     expect(await screen.findByText('50,000')).toBeInTheDocument();
   });
@@ -68,8 +60,6 @@ describe('포인트 화면 — 잔액과 내역 (AC5)', () => {
     });
     render(<PointsPage />);
 
-    await typeUserId();
-
     expect(await screen.findByText('충전')).toBeInTheDocument();
     expect(screen.getByText('+50,000')).toBeInTheDocument();
   });
@@ -80,8 +70,6 @@ describe('포인트 화면 — 잔액과 내역 (AC5)', () => {
     });
     render(<PointsPage />);
 
-    await typeUserId();
-
     expect(
       await screen.findByText('아직 내역이 없습니다.'),
     ).toBeInTheDocument();
@@ -89,11 +77,15 @@ describe('포인트 화면 — 잔액과 내역 (AC5)', () => {
 });
 
 describe('포인트 화면 — 충전 (AC1)', () => {
-  it('should not let a charge start before a member is chosen', () => {
-    mockRoutes({});
+  it('should show the balance with no member id input on the screen', async () => {
+    // 회원 id 입력창이 사라진다 (AC6). 잔액은 쿠키가 가리키는 회원의 것이다.
+    mockRoutes({
+      '/api/points/me': { status: 200, body: historyBody(50_000) },
+    });
     render(<PointsPage />);
 
-    expect(screen.getByRole('button', { name: '10천원' })).toBeDisabled();
+    expect(await screen.findByText('50,000')).toBeInTheDocument();
+    expect(screen.queryByLabelText('회원 id')).not.toBeInTheDocument();
   });
 
   it('should start and confirm the payment the server created', async () => {
@@ -116,7 +108,6 @@ describe('포인트 화면 — 충전 (AC1)', () => {
       },
     });
     render(<PointsPage />);
-    await typeUserId();
 
     await userEvent
       .setup()
@@ -126,7 +117,7 @@ describe('포인트 화면 — 충전 (AC1)', () => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/payments/confirm',
         expect.objectContaining({
-          body: JSON.stringify({ userId: USER, paymentId: 'pay_1' }),
+          body: JSON.stringify({ paymentId: 'pay_1' }),
         }),
       );
     });
@@ -148,7 +139,6 @@ describe('포인트 화면 — 충전 (AC1)', () => {
       },
     });
     render(<PointsPage />);
-    await typeUserId();
 
     await userEvent
       .setup()
@@ -179,7 +169,6 @@ describe('포인트 화면 — 환불 (#29)', () => {
       },
     });
     render(<PointsPage />);
-    await typeUserId();
 
     await userEvent
       .setup()
@@ -203,7 +192,6 @@ describe('포인트 화면 — 환불 (#29)', () => {
       },
     });
     render(<PointsPage />);
-    await typeUserId();
 
     await userEvent
       .setup()

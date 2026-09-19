@@ -11,20 +11,16 @@ import {
   Param,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   APPLICATION_ERRORS,
-  acceptApplicationRequestSchema,
   applicantListSchema,
   applicationSummarySchema,
   applyRequestSchema,
-  cancelApplicationRequestSchema,
   completeJobPostRequestSchema,
   completionSummarySchema,
-  markNoShowRequestSchema,
   reacceptDiffSchema,
-  reacceptRequestSchema,
-  rejectApplicationRequestSchema,
   type ApplicantList,
   type ApplicationErrorCode,
   type ApplicationSummary,
@@ -32,6 +28,7 @@ import {
   type ReacceptDiff,
 } from '@fixer/shared';
 import { z, ZodError } from 'zod';
+import { CurrentMember, MemberGuard } from '../auth/member.guard';
 import { ApplicationError, ApplicationService } from './application.service';
 
 /**
@@ -42,25 +39,30 @@ import { ApplicationError, ApplicationService } from './application.service';
  */
 const employerListQuerySchema = z.object({
   jobPostId: z.string().min(1, { error: '공고를 알 수 없습니다.' }),
-  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
 });
 
 /**
  * 신청의 HTTP 경계. (이슈 #17)
  *
- * 회원 식별은 #12와 마찬가지로 아직 본문·쿼리로 받는다. #4의 토큰 주체로
- * 바꾸는 것은 그 배선이 머지된 뒤다.
+ * **전 라우트가 가드 뒤에 있다** (#69). 여기서 오가는 것은 전부 당사자
+ * 데이터라 공개로 둘 라우트가 없다.
  */
 @Controller('applications')
+@UseGuards(MemberGuard)
 export class ApplicationController {
   constructor(private readonly service: ApplicationService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async apply(@Body() body: unknown): Promise<ApplicationSummary> {
+  async apply(
+    @CurrentMember() applicantId: string,
+    @Body() body: unknown,
+  ): Promise<ApplicationSummary> {
     try {
       const input = applyRequestSchema.parse(body);
-      return applicationSummarySchema.parse(await this.service.apply(input));
+      return applicationSummarySchema.parse(
+        await this.service.apply({ ...input, applicantId }),
+      );
     } catch (error) {
       throw toHttpError(error);
     }
@@ -70,15 +72,12 @@ export class ApplicationController {
   @Post(':id/withdraw')
   @HttpCode(HttpStatus.OK)
   async withdraw(
+    @CurrentMember() applicantId: string,
     @Param('id') id: string,
-    @Body() body: unknown,
   ): Promise<ApplicationSummary> {
     try {
       return applicationSummarySchema.parse(
-        await this.service.withdraw({
-          applicantId: applicantIdOf(body),
-          applicationId: id,
-        }),
+        await this.service.withdraw({ applicantId, applicationId: id }),
       );
     } catch (error) {
       throw toHttpError(error);
@@ -89,11 +88,10 @@ export class ApplicationController {
   @Post(':id/accept')
   @HttpCode(HttpStatus.OK)
   async accept(
+    @CurrentMember() employerId: string,
     @Param('id') id: string,
-    @Body() body: unknown,
   ): Promise<ApplicationSummary> {
     try {
-      const { employerId } = acceptApplicationRequestSchema.parse(body ?? {});
       return applicationSummarySchema.parse(
         await this.service.accept({ employerId, applicationId: id }),
       );
@@ -106,11 +104,10 @@ export class ApplicationController {
   @Post(':id/reject')
   @HttpCode(HttpStatus.OK)
   async reject(
+    @CurrentMember() employerId: string,
     @Param('id') id: string,
-    @Body() body: unknown,
   ): Promise<ApplicationSummary> {
     try {
-      const { employerId } = rejectApplicationRequestSchema.parse(body ?? {});
       return applicationSummarySchema.parse(
         await this.service.reject({ employerId, applicationId: id }),
       );
@@ -123,11 +120,10 @@ export class ApplicationController {
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   async cancel(
+    @CurrentMember() actorId: string,
     @Param('id') id: string,
-    @Body() body: unknown,
   ): Promise<ApplicationSummary> {
     try {
-      const { actorId } = cancelApplicationRequestSchema.parse(body ?? {});
       return applicationSummarySchema.parse(
         await this.service.cancel({ actorId, applicationId: id }),
       );
@@ -140,11 +136,10 @@ export class ApplicationController {
   @Post(':id/no-show')
   @HttpCode(HttpStatus.OK)
   async markNoShow(
+    @CurrentMember() employerId: string,
     @Param('id') id: string,
-    @Body() body: unknown,
   ): Promise<ApplicationSummary> {
     try {
-      const { employerId } = markNoShowRequestSchema.parse(body ?? {});
       return applicationSummarySchema.parse(
         await this.service.markNoShow({ employerId, applicationId: id }),
       );
@@ -156,11 +151,10 @@ export class ApplicationController {
   /** 재동의 대기 화면이 그릴 변경 전/후 (#22 AC1) */
   @Get(':id/version-diff')
   async versionDiff(
+    @CurrentMember() applicantId: string,
     @Param('id') id: string,
-    @Query() query: unknown,
   ): Promise<ReacceptDiff> {
     try {
-      const { applicantId } = reacceptRequestSchema.parse(query ?? {});
       return reacceptDiffSchema.parse(
         await this.service.versionDiff({ applicantId, applicationId: id }),
       );
@@ -173,11 +167,10 @@ export class ApplicationController {
   @Post(':id/reaccept')
   @HttpCode(HttpStatus.OK)
   async reaccept(
+    @CurrentMember() applicantId: string,
     @Param('id') id: string,
-    @Body() body: unknown,
   ): Promise<ApplicationSummary> {
     try {
-      const { applicantId } = reacceptRequestSchema.parse(body ?? {});
       return applicationSummarySchema.parse(
         await this.service.reaccept({ applicantId, applicationId: id }),
       );
@@ -190,11 +183,10 @@ export class ApplicationController {
   @Post(':id/decline')
   @HttpCode(HttpStatus.OK)
   async decline(
+    @CurrentMember() applicantId: string,
     @Param('id') id: string,
-    @Body() body: unknown,
   ): Promise<ApplicationSummary> {
     try {
-      const { applicantId } = reacceptRequestSchema.parse(body ?? {});
       return applicationSummarySchema.parse(
         await this.service.declineVersionChange({
           applicantId,
@@ -209,10 +201,15 @@ export class ApplicationController {
   /** 구인자가 업무 완료를 확인한다 (#23) */
   @Post('complete')
   @HttpCode(HttpStatus.OK)
-  async complete(@Body() body: unknown): Promise<CompletionSummary> {
+  async complete(
+    @CurrentMember() employerId: string,
+    @Body() body: unknown,
+  ): Promise<CompletionSummary> {
     try {
       const input = completeJobPostRequestSchema.parse(body ?? {});
-      return completionSummarySchema.parse(await this.service.complete(input));
+      return completionSummarySchema.parse(
+        await this.service.complete({ ...input, employerId }),
+      );
     } catch (error) {
       throw toHttpError(error);
     }
@@ -220,11 +217,14 @@ export class ApplicationController {
 
   /** 구인자가 보는 지원자 목록 (#18 AC1·AC2) */
   @Get()
-  async listForEmployer(@Query() query: unknown): Promise<ApplicantList> {
+  async listForEmployer(
+    @CurrentMember() employerId: string,
+    @Query() query: unknown,
+  ): Promise<ApplicantList> {
     try {
       const parsed = employerListQuerySchema.parse(query ?? {});
       return applicantListSchema.parse(
-        await this.service.listForEmployer(parsed),
+        await this.service.listForEmployer({ ...parsed, employerId }),
       );
     } catch (error) {
       throw toHttpError(error);
@@ -238,10 +238,13 @@ export class ApplicationController {
    * 실패했다"를 구분할 수 없다.
    */
   @Get('me')
-  async mine(@Query() query: unknown): Promise<ApplicationSummary> {
+  async mine(
+    @CurrentMember() applicantId: string,
+    @Query() query: unknown,
+  ): Promise<ApplicationSummary> {
     try {
       // 조회 파라미터의 모양이 지원 요청과 같다. 스키마를 다시 쓰지 않는다.
-      const { jobPostId, applicantId } = applyRequestSchema.parse(query ?? {});
+      const { jobPostId } = applyRequestSchema.parse(query ?? {});
       const mine = await this.service.findMine(jobPostId, applicantId);
       if (mine === null) {
         throw new ApplicationError(APPLICATION_ERRORS.NOT_FOUND);
@@ -251,17 +254,6 @@ export class ApplicationController {
       throw toHttpError(error);
     }
   }
-}
-
-function applicantIdOf(body: unknown): string {
-  const applicantId = (body as { applicantId?: unknown } | null)?.applicantId;
-  if (typeof applicantId !== 'string' || applicantId.length === 0) {
-    throw new BadRequestException({
-      errorCode: 'VALIDATION_FAILED',
-      message: '회원 정보가 없습니다.',
-    });
-  }
-  return applicantId;
 }
 
 /**

@@ -60,13 +60,7 @@ afterEach(() => {
 describe('ReacceptPanel', () => {
   it('should send the reaccept request when 재동의 is pressed', async () => {
     const fetch = mockFetch();
-    render(
-      <ReacceptPanel
-        applicationId="app_1"
-        applicantId="usr_seeker"
-        onSettled={vi.fn()}
-      />,
-    );
+    render(<ReacceptPanel applicationId="app_1" onSettled={vi.fn()} />);
 
     await userEvent.click(
       await screen.findByRole('button', { name: '재동의' }),
@@ -83,13 +77,7 @@ describe('ReacceptPanel', () => {
       ...RESTORED,
       status: 'CANCELLED_BY_VERSION_CHANGE',
     });
-    render(
-      <ReacceptPanel
-        applicationId="app_1"
-        applicantId="usr_seeker"
-        onSettled={vi.fn()}
-      />,
-    );
+    render(<ReacceptPanel applicationId="app_1" onSettled={vi.fn()} />);
 
     await userEvent.click(await screen.findByRole('button', { name: '거절' }));
 

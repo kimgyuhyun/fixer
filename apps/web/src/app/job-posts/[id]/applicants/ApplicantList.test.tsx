@@ -44,6 +44,20 @@ afterEach(() => {
 });
 
 describe('ApplicantList', () => {
+  it('should request the applicant list with only jobPostId in the query', async () => {
+    // 구인자 id 입력창이 사라진다 (AC6). 구인자는 쿠키에서 온다.
+    mockList(listOf([APPLICANT]));
+
+    render(<ApplicantList jobPostId="job_1" />);
+    await screen.findByRole('button', { name: '수락' });
+
+    const fetchMock = vi.mocked(fetch);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      '/api/applications?jobPostId=job_1',
+    );
+    expect(screen.queryByLabelText('내 회원 id')).not.toBeInTheDocument();
+  });
+
   it('should render a 수락 button for an APPLIED applicant', async () => {
     mockList(listOf([APPLICANT]));
 

@@ -12,6 +12,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   JOB_POST_ERRORS,
@@ -29,22 +30,26 @@ import {
   type CancelJobPostResult,
 } from '@fixer/shared';
 import { ZodError } from 'zod';
+import { CurrentMember, MemberGuard } from '../auth/member.guard';
 import { JobPostError, JobPostService } from './job-post.service';
 
 /**
  * 공고의 HTTP 경계. (이슈 #12)
  *
- * 회원 식별은 아직 본문으로 받는다. #4의 토큰 주체로 바꾸는 것은 그
- * 브랜치가 머지된 뒤다.
+ * **구인자는 쿠키에서 온다** (#69). 읽기 세 곳(목록·상세·버전)은 가드 없이
+ * 둔다 — 공고 열람은 로그인 전에도 되는 것이 이 서비스의 첫 화면이다.
  */
 @Controller('job-posts')
 export class JobPostController {
   constructor(private readonly service: JobPostService) {}
 
   @Post()
+  @UseGuards(MemberGuard)
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() body: unknown): Promise<JobPostSummary> {
-    const employerId = employerIdOf(body);
+  async create(
+    @CurrentMember() employerId: string,
+    @Body() body: unknown,
+  ): Promise<JobPostSummary> {
     try {
       const input = createJobPostRequestSchema.parse(body);
       return jobPostSummarySchema.parse(
@@ -69,12 +74,13 @@ export class JobPostController {
 
   /** 필수항목을 고치면 version이 오른다 (#15) */
   @Patch(':id')
+  @UseGuards(MemberGuard)
   @HttpCode(HttpStatus.OK)
   async update(
+    @CurrentMember() employerId: string,
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<JobPostDetail> {
-    const employerId = employerIdOf(body);
     try {
       return jobPostDetailSchema.parse(
         await this.service.update({
@@ -91,12 +97,12 @@ export class JobPostController {
 
   /** 공고를 취소한다. 잠긴 돈은 전액 되돌아간다 (#16) */
   @Post(':id/cancel')
+  @UseGuards(MemberGuard)
   @HttpCode(HttpStatus.OK)
   async cancel(
+    @CurrentMember() employerId: string,
     @Param('id') id: string,
-    @Body() body: unknown,
   ): Promise<CancelJobPostResult> {
-    const employerId = employerIdOf(body);
     try {
       return cancelJobPostResultSchema.parse(
         await this.service.cancel({ employerId, jobPostId: id }),
@@ -132,22 +138,16 @@ export class JobPostController {
   }
 }
 
-/** 수정 본문에서 회원 id를 뺀다. 그건 고칠 대상이 아니다 */
+/**
+ * 수정 본문에서 회원 id를 뺀다.
+ *
+ * 스키마에 없는 칸이라 서비스가 쓰지는 않지만, 요청자가 실어 보낸 값이
+ * 고칠 값 목록에 섞여 내려가는 길 자체를 막는다 (#69).
+ */
 function withoutEmployer(body: unknown): Record<string, unknown> {
   const rest = { ...((body ?? {}) as Record<string, unknown>) };
   delete rest.employerId;
   return rest;
-}
-
-function employerIdOf(body: unknown): string {
-  const employerId = (body as { employerId?: unknown } | null)?.employerId;
-  if (typeof employerId !== 'string' || employerId.length === 0) {
-    throw new BadRequestException({
-      errorCode: 'VALIDATION_FAILED',
-      message: '회원 정보가 없습니다.',
-    });
-  }
-  return employerId;
 }
 
 function toHttpError(error: unknown): unknown {

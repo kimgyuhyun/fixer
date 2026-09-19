@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { NotificationModule } from '../notification/notification.module';
 import { NotificationService } from '../notification/notification.service';
 import { PenaltyModule } from '../penalty/penalty.module';
@@ -14,7 +15,7 @@ import {
 
 /** 신청 도메인. 지원과 철회 (#17), 수락과 정원 제어 (#18), 거절 (#19) */
 @Module({
-  imports: [PrismaModule, NotificationModule, PenaltyModule],
+  imports: [PrismaModule, AuthModule, NotificationModule, PenaltyModule],
   controllers: [ApplicationController],
   providers: [
     PrismaApplicationStore,

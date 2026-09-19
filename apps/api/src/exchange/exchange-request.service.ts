@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { z } from 'zod';
 import {
   EXCHANGE_ERRORS,
   POINT_ERRORS,
@@ -8,7 +9,6 @@ import {
   type ExchangeErrorCode,
   type ExchangeRequestStatus,
   type ExchangeRequestSummary,
-  type RequestExchange,
 } from '@fixer/shared';
 import { PointError } from '../point/point-ledger.service';
 import type { ExchangeAccountStore } from './exchange-account.service';
@@ -61,6 +61,17 @@ export interface ExchangeRequestStore {
  * 네 개의 게이트를 순서대로 지난다 — 최소금액 · 단위 · 계좌 검증 · 성숙도.
  * **하나라도 빠지면 돈이 새는 쪽으로 샌다.**
  */
+/**
+ * 서비스가 받는 것 = 요청 몸체 + **가드가 판정한 회원**.
+ *
+ * 회원 id는 wire 스키마(요청 몸체)에 없다 — 요청자가 스스로 밝히는 값이 아니기
+ * 때문이다 (#69). 서비스는 그 값을 받되, 받았다는 사실을 여기서 검사한다.
+ */
+const exchangeInputSchema = requestExchangeSchema.extend({
+  userId: z.string().min(1),
+});
+export type ExchangeInput = z.infer<typeof exchangeInputSchema>;
+
 @Injectable()
 export class ExchangeRequestService {
   constructor(
@@ -69,8 +80,8 @@ export class ExchangeRequestService {
     private readonly matured: MaturedPointReader,
   ) {}
 
-  async request(input: RequestExchange): Promise<ExchangeRequestSummary> {
-    const parsed = requestExchangeSchema.parse(input);
+  async request(input: ExchangeInput): Promise<ExchangeRequestSummary> {
+    const parsed = exchangeInputSchema.parse(input);
 
     // 입력값이 전제조건보다 먼저다. 잘못 친 숫자 때문에 DB를 읽지 않는다.
     const checked = checkExchangeAmount(parsed.amount);

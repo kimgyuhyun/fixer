@@ -42,8 +42,6 @@ export function ApplyPanel({
 }: {
   jobPostId: string;
 }): React.JSX.Element {
-  // #4의 토큰 주체로 바꾸기 전까지는 손으로 받는다 (job-posts/new와 같다)
-  const [applicantId, setApplicantId] = useState('');
   const [mine, setMine] = useState<ApplicationSummary | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +51,8 @@ export function ApplyPanel({
 
     async function load() {
       try {
-        const query = new URLSearchParams({ jobPostId, applicantId });
+        // 지원자는 쿠키에서 온다 (#69).
+        const query = new URLSearchParams({ jobPostId });
         const res = await fetch(`/api/applications/me?${query.toString()}`);
         if (cancelled) return;
 
@@ -76,7 +75,7 @@ export function ApplyPanel({
     return () => {
       cancelled = true;
     };
-  }, [jobPostId, applicantId]);
+  }, [jobPostId]);
 
   async function send(path: string, body: unknown) {
     setError(null);
@@ -105,36 +104,20 @@ export function ApplyPanel({
 
   return (
     <section className={styles.panel}>
-      <label className={styles.label} htmlFor="applicantId">
-        내 회원 id
-      </label>
-      <input
-        className={styles.input}
-        id="applicantId"
-        value={applicantId}
-        onChange={(e) => setApplicantId(e.target.value)}
-      />
-
       {status !== null && (
         <p className={styles.status}>{STATUS_LABELS[status]}</p>
       )}
 
       {/* 재동의 대기면 무엇이 바뀌었는지부터 보여준다 (#22 AC1) */}
       {mine !== null && status === 'PENDING_REACCEPT' && (
-        <ReacceptPanel
-          applicationId={mine.id}
-          applicantId={applicantId}
-          onSettled={setMine}
-        />
+        <ReacceptPanel applicationId={mine.id} onSettled={setMine} />
       )}
 
       {canApply && (
         <button
           className={styles.apply}
           type="button"
-          onClick={() =>
-            void send('/api/applications', { applicantId, jobPostId })
-          }
+          onClick={() => void send('/api/applications', { jobPostId })}
         >
           지원하기
         </button>
@@ -145,9 +128,7 @@ export function ApplyPanel({
           className={styles.withdraw}
           type="button"
           onClick={() =>
-            void send(`/api/applications/${mine?.id ?? ''}/withdraw`, {
-              applicantId,
-            })
+            void send(`/api/applications/${mine?.id ?? ''}/withdraw`, {})
           }
         >
           지원 철회

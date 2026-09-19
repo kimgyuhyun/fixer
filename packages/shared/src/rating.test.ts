@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { rateeOf } from './rating.js';
+import { rateRequestSchema } from './rating.js';
 
 const EMPLOYER = 'usr_employer';
 const APPLICANT = 'usr_applicant';
@@ -34,5 +35,17 @@ describe('rateeOf', () => {
         applicantId: APPLICANT,
       }),
     ).toBeNull();
+  });
+});
+
+describe('rateRequestSchema', () => {
+  it('should drop raterId when the body still carries it', () => {
+    const parsed = rateRequestSchema.parse({
+      applicationId: 'app_1',
+      score: 5,
+      raterId: 'usr_someone_else',
+    });
+
+    expect(parsed).toEqual({ applicationId: 'app_1', score: 5 });
   });
 });

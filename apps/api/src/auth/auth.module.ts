@@ -5,6 +5,7 @@ import { AccessTokenSigner } from './access-token';
 import { ConsoleMailProvider } from './console-mail.provider';
 import { LoginController } from './login.controller';
 import { LoginService } from './login.service';
+import { MemberGuard } from './member.guard';
 import { PrismaRefreshTokenStore } from './prisma-refresh-token.store';
 import { PrismaPointLedgerStore } from '../point/prisma-point-ledger.store';
 import { EmailVerificationController } from './email-verification.controller';
@@ -44,6 +45,7 @@ import { UserAddressService } from './user-address.service';
     UserAddressController,
   ],
   providers: [
+    MemberGuard,
     PrismaEmailVerificationStore,
     PrismaUserStore,
     PrismaRefreshTokenStore,
@@ -150,6 +152,7 @@ import { UserAddressService } from './user-address.service';
     },
   ],
   exports: [
+    MemberGuard,
     EmailVerificationService,
     SignupService,
     LoginService,

@@ -10,6 +10,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   RATING_ERRORS,
@@ -21,13 +22,14 @@ import {
   type RatingSummary,
 } from '@fixer/shared';
 import { ZodError } from 'zod';
+import { CurrentMember, MemberGuard } from '../auth/member.guard';
 import { RatingError, RatingService } from './rating.service';
 
 /**
  * 별점의 HTTP 경계. (이슈 #26)
  *
- * 회원 식별은 #12와 마찬가지로 아직 본문으로 받는다. #4의 토큰 주체로
- * 바꾸는 것은 그 배선이 머지된 뒤다.
+ * **별점을 주는 사람은 쿠키에서 온다** (#69). 조회(`GET /:userId`)는 공개로
+ * 둔다 — 프로필의 평점은 남의 화면에서도 보여야 한다.
  */
 @Controller('ratings')
 export class RatingController {
@@ -35,11 +37,17 @@ export class RatingController {
 
   /** 거래 후 별점을 남긴다 (AC1~AC3) */
   @Post()
+  @UseGuards(MemberGuard)
   @HttpCode(HttpStatus.CREATED)
-  async rate(@Body() body: unknown): Promise<RatingResult> {
+  async rate(
+    @CurrentMember() raterId: string,
+    @Body() body: unknown,
+  ): Promise<RatingResult> {
     try {
       const input = rateRequestSchema.parse(body);
-      return ratingResultSchema.parse(await this.service.rate(input));
+      return ratingResultSchema.parse(
+        await this.service.rate({ ...input, raterId }),
+      );
     } catch (error) {
       throw toHttpError(error);
     }

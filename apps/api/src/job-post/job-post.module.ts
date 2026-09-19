@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { NotificationModule } from '../notification/notification.module';
 import { NotificationService } from '../notification/notification.service';
 import { PenaltyModule } from '../penalty/penalty.module';
@@ -18,7 +19,7 @@ import {
 
 /** 공고 도메인. 카테고리(#11)와 공고 등록·목록(#12) */
 @Module({
-  imports: [PrismaModule, NotificationModule, PenaltyModule],
+  imports: [PrismaModule, AuthModule, NotificationModule, PenaltyModule],
   controllers: [CategoryController, JobPostController],
   providers: [
     PrismaCategoryStore,

@@ -7,7 +7,7 @@ import {
   HttpStatus,
   NotFoundException,
   Put,
-  Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ACCOUNT_ERRORS,
@@ -16,6 +16,7 @@ import {
   type MaskedAccount,
 } from '@fixer/shared';
 import { ZodError } from 'zod';
+import { CurrentMember, MemberGuard } from '../auth/member.guard';
 import {
   AccountError,
   ExchangeAccountService,
@@ -26,16 +27,21 @@ import {
  *
  * **응답 스키마에 평문 계좌번호 자리가 없다.** 서비스가 실수로 얹어 보내도
  * `maskedAccountSchema.parse`에서 떨어져 나간다 — #2의 비밀번호 해시와 같다.
+ *
+ * 회원은 쿠키에서 온다 (#69). 계좌는 환전받을 자리라 남이 바꿔선 안 된다.
  */
 @Controller('exchange-accounts')
+@UseGuards(MemberGuard)
 export class ExchangeAccountController {
   constructor(private readonly service: ExchangeAccountService) {}
 
   /** 등록·변경. 회원당 하나라 PUT이다 */
   @Put()
   @HttpCode(HttpStatus.OK)
-  async register(@Body() body: unknown): Promise<MaskedAccount> {
-    const userId = userIdOf(body);
+  async register(
+    @CurrentMember() userId: string,
+    @Body() body: unknown,
+  ): Promise<MaskedAccount> {
     try {
       const input = registerAccountRequestSchema.parse(body);
       return maskedAccountSchema.parse(
@@ -47,30 +53,13 @@ export class ExchangeAccountController {
   }
 
   @Get('me')
-  async mine(@Query('userId') userId?: string): Promise<MaskedAccount> {
-    if (!userId) {
-      throw new BadRequestException({
-        errorCode: 'VALIDATION_FAILED',
-        message: '회원 정보가 없습니다.',
-      });
-    }
+  async mine(@CurrentMember() userId: string): Promise<MaskedAccount> {
     try {
       return maskedAccountSchema.parse(await this.service.findMine(userId));
     } catch (error) {
       throw toHttpError(error);
     }
   }
-}
-
-function userIdOf(body: unknown): string {
-  const userId = (body as { userId?: unknown } | null)?.userId;
-  if (typeof userId !== 'string' || userId.length === 0) {
-    throw new BadRequestException({
-      errorCode: 'VALIDATION_FAILED',
-      message: '회원 정보가 없습니다.',
-    });
-  }
-  return userId;
 }
 
 function toHttpError(error: unknown): unknown {

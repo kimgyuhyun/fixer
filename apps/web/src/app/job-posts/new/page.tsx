@@ -34,8 +34,6 @@ export default function NewJobPostPage() {
   const [loading, setLoading] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
 
-  // #4가 머지되면 토큰 주체로 바뀐다. 지금은 화면에서 받는다.
-  const [employerId, setEmployerId] = useState('');
   const [title, setTitle] = useState('');
   const [workAddress, setWorkAddress] = useState('');
   // 주소를 직접 쓰면 지역도 받아야 한다. 안 받으면 그 공고가 지역
@@ -107,7 +105,7 @@ export default function NewJobPostPage() {
       const res = await fetch('/api/job-posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employerId, ...parsed.data }),
+        body: JSON.stringify(parsed.data),
       });
       const json: unknown = await res.json();
       if (!res.ok) {
@@ -149,19 +147,6 @@ export default function NewJobPostPage() {
       )}
 
       <form className={styles.form} onSubmit={submit} noValidate>
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="employerId">
-            회원 id
-          </label>
-          <input
-            id="employerId"
-            className={styles.input}
-            value={employerId}
-            onChange={(e) => setEmployerId(e.target.value)}
-            placeholder="로그인이 붙기 전까지 직접 입력합니다"
-          />
-        </div>
-
         <div className={styles.field}>
           <label className={styles.label} htmlFor="category">
             카테고리

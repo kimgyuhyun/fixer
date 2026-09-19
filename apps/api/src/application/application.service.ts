@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { z } from 'zod';
 import {
   APPLICATION_ERRORS,
   EMPLOYER_VISIBLE_STATUSES,
@@ -15,8 +16,6 @@ import {
   type ApplicationErrorCode,
   type ApplicationStatus,
   type ApplicationSummary,
-  type ApplyRequest,
-  type CompleteJobPostRequest,
   type CompletionSummary,
   type JobPostStatus,
   type JobPostVersionSnapshot,
@@ -308,6 +307,22 @@ export interface JobPostForApplication {
  * 것은 **약속이 생기는 순간(#17), 수락 전에 무르는 순간(#17), 그리고 약속이
  * 체결되는 순간(#18)**까지다. 취소는 #20이 무상 취소 창을 정한 뒤에 온다.
  */
+/**
+ * 서비스가 받는 것 = 요청 몸체 + **가드가 판정한 회원**.
+ *
+ * 회원 id는 wire 스키마(요청 몸체)에 없다 — 요청자가 스스로 밝히는 값이 아니기
+ * 때문이다 (#69). 서비스는 그 값을 받되, 받았다는 사실을 여기서 검사한다.
+ */
+const applyInputSchema = applyRequestSchema.extend({
+  applicantId: z.string().min(1, { error: '지원자를 알 수 없습니다.' }),
+});
+export type ApplyInput = z.infer<typeof applyInputSchema>;
+
+const completeInputSchema = completeJobPostRequestSchema.extend({
+  employerId: z.string().min(1, { error: '구인자를 알 수 없습니다.' }),
+});
+export type CompleteInput = z.infer<typeof completeInputSchema>;
+
 @Injectable()
 export class ApplicationService {
   constructor(
@@ -569,8 +584,8 @@ export class ApplicationService {
    * **시스템은 일이 끝났는지 알 방법이 없다** — 출퇴근 체크도 GPS도 없으므로
    * 구인자의 확인이 유일한 신호다.
    */
-  async complete(input: CompleteJobPostRequest): Promise<CompletionSummary> {
-    const parsed = completeJobPostRequestSchema.parse(input);
+  async complete(input: CompleteInput): Promise<CompletionSummary> {
+    const parsed = completeInputSchema.parse(input);
     const post = await this.mustOwn(parsed.jobPostId, parsed.employerId);
 
     // 표에 없는 전이는 거부된다. 이미 완료된 공고를 또 확인하는 것이 여기서
@@ -799,9 +814,9 @@ export class ApplicationService {
     return post;
   }
 
-  async apply(input: ApplyRequest): Promise<ApplicationSummary> {
+  async apply(input: ApplyInput): Promise<ApplicationSummary> {
     // 검증이 가장 먼저다. 형식이 틀린 요청은 저장소를 건드리지 않는다.
-    const parsed = applyRequestSchema.parse(input);
+    const parsed = applyInputSchema.parse(input);
 
     const post = await this.mustFindPost(parsed.jobPostId);
     // 본인 공고 확인이 상태 확인보다 먼저다. 마감된 자기 공고에 지원했을 때

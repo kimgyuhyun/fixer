@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { z } from 'zod';
 import {
   RATING_ERRORS,
   rateRequestSchema,
   rateeOf,
   type ApplicationStatus,
-  type RateRequest,
   type RatingErrorCode,
   type RatingResult,
   type RatingRole,
@@ -70,6 +70,17 @@ export interface RatingStore {
  * 끝난 거래의 양쪽이 서로에게 1~5를 한 번씩 남기고, 그 평균이 역할별로
  * 나뉘어 회원에게 붙는다.
  */
+/**
+ * 서비스가 받는 것 = 요청 몸체 + **가드가 판정한 회원**.
+ *
+ * 회원 id는 wire 스키마(요청 몸체)에 없다 — 요청자가 스스로 밝히는 값이 아니기
+ * 때문이다 (#69). 서비스는 그 값을 받되, 받았다는 사실을 여기서 검사한다.
+ */
+const rateInputSchema = rateRequestSchema.extend({
+  raterId: z.string().min(1, { error: '회원 정보가 없습니다.' }),
+});
+export type RateInput = z.infer<typeof rateInputSchema>;
+
 @Injectable()
 export class RatingService {
   constructor(private readonly store: RatingStore) {}
@@ -80,8 +91,8 @@ export class RatingService {
    * **당사자 판정이 상태 판정보다 먼저다.** 남의 거래를 두고 "아직 안
    * 끝났다"고 답하면, 그 거래가 존재한다는 사실과 진행 상황이 함께 샌다.
    */
-  async rate(input: RateRequest): Promise<RatingResult> {
-    const parsed = rateRequestSchema.parse(input);
+  async rate(input: RateInput): Promise<RatingResult> {
+    const parsed = rateInputSchema.parse(input);
 
     const application = await this.store.findApplication(parsed.applicationId);
     if (application === null) {

@@ -30,7 +30,6 @@ function mockRoutes(routes: Record<string, { status: number; body: unknown }>) {
 
 async function fillAndSubmit() {
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText('회원 id'), 'usr_1');
   await user.selectOptions(screen.getByLabelText('은행'), '088');
   await user.type(screen.getByLabelText('계좌번호'), '110-123-45678');
   await user.type(screen.getByLabelText('예금주'), '김구직');
@@ -118,21 +117,17 @@ describe('환전 계좌 화면 (#30 AC4)', () => {
     );
   });
 
-  it('should load an account that was registered before', async () => {
-    mockRoutes({
+  it('should load the registered account without a userId query', async () => {
+    // 회원 id 입력창이 사라진다 (AC6). 쿠키가 가리키는 회원의 계좌를 읽는다.
+    const fetchMock = mockRoutes({
       '/api/exchange-accounts/me': { status: 200, body: REGISTERED },
     });
     render(<ExchangeAccountPage />);
 
-    await userEvent.setup().type(screen.getByLabelText('회원 id'), 'usr_1');
-
     expect(await screen.findByText('****5678')).toBeInTheDocument();
-  });
-
-  it('should not let a registration start before a member is chosen', () => {
-    mockRoutes({});
-    render(<ExchangeAccountPage />);
-
-    expect(screen.getByRole('button', { name: '계좌 등록' })).toBeDisabled();
+    expect(screen.queryByLabelText('회원 id')).not.toBeInTheDocument();
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      '/api/exchange-accounts/me',
+    );
   });
 });
