@@ -34,7 +34,6 @@ export default function NewJobPostPage() {
   const [loading, setLoading] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
 
-  // #4가 머지되면 토큰 주체로 바뀐다. 지금은 화면에서 받는다.
   const [title, setTitle] = useState('');
   const [workAddress, setWorkAddress] = useState('');
   // 주소를 직접 쓰면 지역도 받아야 한다. 안 받으면 그 공고가 지역

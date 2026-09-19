@@ -220,3 +220,69 @@ interface ReacceptPanelProps {
 | `MemberGuard`가 Refresh 쿠키만으로도 인증                           | AC3의 이웃 경계다. AC3은 "Access 만료 + Refresh 유효"인데, Access 쿠키가 **아예 없는** 경우도 같은 길로 가야 한다                               |
 
 **커버리지:** AC 6개 / 시나리오 31개 / 미커버 0개
+
+---
+
+## AC 검증
+
+`ac-verifier` 에이전트의 판정 원문 (2026-09-19). **구현자가 이 표를 고치지 않는다.**
+
+### AC 1 — 쿠키 없는 `POST /api/refunds`에 `userId`를 담아 보내면 401
+
+✅ 충족
+
+- 테스트: `should answer 401 when unauthenticated even though the body carries a userId` (`apps/api/src/auth/member.guard.routes.test.ts`), `should answer 401 LOGIN_UNAUTHENTICATED when the request carries no cookie header` (`apps/api/src/auth/member.guard.test.ts`)
+- 구현: `PointController.refund`에 `@UseGuards(MemberGuard)` 부착, `MemberGuard.canActivate`가 쿠키 없으면 `LoginError` → `LoginHttpError`(401)
+- 근거: 라우트 메타데이터를 리플렉션으로 읽어 `MemberGuard`가 걸려 있는지 확인한 뒤, 그 가드를 직접 실행해 몸체에 `userId`를 실어도 401이 나는 것을 단언한다. 목(mock)이 아니라 실제 가드 인스턴스를 돌린다.
+
+### AC 2 — 본문의 남의 `userId`는 무시되고 토큰 주체로 처리된다
+
+✅ 충족
+
+- 테스트: `should drop applicantId when the body still carries it`, `should drop raterId…`, `should drop userId…`, `should ignore a userId in the body and refund for the caller`
+- 구현: 스키마에서 신원 필드 삭제 + 컨트롤러가 `@CurrentMember()`로 받은 값을 서비스에 전달
+- 근거: zod 스키마 레벨에서 필드가 파싱 후 사라지는 것을 단언했고, 컨트롤러 레벨에서도 본문에 `userId: 'usr_someone_else'`를 넣어도 `refund`가 `CALLER`로 호출됨을 단언. 두 layer가 겹으로 확인됨. 서비스 레벨의 `rateInputSchema`/`exchangeInputSchema` extend 우회도 직접 읽어 wire 스키마가 회원 id를 되돌려주지 않는 구조임을 확인.
+
+### AC 3 — Access 만료 + Refresh 유효면 갱신하고 그대로 진행
+
+✅ 충족
+
+- 테스트: `should renew the access cookie and continue when the access token expired but the refresh token is alive`, 경계 `should not set a renewed cookie when the access token is still valid`, `should authenticate from the refresh cookie alone when the access cookie is absent`
+- 구현: `MemberGuard.callerOf`가 `LoginService.authenticate`에 위임하고 `session.renewedAccessToken`이 있을 때만 `response.cookie(...)`를 호출
+- 근거: 쿠키 옵션(`httpOnly`, `secure`, `sameSite`, `path`, `expires`)까지 `toHaveBeenCalledWith`로 정확히 검증했고, 갱신이 필요 없을 때 쿠키가 호출되지 않는 것도 별도로 검증. "Access 만료의 정확한 경계"(15분 시점) 자체는 `LoginService.authenticate`의 책임이며 선행 이슈(#4)의 범위 — 이 이슈는 그 판정을 그대로 위임하는 배선만 다루므로 범위에서 충분.
+
+### AC 4 — 로그아웃한 뒤 같은 요청을 다시 보내면 막힌다
+
+✅ 충족
+
+- 테스트: `should answer 401 for the same request after logout, when the browser no longer sends the auth cookies`
+- 구현: `MemberGuard.callerOf`가 쿠키 헤더를 매 요청마다 새로 파싱하므로 로그아웃 후 쿠키가 없으면 401
+- 근거: 같은 가드 인스턴스로 로그인 상태 요청이 통과하는 것을 먼저 확인한 뒤, 쿠키 없는 "로그아웃 후" 컨텍스트로 다시 호출해 401을 단언. 시나리오 문서가 명시한 대로 "브라우저 흐름"만 검증하고, DB 세션 폐기는 ADR-AUTH-1에 따라 의도적으로 범위 밖 — 문서에 그 이유가 적혀 있고 코드도 그와 일치.
+
+### AC 5 — 포트원 웹훅은 쿠키 없이 서명만으로 그대로 동작한다
+
+✅ 충족
+
+- 테스트: `should accept the webhook with a valid signature and no cookie`, `should hand the raw body to the service so the signature can be checked`
+- 구현: `PointController.webhook`에 `@UseGuards(MemberGuard)`가 없음
+- 근거: 라우트 메타데이터에 `MemberGuard`가 **없음**을 직접 단언. 다른 다섯 컨트롤러가 가드를 얻는 동안 웹훅 라우트만 예외로 남겨진 것을 코드와 테스트 양쪽에서 확인.
+
+### AC 6 — 웹 화면 5개에서 `userId`를 보내는 코드가 사라진다
+
+✅ 충족
+
+- 테스트: `should show the balance with no member id input on the screen`, `should load the registered account without a userId query`, `NewJobPostPage`·`ApplyPanel`·`ApplicantList` 각 파일의 대응 테스트
+- 구현: 다섯 화면 전부에서 `userId`/`employerId`/`applicantId` 문자열이 grep으로 전혀 나오지 않음(직접 확인)
+- 근거: `points/page.test.tsx`가 `screen.queryByLabelText('회원 id')`가 DOM에 없음을 실제로 단언 — 목이 아니라 렌더링된 실제 DOM을 검사. 5개 화면 전체 웹 테스트가 140/140 통과로 확인됨.
+
+**범위 확장(6번째 컨트롤러 `exchange-account`)**: 이슈 본문은 5개 컨트롤러만 언급하지만, `my/account/page.tsx`가 부르는 `exchange-account.controller.ts`가 시나리오 문서와 커밋 메시지에 명시적으로 6번째로 포함되어 있어 범위 이탈이 아니라 문서화된 확장으로 판단. `agreement.controller.ts` 제외 사유도 시나리오 문서에 명시되어 있어 타당.
+
+```
+AC 6개 중 — ✅ 6 / ⚠️ 0 / ❌ 0
+```
+
+가짜 테스트나 우회 구현은 발견하지 못했다. API 전체 스위트(70 test files / 986 tests)와 web 스위트(28 files / 140 tests) 모두 실제로 실행해 통과를 확인했다.
+
+### 구현자 이견
+
+없다.
