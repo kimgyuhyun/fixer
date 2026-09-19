@@ -57,43 +57,40 @@ export default function MyAgreementPage() {
     <main className={styles.page}>
       <h1 className={styles.title}>내 동의서</h1>
 
-      {error !== null && (
+      {error !== null ? (
         <p className={styles.note} role="alert">
           {error}
         </p>
+      ) : agreement === null ? (
+        <p className={styles.note}>
+          {loaded ? '아직 서명한 동의서가 없습니다.' : '불러오는 중…'}
+        </p>
+      ) : (
+        <>
+          <dl className={styles.list}>
+            <div className={styles.row}>
+              <dt className={styles.label}>서명일</dt>
+              <dd className={styles.value}>
+                {new Date(agreement.agreedAt).toLocaleDateString('ko-KR')}
+              </dd>
+            </div>
+            <div className={styles.row}>
+              <dt className={styles.label}>문서 버전</dt>
+              <dd className={styles.value}>v{agreement.templateVersion}</dd>
+            </div>
+          </dl>
+
+          {/* 서버가 토큰 주체로 소유자를 확인하고 내려준다. 남의 것은 403이다 */}
+          <a
+            className={styles.secondary}
+            href={`/api/agreements/${agreement.id}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            서명한 동의서 보기
+          </a>
+        </>
       )}
-
-      {error === null &&
-        (agreement === null ? (
-          <p className={styles.note}>
-            {loaded ? '아직 서명한 동의서가 없습니다.' : '불러오는 중…'}
-          </p>
-        ) : (
-          <>
-            <dl className={styles.list}>
-              <div className={styles.row}>
-                <dt className={styles.label}>서명일</dt>
-                <dd className={styles.value}>
-                  {new Date(agreement.agreedAt).toLocaleDateString('ko-KR')}
-                </dd>
-              </div>
-              <div className={styles.row}>
-                <dt className={styles.label}>문서 버전</dt>
-                <dd className={styles.value}>v{agreement.templateVersion}</dd>
-              </div>
-            </dl>
-
-            {/* 서버가 토큰 주체로 소유자를 확인하고 내려준다. 남의 것은 403이다 */}
-            <a
-              className={styles.secondary}
-              href={`/api/agreements/${agreement.id}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              서명한 동의서 보기
-            </a>
-          </>
-        ))}
 
       <Link className={styles.secondary} href="/">
         처음으로
