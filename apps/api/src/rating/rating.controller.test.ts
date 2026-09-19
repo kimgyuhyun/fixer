@@ -48,15 +48,47 @@ async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
 }
 
 describe('POST /ratings', () => {
+  it('should rate as the caller when the body carries no raterId', async () => {
+    const rate = vi.fn().mockResolvedValue(RESULT);
+    const controller = controllerWith({ rate });
+
+    await controller.rate('usr_employer', {
+      applicationId: 'app_1',
+      score: 5,
+    });
+
+    expect(rate).toHaveBeenCalledWith({
+      applicationId: 'app_1',
+      raterId: 'usr_employer',
+      score: 5,
+    });
+  });
+
+  it('should ignore a raterId in the body and rate as the caller', async () => {
+    const rate = vi.fn().mockResolvedValue(RESULT);
+    const controller = controllerWith({ rate });
+
+    await controller.rate('usr_employer', {
+      applicationId: 'app_1',
+      raterId: 'usr_someone_else',
+      score: 5,
+    });
+
+    expect(rate).toHaveBeenCalledWith({
+      applicationId: 'app_1',
+      raterId: 'usr_employer',
+      score: 5,
+    });
+  });
+
   it("should answer 201 with the rated member's refreshed rating", async () => {
     const controller = controllerWith({
       rate: vi.fn().mockResolvedValue(RESULT),
     });
 
     expect(
-      await controller.rate({
+      await controller.rate('usr_employer', {
         applicationId: 'app_1',
-        raterId: 'usr_employer',
         score: 5,
       }),
     ).toEqual(RESULT);
@@ -71,11 +103,7 @@ describe('POST /ratings', () => {
     });
 
     const error = await rejectionOf(
-      controller.rate({
-        applicationId: 'app_1',
-        raterId: 'usr_employer',
-        score: 5,
-      }),
+      controller.rate('usr_employer', { applicationId: 'app_1', score: 5 }),
     );
 
     expect(statusOf(error)).toBe(409);
@@ -90,11 +118,7 @@ describe('POST /ratings', () => {
     });
 
     const error = await rejectionOf(
-      controller.rate({
-        applicationId: 'app_1',
-        raterId: 'usr_employer',
-        score: 5,
-      }),
+      controller.rate('usr_employer', { applicationId: 'app_1', score: 5 }),
     );
 
     expect(statusOf(error)).toBe(409);

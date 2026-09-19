@@ -128,7 +128,6 @@ const CREATED = {
 /** 유효한 값으로 폼을 채운다. 주소는 일부러 비워 둔다 (#12 AC6) */
 async function fillForm(overrides: { address?: string } = {}) {
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText('회원 id'), 'usr_1');
   await user.selectOptions(screen.getByLabelText('카테고리'), 'cat_1');
   await user.type(screen.getByLabelText('제목'), '사무실 청소');
   if (overrides.address !== undefined) {
@@ -188,7 +187,9 @@ describe('공고 등록 (#12)', () => {
       unknown
     >;
     expect(body.workAddress).toBeUndefined();
-    expect(body.employerId).toBe('usr_1');
+    // 회원 id 입력창이 사라진다 (AC6). 구인자는 쿠키에서 온다.
+    expect(body.employerId).toBeUndefined();
+    expect(screen.queryByLabelText('회원 id')).not.toBeInTheDocument();
   });
 
   it('should not send the request when a required field is empty', async () => {

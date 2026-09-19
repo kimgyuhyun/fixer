@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApplyPanel } from './ApplyPanel';
 
@@ -28,6 +29,25 @@ afterEach(() => {
 });
 
 describe('ApplyPanel', () => {
+  it('should post the application with only jobPostId in the body', async () => {
+    // 내 회원 id 입력창이 사라진다 (AC6). 지원자는 쿠키에서 온다.
+    mockMine(404, { errorCode: 'APPLICATION_NOT_FOUND' });
+
+    render(<ApplyPanel jobPostId="job_1" />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole('button', { name: '지원하기' }));
+
+    const fetchMock = vi.mocked(fetch);
+    const sent = fetchMock.mock.calls.find(
+      (call) => String(call[0]) === '/api/applications',
+    );
+    expect(String(sent?.[1]?.body)).toBe(
+      JSON.stringify({ jobPostId: 'job_1' }),
+    );
+    expect(screen.queryByLabelText('내 회원 id')).not.toBeInTheDocument();
+  });
+
   it('should render a 지원하기 button when the applicant has no application', async () => {
     mockMine(404, { errorCode: 'APPLICATION_NOT_FOUND' });
 

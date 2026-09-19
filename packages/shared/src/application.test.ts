@@ -9,6 +9,7 @@ import {
   hasWorkStarted,
   resolveCancelStatus,
 } from './application.js';
+import { applyRequestSchema } from './application.js';
 
 describe('canApplicationTransition', () => {
   it('should allow APPLIED to WITHDRAWN', () => {
@@ -143,5 +144,19 @@ describe('REACCEPT_TARGET_STATUSES', () => {
     ).map((t) => t.from);
 
     expect([...REACCEPT_TARGET_STATUSES]).toEqual(allowed);
+  });
+});
+
+describe('applyRequestSchema', () => {
+  // 회원 식별은 가드가 판정한 토큰 주체로만 온다 (#69). 몸체에 실려 온
+  // applicantId는 **무시되는 것이 아니라 아예 남지 않는다** — 스키마에 그
+  // 칸이 없으므로 zod가 버린다.
+  it('should drop applicantId when the body still carries it', () => {
+    const parsed = applyRequestSchema.parse({
+      jobPostId: 'job_1',
+      applicantId: 'usr_someone_else',
+    });
+
+    expect(parsed).toEqual({ jobPostId: 'job_1' });
   });
 });

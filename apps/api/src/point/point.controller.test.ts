@@ -54,6 +54,9 @@ function webhookRequest(body: string): Request {
   } as unknown as Request;
 }
 
+/** 가드가 판정한 회원. 본문이 아니라 토큰에서 온다 (#69) */
+const CALLER = 'usr_1';
+
 const CONFIRMED = {
   paymentId: 'pay_1',
   charged: 50_000,
@@ -67,20 +70,9 @@ describe('POST /payments', () => {
       start: vi.fn().mockResolvedValue({ paymentId: 'pay_1', amount: 50_000 }),
     });
 
-    await expect(
-      controller.start({ userId: 'usr_1', amount: 50_000 }),
-    ).resolves.toEqual({ paymentId: 'pay_1', amount: 50_000 });
-  });
-
-  it('should return 400 when userId is missing', async () => {
-    const start = vi.fn();
-    const controller = controllerWith({ start });
-
-    const error = await rejectionOf(controller.start({ amount: 50_000 }));
-
-    expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
-    // 서비스까지 가지 않는다. 회원을 모르면 결제 건을 만들 수 없다.
-    expect(start).not.toHaveBeenCalled();
+    await expect(controller.start(CALLER, { amount: 50_000 })).resolves.toEqual(
+      { paymentId: 'pay_1', amount: 50_000 },
+    );
   });
 
   it('should return 400 with PAYMENT_INVALID_AMOUNT for a bad amount', async () => {
@@ -91,7 +83,7 @@ describe('POST /payments', () => {
     });
 
     const error = await rejectionOf(
-      controller.start({ userId: 'usr_1', amount: 1_500 }),
+      controller.start(CALLER, { amount: 1_500 }),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
@@ -106,7 +98,7 @@ describe('POST /payments/confirm', () => {
     });
 
     await expect(
-      controller.confirm({ userId: 'usr_1', paymentId: 'pay_1' }),
+      controller.confirm(CALLER, { paymentId: 'pay_1' }),
     ).resolves.toEqual(CONFIRMED);
   });
 
@@ -114,11 +106,11 @@ describe('POST /payments/confirm', () => {
     const confirm = vi.fn().mockResolvedValue(CONFIRMED);
     const controller = controllerWith({ confirm });
 
-    await controller.confirm({ userId: 'usr_1', paymentId: 'pay_1' });
+    await controller.confirm(CALLER, { paymentId: 'pay_1' });
 
     expect(confirm).toHaveBeenCalledWith({
       paymentId: 'pay_1',
-      userId: 'usr_1',
+      userId: CALLER,
     });
   });
 
@@ -130,7 +122,7 @@ describe('POST /payments/confirm', () => {
     });
 
     const error = await rejectionOf(
-      controller.confirm({ userId: 'usr_1', paymentId: 'pay_1' }),
+      controller.confirm(CALLER, { paymentId: 'pay_1' }),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
@@ -146,7 +138,7 @@ describe('POST /payments/confirm', () => {
     });
 
     const error = await rejectionOf(
-      controller.confirm({ userId: 'usr_1', paymentId: 'pay_1' }),
+      controller.confirm(CALLER, { paymentId: 'pay_1' }),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
@@ -161,7 +153,7 @@ describe('POST /payments/confirm', () => {
     });
 
     const error = await rejectionOf(
-      controller.confirm({ userId: 'usr_1', paymentId: 'pay_1' }),
+      controller.confirm(CALLER, { paymentId: 'pay_1' }),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
@@ -176,7 +168,7 @@ describe('POST /payments/confirm', () => {
     });
 
     const error = await rejectionOf(
-      controller.confirm({ userId: 'usr_1', paymentId: 'pay_x' }),
+      controller.confirm(CALLER, { paymentId: 'pay_x' }),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
@@ -185,7 +177,7 @@ describe('POST /payments/confirm', () => {
   it('should return 400 when paymentId is missing', async () => {
     const controller = controllerWith({ confirm: vi.fn() });
 
-    const error = await rejectionOf(controller.confirm({ userId: 'usr_1' }));
+    const error = await rejectionOf(controller.confirm(CALLER, {}));
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
   });
@@ -259,20 +251,22 @@ describe('GET /points/me', () => {
       },
     );
 
-    await expect(controller.myPoints('usr_1')).resolves.toEqual({
+    await expect(controller.myPoints(CALLER)).resolves.toEqual({
       balance: 50_000,
       transactions: [],
     });
   });
 
-  it('should return 400 when no member is given', async () => {
-    const read = vi.fn();
+  it("should read the caller's balance without a userId query", async () => {
+    const read = vi
+      .fn()
+      .mockResolvedValue({ balance: 50_000, transactions: [] });
     const controller = controllerWith({}, { read });
 
-    const error = await rejectionOf(controller.myPoints(undefined));
+    await controller.myPoints(CALLER);
 
-    expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
-    expect(read).not.toHaveBeenCalled();
+    // 쿼리에 userId가 없다. 가드가 판정한 회원만 읽는다.
+    expect(read).toHaveBeenCalledWith(CALLER);
   });
 });
 
@@ -291,9 +285,7 @@ describe('POST /payments/:id/cancel', () => {
       { cancelPayment: vi.fn().mockResolvedValue(REFUNDED) },
     );
 
-    await expect(
-      controller.cancel('pay_1', { userId: 'usr_1' }),
-    ).resolves.toEqual(REFUNDED);
+    await expect(controller.cancel(CALLER, 'pay_1')).resolves.toEqual(REFUNDED);
   });
 
   it('should return 409 when the points were already spent', async () => {
@@ -309,9 +301,7 @@ describe('POST /payments/:id/cancel', () => {
       },
     );
 
-    const error = await rejectionOf(
-      controller.cancel('pay_1', { userId: 'usr_1' }),
-    );
+    const error = await rejectionOf(controller.cancel(CALLER, 'pay_1'));
 
     expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
     expect(bodyOf(error).message).toContain('이미 사용한 포인트');
@@ -328,31 +318,39 @@ describe('POST /payments/:id/cancel', () => {
       },
     );
 
-    const error = await rejectionOf(
-      controller.cancel('pay_1', { userId: 'usr_1' }),
-    );
+    const error = await rejectionOf(controller.cancel(CALLER, 'pay_1'));
 
     expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
   });
 });
 
 describe('POST /refunds', () => {
-  it('should pass the requested amount through', async () => {
+  it('should refund for the caller when the body carries no userId', async () => {
     const refund = vi.fn().mockResolvedValue(REFUNDED);
     const controller = controllerWith({}, {}, { refund });
 
-    await controller.refund({ userId: 'usr_1', amount: 50_000 });
+    await controller.refund(CALLER, { amount: 50_000 });
 
-    expect(refund).toHaveBeenCalledWith({ userId: 'usr_1', amount: 50_000 });
+    expect(refund).toHaveBeenCalledWith({ userId: CALLER, amount: 50_000 });
+  });
+
+  it('should ignore a userId in the body and refund for the caller', async () => {
+    const refund = vi.fn().mockResolvedValue(REFUNDED);
+    const controller = controllerWith({}, {}, { refund });
+
+    await controller.refund(CALLER, {
+      userId: 'usr_someone_else',
+      amount: 50_000,
+    });
+
+    expect(refund).toHaveBeenCalledWith({ userId: CALLER, amount: 50_000 });
   });
 
   it('should return 400 for a zero amount', async () => {
     const refund = vi.fn();
     const controller = controllerWith({}, {}, { refund });
 
-    const error = await rejectionOf(
-      controller.refund({ userId: 'usr_1', amount: 0 }),
-    );
+    const error = await rejectionOf(controller.refund(CALLER, { amount: 0 }));
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
     expect(refund).not.toHaveBeenCalled();
@@ -372,7 +370,7 @@ describe('POST /refunds', () => {
     );
 
     const error = await rejectionOf(
-      controller.refund({ userId: 'usr_1', amount: 50_000 }),
+      controller.refund(CALLER, { amount: 50_000 }),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.CONFLICT);

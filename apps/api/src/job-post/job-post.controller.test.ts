@@ -45,8 +45,10 @@ const CREATED = {
   createdAt: '2026-09-05T00:00:00.000Z',
 };
 
+/** 가드가 판정한 회원. 본문이 아니라 토큰에서 온다 (#69) */
+const EMPLOYER = 'usr_1';
+
 const VALID_BODY = {
-  employerId: 'usr_1',
   categoryId: 'cat_1',
   title: '사무실 청소',
   workStartAt: '2026-10-01T09:00:00.000Z',
@@ -57,24 +59,23 @@ const VALID_BODY = {
 };
 
 describe('POST /job-posts', () => {
+  it('should create the post for the caller when the body carries no employerId', async () => {
+    const create = vi.fn().mockResolvedValue(CREATED);
+    const controller = controllerWith({ create });
+
+    await controller.create(EMPLOYER, VALID_BODY);
+
+    expect(create).toHaveBeenCalledWith(EMPLOYER, expect.anything());
+  });
+
   it('should return 201 with the created post', async () => {
     const controller = controllerWith({
       create: vi.fn().mockResolvedValue(CREATED),
     });
 
-    await expect(controller.create(VALID_BODY)).resolves.toEqual(CREATED);
-  });
-
-  it('should return 400 when employerId is missing', async () => {
-    const create = vi.fn();
-    const controller = controllerWith({ create });
-
-    const error = await rejectionOf(
-      controller.create({ ...VALID_BODY, employerId: undefined }),
+    await expect(controller.create(EMPLOYER, VALID_BODY)).resolves.toEqual(
+      CREATED,
     );
-
-    expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
-    expect(create).not.toHaveBeenCalled();
   });
 
   it('should return 400 with a per-field error for an empty title', async () => {
@@ -100,7 +101,7 @@ describe('POST /job-posts', () => {
       ),
     });
 
-    const error = await rejectionOf(controller.create(VALID_BODY));
+    const error = await rejectionOf(controller.create(EMPLOYER, VALID_BODY));
 
     expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
     expect(bodyOf(error)).toMatchObject({
@@ -120,7 +121,7 @@ describe('POST /job-posts', () => {
         ),
     });
 
-    const error = await rejectionOf(controller.create(VALID_BODY));
+    const error = await rejectionOf(controller.create(EMPLOYER, VALID_BODY));
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
     expect(bodyOf(error).errorCode).toBe(JOB_POST_ERRORS.NO_DEFAULT_ADDRESS);
@@ -132,7 +133,7 @@ describe('POST /job-posts', () => {
       create: vi.fn().mockRejectedValue(new Error('DB가 죽었다')),
     });
 
-    const error = await rejectionOf(controller.create(VALID_BODY));
+    const error = await rejectionOf(controller.create(EMPLOYER, VALID_BODY));
 
     expect(error).not.toBeInstanceOf(HttpException);
   });
@@ -246,40 +247,27 @@ describe('PATCH /job-posts/:id', () => {
     });
 
     await expect(
-      controller.update('job_1', {
-        employerId: 'usr_1',
+      controller.update(EMPLOYER, 'job_1', {
         rewardPerPerson: 60_000,
       }),
     ).resolves.toEqual(UPDATED);
   });
 
-  it('should not pass employerId through as a field to change', async () => {
-    // 회원 id는 수정 대상이 아니다. 그대로 넘기면 스키마가 모르는 칸이 섞인다.
+  it('should ignore an employerId in the body and update as the caller', async () => {
+    // 회원 id는 수정 대상도, 요청자가 고를 것도 아니다.
     const update = vi.fn().mockResolvedValue(UPDATED);
     const controller = controllerWith({ update });
 
-    await controller.update('job_1', {
-      employerId: 'usr_1',
+    await controller.update(EMPLOYER, 'job_1', {
+      employerId: 'usr_someone_else',
       rewardPerPerson: 60_000,
     });
 
     expect(update).toHaveBeenCalledWith({
-      employerId: 'usr_1',
+      employerId: EMPLOYER,
       jobPostId: 'job_1',
       patch: { rewardPerPerson: 60_000 },
     });
-  });
-
-  it('should return 400 when employerId is missing', async () => {
-    const update = vi.fn();
-    const controller = controllerWith({ update });
-
-    const error = await rejectionOf(
-      controller.update('job_1', { rewardPerPerson: 60_000 }),
-    );
-
-    expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
-    expect(update).not.toHaveBeenCalled();
   });
 
   it('should return 403 for a post owned by another member', async () => {
@@ -289,9 +277,7 @@ describe('PATCH /job-posts/:id', () => {
         .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_OWNED)),
     });
 
-    const error = await rejectionOf(
-      controller.update('job_1', { employerId: 'usr_1' }),
-    );
+    const error = await rejectionOf(controller.update(EMPLOYER, 'job_1', {}));
 
     expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
   });
@@ -303,9 +289,7 @@ describe('PATCH /job-posts/:id', () => {
         .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_EDITABLE)),
     });
 
-    const error = await rejectionOf(
-      controller.update('job_1', { employerId: 'usr_1' }),
-    );
+    const error = await rejectionOf(controller.update(EMPLOYER, 'job_1', {}));
 
     expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
     expect(bodyOf(error).errorCode).toBe(JOB_POST_ERRORS.NOT_EDITABLE);
@@ -319,7 +303,7 @@ describe('PATCH /job-posts/:id', () => {
     });
 
     const error = await rejectionOf(
-      controller.update('job_gone', { employerId: 'usr_1' }),
+      controller.update(EMPLOYER, 'job_gone', {}),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
@@ -370,9 +354,9 @@ describe('POST /job-posts/:id/cancel', () => {
       cancel: vi.fn().mockResolvedValue(CANCELLED),
     });
 
-    await expect(
-      controller.cancel('job_1', { employerId: 'usr_1' }),
-    ).resolves.toEqual(CANCELLED);
+    await expect(controller.cancel(EMPLOYER, 'job_1')).resolves.toEqual(
+      CANCELLED,
+    );
   });
 
   it('should say whether a penalty was recorded', async () => {
@@ -380,19 +364,9 @@ describe('POST /job-posts/:id/cancel', () => {
       cancel: vi.fn().mockResolvedValue({ ...CANCELLED, penalized: true }),
     });
 
-    const result = await controller.cancel('job_1', { employerId: 'usr_1' });
+    const result = await controller.cancel(EMPLOYER, 'job_1');
 
     expect(result.penalized).toBe(true);
-  });
-
-  it('should return 400 when employerId is missing', async () => {
-    const cancel = vi.fn();
-    const controller = controllerWith({ cancel });
-
-    const error = await rejectionOf(controller.cancel('job_1', {}));
-
-    expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
-    expect(cancel).not.toHaveBeenCalled();
   });
 
   it('should return 403 for a post owned by another member', async () => {
@@ -402,9 +376,7 @@ describe('POST /job-posts/:id/cancel', () => {
         .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_OWNED)),
     });
 
-    const error = await rejectionOf(
-      controller.cancel('job_1', { employerId: 'usr_1' }),
-    );
+    const error = await rejectionOf(controller.cancel(EMPLOYER, 'job_1'));
 
     expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
   });
@@ -418,9 +390,7 @@ describe('POST /job-posts/:id/cancel', () => {
         ),
     });
 
-    const error = await rejectionOf(
-      controller.cancel('job_1', { employerId: 'usr_1' }),
-    );
+    const error = await rejectionOf(controller.cancel(EMPLOYER, 'job_1'));
 
     expect(statusOf(error)).toBe(HttpStatus.CONFLICT);
     expect(bodyOf(error).errorCode).toBe(JOB_POST_ERRORS.INVALID_TRANSITION);
@@ -433,9 +403,7 @@ describe('POST /job-posts/:id/cancel', () => {
         .mockRejectedValue(new JobPostError(JOB_POST_ERRORS.NOT_FOUND)),
     });
 
-    const error = await rejectionOf(
-      controller.cancel('job_gone', { employerId: 'usr_1' }),
-    );
+    const error = await rejectionOf(controller.cancel(EMPLOYER, 'job_gone'));
 
     expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
   });
@@ -450,7 +418,7 @@ describe('POST /job-posts — 제재 중 (#25)', () => {
         .mockRejectedValue(new JobPostError(PENALTY_ERRORS.SUSPENDED)),
     });
 
-    const error = await rejectionOf(controller.create(VALID_BODY));
+    const error = await rejectionOf(controller.create(EMPLOYER, VALID_BODY));
 
     expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
     expect(bodyOf(error).errorCode).toBe(PENALTY_ERRORS.SUSPENDED);

@@ -5,6 +5,7 @@ import {
   canTransitionExchange,
   checkExchangeAmount,
 } from './exchange.js';
+import { requestExchangeSchema } from './exchange.js';
 
 describe('checkExchangeAmount', () => {
   it('should accept exactly 5000', () => {
@@ -51,5 +52,16 @@ describe('canTransitionExchange', () => {
       EXCHANGE_REQUEST_STATUSES.map((to) => canTransitionExchange(from, to)),
     );
     expect(leaving).not.toContain(true);
+  });
+});
+
+describe('requestExchangeSchema', () => {
+  it('should drop userId when the body still carries it', () => {
+    const parsed = requestExchangeSchema.parse({
+      amount: 10_000,
+      userId: 'usr_someone_else',
+    });
+
+    expect(parsed).toEqual({ amount: 10_000 });
   });
 });

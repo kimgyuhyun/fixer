@@ -41,15 +41,39 @@ async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
 }
 
 describe('POST /exchange-requests', () => {
+  it('should request the exchange for the caller when the body carries only amount', async () => {
+    const request = vi.fn().mockResolvedValue(SUMMARY);
+    const controller = controllerWith({ request });
+
+    await controller.request('usr_worker', { amount: 10_000 });
+
+    expect(request).toHaveBeenCalledWith({
+      userId: 'usr_worker',
+      amount: 10_000,
+    });
+  });
+
+  it('should ignore a userId in the body and request for the caller', async () => {
+    const request = vi.fn().mockResolvedValue(SUMMARY);
+    const controller = controllerWith({ request });
+
+    await controller.request('usr_worker', {
+      userId: 'usr_someone_else',
+      amount: 10_000,
+    });
+
+    expect(request).toHaveBeenCalledWith({
+      userId: 'usr_worker',
+      amount: 10_000,
+    });
+  });
+
   it('should respond 201 with the summary when every gate passes', async () => {
     const controller = controllerWith({
       request: vi.fn().mockResolvedValue(SUMMARY),
     });
 
-    const result = await controller.request({
-      userId: 'usr_worker',
-      amount: 10_000,
-    });
+    const result = await controller.request('usr_worker', { amount: 10_000 });
 
     expect(result).toEqual(SUMMARY);
   });
@@ -63,7 +87,7 @@ describe('POST /exchange-requests', () => {
     });
 
     const error = await rejectionOf(
-      controller.request({ userId: 'usr_worker', amount: 4_000 }),
+      controller.request('usr_worker', { amount: 4_000 }),
     );
 
     expect(statusOf(error)).toBe(400);
@@ -80,7 +104,7 @@ describe('POST /exchange-requests', () => {
     });
 
     const error = await rejectionOf(
-      controller.request({ userId: 'usr_worker', amount: 10_000 }),
+      controller.request('usr_worker', { amount: 10_000 }),
     );
 
     expect(statusOf(error)).toBe(409);
@@ -90,11 +114,9 @@ describe('POST /exchange-requests', () => {
   it('should respond 400 with VALIDATION_FAILED when amount is missing or not an integer', async () => {
     const controller = controllerWith({ request: vi.fn() });
 
-    const missing = await rejectionOf(
-      controller.request({ userId: 'usr_worker' }),
-    );
+    const missing = await rejectionOf(controller.request('usr_worker', {}));
     const fractional = await rejectionOf(
-      controller.request({ userId: 'usr_worker', amount: 10_000.5 }),
+      controller.request('usr_worker', { amount: 10_000.5 }),
     );
 
     expect(statusOf(missing)).toBe(400);
@@ -115,7 +137,7 @@ describe('POST /exchange-requests — 잔액이 잠겼을 때', () => {
     });
 
     const error = await rejectionOf(
-      controller.request({ userId: 'usr_worker', amount: 10_000 }),
+      controller.request('usr_worker', { amount: 10_000 }),
     );
 
     expect(statusOf(error)).toBe(409);
