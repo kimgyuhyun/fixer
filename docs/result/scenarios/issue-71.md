@@ -66,9 +66,12 @@ async withdraw(@CurrentMember() userId: string): Promise<void>;
 **탈퇴 화면이 아직 없다.** `apps/web/src/app/my/withdraw/`는 존재하지 않고, `apps/web` 어디에도
 `/api/auth/withdraw`를 부르는 코드가 없다(직접 확인). 이슈 본문의 범위도 `(있으면)`으로 적혀 있다.
 
-그래서 AC4는 **지울 코드가 없는 상태로 이미 충족**이다. 다만 "충족"을 말로만 두지 않고,
-화면이 나중에 생길 때 회원 id를 실어 보내는 코드가 같이 들어오는 것을 막는 테스트 하나로
-못 박는다 (아래 `[정상] 웹` 시나리오).
+그래서 AC4에는 **지울 화면 코드가 없다.** 대신 지금 실제로 남아 있는 것은 **요청 계약의 반대편**
+— 그 몸체에서 회원 id를 꺼내 읽는 컨트롤러다. 보내는 쪽이 없어도 읽는 쪽이 살아 있으면 계약은
+그대로고, 화면이 생기는 순간 다시 실어 보내게 된다.
+
+그래서 AC4를 "탈퇴 요청에 회원 id를 실어 나르는 코드가 저장소에 없다"로 본다. 지금은 컨트롤러가
+걸리고, 나중에 화면이 회원 id를 담으면 그때는 화면이 걸린다 (아래 `[정상] 탈퇴 요청` 시나리오).
 
 ### 이 이슈에서 만들지 않는 것
 
@@ -90,7 +93,7 @@ async withdraw(@CurrentMember() userId: string): Promise<void>;
 - [ ] [정상] `WithdrawalController.withdraw` — should withdraw the token subject when the body carries someone else's userId
 - [ ] [정상] `WithdrawalController.withdraw` — should hand the caller and the current time to the service
 - [ ] [정상] `MemberGuard` on `POST /auth/withdraw` — should renew the access cookie and let the withdrawal continue when the access token expired but the refresh token is alive
-- [ ] [정상] 웹 — should send no member id to `POST /api/auth/withdraw` anywhere in `apps/web`
+- [ ] [정상] 탈퇴 요청 — should leave no code that puts a member id into the withdraw request
 
 ### 경계
 
@@ -116,7 +119,7 @@ async withdraw(@CurrentMember() userId: string): Promise<void>;
 | AC1 쿠키 없는 요청에 `userId`를 담아 보내면 401          | `[예외] should answer 401 when the request carries no cookie even though the body carries a userId`<br>`[예외] …LOGIN_UNAUTHENTICATED rather than VALIDATION_FAILED…`<br>`[예외] …should not deactivate anyone when the request is unauthenticated`<br>`[경계] …should carry MemberGuard on the route`                                            |
 | AC2 본문의 남의 `userId`는 무시되고 토큰 주체가 탈퇴한다 | `[정상] …should withdraw the token subject when the body carries someone else's userId`<br>`[정상] …should hand the caller and the current time to the service`<br>`[경계] …should take the caller as its only parameter…`<br>`[예외] …409 with every blocking reason for the token subject`<br>`[예외] …404 when the token subject is not found` |
 | AC3 Access 만료 + Refresh 유효면 갱신하고 그대로 진행    | `[정상] MemberGuard … should renew the access cookie and let the withdrawal continue…`<br>`[경계] …should not set a renewed cookie when the access token is still valid`<br>`[경계] …should authenticate from the refresh cookie alone when the access cookie is absent`                                                                          |
-| AC4 탈퇴 화면에서 회원 id를 보내는 코드가 사라진다       | `[정상] 웹 — should send no member id to POST /api/auth/withdraw anywhere in apps/web`                                                                                                                                                                                                                                                            |
+| AC4 탈퇴 화면에서 회원 id를 보내는 코드가 사라진다       | `[정상] 탈퇴 요청 — should leave no code that puts a member id into the withdraw request`                                                                                                                                                                                                                                                         |
 
 **AC에 없는데 추가한 시나리오**
 
@@ -128,7 +131,8 @@ async withdraw(@CurrentMember() userId: string): Promise<void>;
 | `[경계] …refresh cookie alone when the access cookie is absent`       | AC3의 이웃 경계다. #69가 같은 이유로 같은 시나리오를 뒀다                                                                               |
 
 **AC당 시나리오 수가 고르지 않은 이유.** AC4는 시나리오가 하나다. 지울 화면이 존재하지 않아
-"사라졌다"를 여러 각도에서 볼 방법이 없다 — 없다는 사실을 한 번 못 박는 것이 할 수 있는 전부다.
-숫자를 맞추려고 같은 단언을 쪼개면 테스트가 아니라 장식이 된다.
+"사라졌다"를 여러 각도에서 볼 방법이 없다 — 요청에 회원 id를 싣는 코드가 저장소에 한 줄도
+없다는 사실을 한 번 못 박는 것이 할 수 있는 전부다. 숫자를 맞추려고 같은 단언을 쪼개면
+테스트가 아니라 장식이 된다.
 
 **커버리지:** AC 4개 / 시나리오 13개 / 미커버 0개
