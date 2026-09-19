@@ -90,25 +90,25 @@ async withdraw(@CurrentMember() userId: string): Promise<void>;
 
 ### 정상
 
-- [ ] [정상] `WithdrawalController.withdraw` — should withdraw the token subject when the body carries someone else's userId
-- [ ] [정상] `WithdrawalController.withdraw` — should hand the caller and the current time to the service
-- [ ] [정상] `MemberGuard` on `POST /auth/withdraw` — should renew the access cookie and let the withdrawal continue when the access token expired but the refresh token is alive
-- [ ] [정상] 탈퇴 요청 — should leave no code that puts a member id into the withdraw request
+- [x] [정상] `WithdrawalController.withdraw` — should withdraw the token subject when the body carries someone else's userId
+- [x] [정상] `WithdrawalController.withdraw` — should hand the caller and the current time to the service
+- [x] [정상] `MemberGuard` on `POST /auth/withdraw` — should renew the access cookie and let the withdrawal continue when the access token expired but the refresh token is alive
+- [x] [정상] 탈퇴 요청 — should leave no code that puts a member id into the withdraw request
 
 ### 경계
 
-- [ ] [경계] `POST /auth/withdraw` — should carry MemberGuard on the route
-- [ ] [경계] `WithdrawalController.withdraw` — should take the caller as its only parameter so nothing from the wire body reaches the service
-- [ ] [경계] `MemberGuard` on `POST /auth/withdraw` — should not set a renewed cookie when the access token is still valid
-- [ ] [경계] `MemberGuard` on `POST /auth/withdraw` — should authenticate from the refresh cookie alone when the access cookie is absent
+- [x] [경계] `POST /auth/withdraw` — should carry MemberGuard on the route
+- [x] [경계] `WithdrawalController.withdraw` — should take the caller as its only parameter so nothing from the wire body reaches the service
+- [x] [경계] `MemberGuard` on `POST /auth/withdraw` — should not set a renewed cookie when the access token is still valid
+- [x] [경계] `MemberGuard` on `POST /auth/withdraw` — should authenticate from the refresh cookie alone when the access cookie is absent
 
 ### 예외
 
-- [ ] [예외] `POST /auth/withdraw` — should answer 401 when the request carries no cookie even though the body carries a userId
-- [ ] [예외] `POST /auth/withdraw` — should answer LOGIN_UNAUTHENTICATED rather than VALIDATION_FAILED when the caller cannot be identified
-- [ ] [예외] `POST /auth/withdraw` — should not deactivate anyone when the request is unauthenticated
-- [ ] [예외] `WithdrawalController.withdraw` — should answer 409 with every blocking reason for the token subject
-- [ ] [예외] `WithdrawalController.withdraw` — should answer 404 when the token subject is not found
+- [x] [예외] `POST /auth/withdraw` — should answer 401 when the request carries no cookie even though the body carries a userId
+- [x] [예외] `POST /auth/withdraw` — should answer LOGIN_UNAUTHENTICATED rather than VALIDATION_FAILED when the caller cannot be identified
+- [x] [예외] `POST /auth/withdraw` — should not deactivate anyone when the request is unauthenticated
+- [x] [예외] `WithdrawalController.withdraw` — should answer 409 with every blocking reason for the token subject
+- [x] [예외] `WithdrawalController.withdraw` — should answer 404 when the token subject is not found
 
 ---
 
