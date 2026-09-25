@@ -31,6 +31,85 @@ const PREREQS = [
 // .git/ 안에 두면 .gitignore를 손댈 필요가 없다.
 const STATE = path.join('.git', 'claude-typecheck.json');
 
+const PRISMA_SCHEMA = 'apps/api/prisma/schema.prisma';
+const PRISMA_GENERATED_MODELS = 'apps/api/src/generated/prisma/models';
+
+/**
+ * 설치가 package.json·schema.prisma보다 뒤처진 상태를 찾는다.
+ *
+ * PREREQS는 "생성물이 있는가"만 본다. 한 번 설치한 뒤 pull만 받으면 생성물은 남아 있으니
+ * 통과하고, 새로 추가된 의존성·모델이 전부 "타입 오류"로 수백 줄 쏟아진다(2026-09-25 실측:
+ * 8/16 설치 그대로 두고 #40 이후 머지분을 받은 체크아웃).
+ * 선언된 패키지 폴더와 모델별 생성 파일이 있는지만 본다. mtime 비교는 git checkout만으로도
+ * 뒤집혀서 쓰지 않는다.
+ */
+function findStaleInstall() {
+  const missingPackages = [];
+  for (const proj of PROJECTS) {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(proj, 'package.json'), 'utf8'),
+    );
+    const declared = {
+      ...manifest.dependencies,
+      ...manifest.devDependencies,
+    };
+    for (const name of Object.keys(declared)) {
+      if (!fs.existsSync(path.join(proj, 'node_modules', name))) {
+        missingPackages.push(name);
+      }
+    }
+  }
+  const schema = fs.readFileSync(PRISMA_SCHEMA, 'utf8');
+  const missingModels = [...schema.matchAll(/^model\s+(\w+)/gm)]
+    .map((match) => match[1])
+    .filter(
+      (model) =>
+        !fs.existsSync(path.join(PRISMA_GENERATED_MODELS, `${model}.ts`)),
+    );
+  return { missingPackages: [...new Set(missingPackages)], missingModels };
+}
+
+function describeStaleInstall({ missingPackages, missingModels }) {
+  const preview = (names) =>
+    names.length > 8
+      ? `${names.slice(0, 8).join(', ')} 외 ${names.length - 8}개`
+      : names.join(', ');
+  const lines = [
+    '설치가 package.json·schema.prisma보다 오래돼 타입체크를 건너뜁니다 (코드 문제 아님).',
+  ];
+  if (missingPackages.length > 0) {
+    lines.push(
+      `- 설치 안 된 패키지 ${missingPackages.length}개: ${preview(missingPackages)}`,
+    );
+  }
+  if (missingModels.length > 0) {
+    lines.push(
+      `- Prisma 클라이언트에 없는 모델 ${missingModels.length}개: ${preview(missingModels)}`,
+    );
+  }
+  lines.push(
+    '`corepack pnpm install` 을 실행하면 해결됩니다. 같은 상태로는 다시 알리지 않습니다.',
+  );
+  return `${lines.join('\n')}\n`;
+}
+
+function readState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE, 'utf8'));
+  } catch {
+    // 상태 파일이 없거나 깨졌으면 없는 것으로 본다.
+    return null;
+  }
+}
+
+function writeState(state) {
+  try {
+    fs.writeFileSync(STATE, JSON.stringify(state));
+  } catch {
+    // 상태를 못 써도 검사 결과는 유효하다. 다음 턴에 한 번 더 돌 뿐이다.
+  }
+}
+
 function readStdin() {
   return new Promise((resolve) => {
     let buf = '';
@@ -81,13 +160,24 @@ async function main() {
 
   for (const p of PREREQS) if (!fs.existsSync(p)) return PASS;
 
-  const fp = fingerprint();
-  let prev = null;
-  try {
-    prev = JSON.parse(fs.readFileSync(STATE, 'utf8'));
-  } catch {
-    // 상태 파일이 없거나 깨졌으면 그냥 검사한다.
+  const prev = readState();
+
+  // 오래된 설치는 코드 문제가 아니라 tsc를 돌려도 소음뿐이다. 한 줄로 한 번만 알린다.
+  // 매 턴 알리면 사람이 훅을 끄고, 아예 안 알리면 타입체크가 꺼진 걸 아무도 모른다.
+  const stale = findStaleInstall();
+  if (stale.missingPackages.length > 0 || stale.missingModels.length > 0) {
+    const staleKey = [
+      ...stale.missingPackages,
+      '|',
+      ...stale.missingModels,
+    ].join(',');
+    if (prev?.staleKey === staleKey) return PASS;
+    writeState({ staleKey, at: new Date().toISOString() });
+    process.stderr.write(describeStaleInstall(stale));
+    return NOTIFY;
   }
+
+  const fp = fingerprint();
   // 소스가 그대로고 지난번에 통과했으면 건너뛴다(매 턴 2.7초 절약).
   // 지난번에 실패했으면 오류가 아직 남아 있으므로 다시 돌려서 보고한다.
   if (prev && prev.fingerprint === fp && prev.ok) return PASS;
@@ -121,14 +211,7 @@ async function main() {
   }
 
   const ok = failures.length === 0;
-  try {
-    fs.writeFileSync(
-      STATE,
-      JSON.stringify({ fingerprint: fp, ok, at: new Date().toISOString() }),
-    );
-  } catch {
-    // 상태를 못 써도 검사 결과는 유효하다. 다음 턴에 한 번 더 돌 뿐이다.
-  }
+  writeState({ fingerprint: fp, ok, at: new Date().toISOString() });
 
   if (ok) return PASS;
   process.stderr.write(
