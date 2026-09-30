@@ -87,35 +87,54 @@ jobs:
     name: E2E
     runs-on: ubuntu-latest
     needs: verify
-    # Playwright를 아직 설치하지 않았다. 설정 파일이 생기면 이 잡이 자동으로 켜진다.
-    if: hashFiles('apps/web/playwright.config.ts') != ''
 
     steps:
       - uses: actions/checkout@v4
+
+      # Playwright를 아직 설치하지 않았다. 설정 파일이 생기면 아래 단계가 자동으로 켜진다.
+      # 잡 단위 if에서는 hashFiles를 쓸 수 없다. 쓰면 GitHub가 이 파일 전체를 무효로 보고
+      # CI가 통째로 돌지 않는다(이 잡을 추가한 2026-08-30부터 실제로 한 번도 돌지 않았다).
+      # 그래서 체크아웃 뒤 단계에서 확인한다.
+      - name: Playwright 설정 확인
+        id: playwright
+        run: |
+          if [ -f apps/web/playwright.config.ts ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "apps/web/playwright.config.ts가 없어 E2E를 건너뛴다"
+          fi
+
       - uses: pnpm/action-setup@v4
+        if: steps.playwright.outputs.enabled == 'true'
       - uses: actions/setup-node@v4
+        if: steps.playwright.outputs.enabled == 'true'
         with:
           node-version: 22
           cache: pnpm
 
       - name: 의존성 설치
+        if: steps.playwright.outputs.enabled == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Prisma Client 생성
+        if: steps.playwright.outputs.enabled == 'true'
         run: pnpm --filter @fixer/api prisma:generate
 
       - name: 빌드
+        if: steps.playwright.outputs.enabled == 'true'
         run: pnpm build
 
       - name: 브라우저 설치
+        if: steps.playwright.outputs.enabled == 'true'
         run: pnpm --filter @fixer/web exec playwright install --with-deps chromium
 
       - name: E2E 실행
+        if: steps.playwright.outputs.enabled == 'true'
         run: pnpm --filter @fixer/web test:e2e
 
       # 실패했을 때 원인을 찾을 증거를 남긴다. E2E는 CI에서 재현이 어렵다.
       - name: 리포트 업로드
-        if: always()
+        if: always() && steps.playwright.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
