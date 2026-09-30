@@ -1,0 +1,29 @@
+# 빌드 컨텍스트는 저장소 루트다(apps/*/Dockerfile).
+# 여기서 빠지는 것은 이미지에 절대 들어가지 않는다 — 특히 비밀값과 서명 PDF.
+
+# 비밀값. .env를 COPY하면 이미지 레이어에 남고, 이미지를 받은 누구나 꺼내 볼 수 있다.
+# **/를 붙여 하위 폴더(apps/api/.env 등)까지 막는다. 없으면 루트에만 적용된다.
+**/.env
+**/.env.*
+!.env.example
+!.env.production.example
+
+# 서명된 동의서 PDF (개발용 저장 위치). 개인정보다.
+**/.storage
+
+# 이미지 안에서 새로 설치·빌드한다. 호스트 것은 OS·CPU가 달라 섞이면 안 된다.
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+**/generated/prisma
+apps/web/next-env.d.ts
+
+# 이미지와 무관한 것
+.git
+.github
+.husky
+.claude
+docs
+coverage
+**/*.log

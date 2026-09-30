@@ -20,6 +20,7 @@ apps/web/next-env.d.ts
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # test / coverage
 coverage/

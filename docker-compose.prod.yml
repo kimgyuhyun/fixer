@@ -1,0 +1,144 @@
+# 운영 구성 — web, api, Postgres와 마이그레이션.
+#
+#   기동:  docker compose -f docker-compose.prod.yml up -d --build
+#   seed:  docker compose -f docker-compose.prod.yml run --rm migrate prisma db seed
+#   종료:  docker compose -f docker-compose.prod.yml down
+#
+# 값은 같은 디렉터리의 .env에서 읽는다(.env.production.example 참고). 필수 값이 비어 있으면
+# compose가 기동 전에 멈춘다(${VAR:?}).
+#
+# 호스트 포트를 하나도 열지 않는다. 80/443과 TLS는 server-infra의 Caddy가 맡고,
+# Caddy는 external 망 `edge`로 fixer-web에만 닿는다. api·Postgres는 fixer 내부 망에만 있다.
+# 로컬에서 edge 망이 없으면:  docker network create --internal --subnet 10.250.0.0/24 edge
+
+# 프로젝트 이름을 고정한다. 개발용 docker-compose.yml(프로젝트 fixer)과 볼륨 이름이
+# 겹치면 한쪽의 `down -v`가 다른 쪽 DB를 지운다.
+name: fixer-prod
+
+x-database-url: &database-url postgresql://${POSTGRES_USER:?POSTGRES_USER required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB required}?schema=public
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # 개발용 docker-compose.yml과 같게 둔다. 초기화 때만 적용된다.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+      TZ: Asia/Seoul
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    mem_limit: 512m
+    cpus: 1.0
+    restart: unless-stopped
+
+  # api보다 먼저 한 번 돌고 끝난다. 실패하면 api가 뜨지 않는다(depends_on 조건).
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    image: ${MIGRATE_IMAGE:-fixer-migrate:local}
+    environment:
+      DATABASE_URL: *database-url
+      # seed가 동의서 템플릿을 저장 볼륨에 복사한다.
+      AGREEMENT_STORAGE_PATH: /data/agreements
+      # seed 전용. 비어 있으면 seed가 관리자를 만들지 않는다.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      TZ: Asia/Seoul
+    volumes:
+      - agreements:/data/agreements
+    networks:
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 0.5
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: ${API_IMAGE:-fixer-api:local}
+    environment:
+      DATABASE_URL: *database-url
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET required}
+      PORTONE_WEBHOOK_SECRET: ${PORTONE_WEBHOOK_SECRET:?PORTONE_WEBHOOK_SECRET required}
+      ACCOUNT_ENCRYPTION_KEY: ${ACCOUNT_ENCRYPTION_KEY:?ACCOUNT_ENCRYPTION_KEY required}
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+      AGREEMENT_STORAGE_PATH: /data/agreements
+      TZ: Asia/Seoul
+      # NODE_ENV=production을 넣지 않는다. ConsoleMailProvider가 운영에서 기동을 막는다
+      # (메일 연동 전까지 인증 코드는 서버 로그로만 나간다 — 이슈 #77 참고).
+    volumes:
+      - agreements:/data/agreements
+    # app: web이 프록시로 들어온다. data: Postgres. egress: 카카오 로컬 등 외부 호출.
+    networks:
+      - app
+      - data
+      - egress
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # /api/health는 DB가 끊겨도 200이라 응답 본문까지 본다.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/api/health').then(r=>r.json()).then(b=>process.exit(b.database==='connected'?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 1.0
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: ${WEB_IMAGE:-fixer-web:local}
+    # Caddy가 이 이름으로 찾는다(server-infra/caddy/Caddyfile).
+    container_name: fixer-web
+    environment:
+      TZ: Asia/Seoul
+    # 인터넷으로 나갈 일이 없어 internal 망에만 붙인다.
+    networks:
+      - app
+      - edge
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: 0.5
+    restart: unless-stopped
+
+networks:
+  app:
+    internal: true
+  data:
+    internal: true
+  egress: {}
+  edge:
+    external: true
+
+volumes:
+  postgres-data:
+  # 서명된 동의서 PDF. 지우면 서명 원본이 사라진다.
+  agreements:
