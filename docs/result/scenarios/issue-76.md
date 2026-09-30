@@ -124,7 +124,7 @@ Postgres까지 arm64로 빈 DB에서 기동 (-p fixer-arm64, DOCKER_DEFAULT_PLAT
 
 위 검증 뒤 migrate 이미지 구조를 바꿨다(아래 "이미지 크기"). 바뀐 migrate로 다시 확인한 것:
 
-- amd64, 빈 DB: `up -d` → migrate `All migrations have been successfully applied.` → api Healthy → `run --rm migrate prisma db seed`(템플릿·카테고리·관리자 seed 로그) → 가입 201 → 서명 201 → 서명 PDF 200. **관리자 로그인은 이 재실행에서 다시 하지 않았다**(구조 변경 전 AC3 증거만 있다)
+- amd64, 빈 DB: `up -d` → migrate `All migrations have been successfully applied.` → api Healthy → `run --rm migrate prisma db seed`(템플릿·카테고리·관리자 seed 로그) → 가입 201 → 서명 201 → 서명 PDF 200. 관리자 로그인은 이 재실행에서 빠졌다가, `/security-review` 뒤 의존성 갱신 회귀 확인(아래 "보안 점검")에서 최종 이미지로 seed → 관리자 로그인 200 → `/api/admin/members` 200을 확인했다
 - arm64, 빈 Postgres: `prisma migrate deploy` → `All migrations have been successfully applied.` seed는 다시 돌리지 않았다
 
 api·web 런타임 이미지의 구성은 바뀌지 않았다.
@@ -165,6 +165,21 @@ docker export 파일시스템 전체  → 값 0건,  .env 파일 없음
 | migrate | 1.61GB | 1.61GB |
 
 migrate는 처음 3GB였다. build 단계를 그대로 이어서 `pnpm fetch`가 받은 워크스페이스 전체 스토어가 남았기 때문이다. 설치 결과(`/app`)만 옮기도록 바꿔 1.61GB가 됐다. 남은 대부분은 api의 devDependency(테스트·린트 도구 포함)다.
+
+## 보안 점검 (`/security-review 76`, 2026-09-30)
+
+🔴 없음. 도달 경로는 추측 대신 **운영 이미지 안에 패키지가 있는가 → api가 기동할 때 로드하는가**로 판정했다.
+
+| 항목                                            | 판정 | 처리                                                                                                           |
+| ----------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------- |
+| `multer@2.2.0` (high 포함 5건)                  | 🟡   | 로드되지만 업로드 라우트가 없어 요청이 닿지 않음. `@nestjs/platform-express` 11.2.6으로 올려 2.4.0 (승인 받음) |
+| `qs@6.15.3` (moderate 2건, 대장 4번)            | 🟡   | 모든 요청이 지나감. 6.16.0으로 올려 대장 4번 해소 (승인 받음)                                                  |
+| `deepmerge-ts`·`mysql2`·`fast-uri` (대장 1~3번) | ⚪   | 이미지에 파일은 있으나 api가 로드하지 않음을 확인해 대장에 추가 기록                                           |
+| `js-yaml`·`undici`·`brace-expansion`            | ⚪   | commitlint·eslint·테스트 도구 전용. 운영 이미지 두 개 어디에도 없음                                            |
+| 인증 코드·재설정 토큰 로그 (대장 코드 1번)      | 🟡   | 이 compose가 의도적으로 `NODE_ENV`를 비움. 비공개 배포 전제로 수용, 로그 크기 제한은 #77에서                   |
+| 컨테이너 하드닝(`cap_drop` 등) 없음             | 🟡   | 보고만 함                                                                                                      |
+
+두 패키지를 올린 뒤 `pnpm test` 1,227건 통과, 이미지 안 버전 확인, compose로 seed → 관리자 로그인 200 → `/api/admin/members` 200 → 가입 201 → 서명 201 → 서명 PDF 200을 다시 확인했다. 에러 응답에 스택이 실리지 않는 것(500은 `Internal server error`만)과, 쿠키 `secure`가 `NODE_ENV`와 무관하게 `true`인 것도 운영 이미지로 확인했다.
 
 ## 알려진 한계 · 후속
 

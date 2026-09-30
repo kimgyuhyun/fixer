@@ -38,17 +38,13 @@
 
 ## 수용 중인 예외
 
-> ⚠️ **현재 4건으로 "3건 이하" 규칙을 넘겼다.** (2026-09-05, `/security-review 17`)
+> **현재 3건.** 한때 4건으로 규칙을 넘겼지만(2026-09-05, `/security-review 17`),
+> 유일한 운영 경로였던 `qs`를 첫 배포 직전에 올려 해소했다(2026-09-30, `/security-review 76`
+> → 아래 "해소됨").
 >
-> 넷 중 셋(1~3번)은 **원인이 하나다** — Prisma CLI와 Nest CLI가 개발 도구 묶음을
+> 남은 셋(1~3번)은 **원인이 하나다** — Prisma CLI와 Nest CLI가 개발 도구 묶음을
 > 통째로 끌어오고, `pnpm audit`이 그걸 운영 트리로 센다. 항목이 늘어난 것이지
 > 위험이 늘어난 것은 아니다.
->
-> 다만 **4번(`qs`)은 성질이 다르다.** 유일하게 `devDependencies`를 거치지 않는
-> 진짜 운영 경로이고, 배포되는 순간 수용 근거가 사라진다. 이 대장을 훑을 때
-> 1~3번을 넘기더라도 **4번은 매번 읽어야 한다.**
->
-> 규칙을 5건으로 늘리지 않고 그대로 둔다. 넘겼다는 사실 자체가 신호다.
 
 ### 1. `deepmerge-ts` < 8.0.0
 
@@ -75,6 +71,10 @@ deepmerge-ts@7.1.5
 `@prisma/config`는 **CLI가 `prisma.config.ts`를 읽을 때** 쓰는 패키지다. 서버가 떠서 쿼리를 처리하는 경로에 있지 않다. `@prisma/client`의 실제 `dependencies`는 `@prisma/client-runtime-utils` 하나뿐이며, `prisma` CLI는 `peerDependencies`로만 선언돼 있다.
 
 `pnpm audit --prod`에도 잡히는 것은 pnpm이 peerDependency를 운영 트리로 세기 때문이지, 런타임에 그 코드가 실행돼서가 아니다.
+
+**운영 이미지에서 확인한 것 (#76, 2026-09-30)** — 1~3번 공통
+
+운영 api 이미지(`apps/api/Dockerfile`의 `runtime`)에는 이 패키지들이 **파일로는 들어 있다.** `pnpm deploy --prod`가 `@prisma/client`의 peer인 `prisma`를 잠금 파일대로 함께 설치하기 때문이다(최상위 `node_modules`와 PATH에는 없다). 그래서 "설치돼 있는가"가 아니라 **"서버가 로드하는가"** 로 확인했다. api를 띄운 채 `Module._load`를 가로채 기록해 보니 `deepmerge-ts`·`mysql2`·`fast-uri`·`ajv`·`prisma`·`@prisma/config`·`@prisma/dev`는 **하나도 로드되지 않았다.** 이 CLI들은 마이그레이션 전용 이미지(`migrate` 타깃)에서만 실행되고, 거기에는 외부 요청이 닿지 않는다(compose `data` 망, 한 번 돌고 종료). 판정은 그대로 ⚪다.
 
 **우리가 직접 올릴 수 없다.** Prisma가 `@prisma/config`를 통해 끌어오는 전이 의존성이라, `pnpm overrides`로 강제하는 방법뿐인데 Prisma CLI가 깨질 위험이 있다.
 
@@ -133,6 +133,9 @@ mysql2
 CLI 전용 의존성이라 마이그레이션·생성 명령을 돌릴 때만 로드된다. 그 명령을 돌리는
 주체는 개발자 본인이므로 외부 입력이 닿지 않는다.
 
+운영 이미지에 파일은 들어 있지만 api가 로드하지 않는 것을 확인했다 — 1번의
+"운영 이미지에서 확인한 것" 참고.
+
 ---
 
 ### 3. `fast-uri` < 3.2.0
@@ -163,51 +166,12 @@ fast-uri@3.1.5
 
 SSRF·host confusion은 **URI를 파싱해 외부로 요청을 보낼 때** 문제가 된다. 빌드 도구가 파싱하는 URI는 우리가 쓴 설정 파일이지 외부 입력이 아니다.
 
+운영 api 이미지 안에서는 `fast-uri ← ajv ← @prisma/streams-local` 갈래로만 들어 있고, api가 로드하지 않는 것을 확인했다 — 1번의 "운영 이미지에서 확인한 것" 참고.
+
 **해소 조건**
 
 - `@nestjs/cli`·`prisma`·`commitlint`가 `ajv`를 `fast-uri >= 3.2.0` 버전으로 올리면 그 버전으로 업데이트한다
 - `ajv`를 운영 코드에서 직접 쓰게 되면 **즉시 재판정한다**
-
----
-
-### 4. `qs` < 6.15.4 — **다른 셋과 성격이 다르다**
-
-| 항목       | 내용                                            |
-| ---------- | ----------------------------------------------- |
-| **심각도** | moderate × 2                                    |
-| **판정**   | 🟡 **수용하되 운영 경로다.** 배포 전 재판정     |
-| **기록일** | 2026-09-05 (`/security-review 17`)              |
-| **재검토** | **첫 배포 직전** 또는 2026-12-05 (먼저 오는 쪽) |
-
-**의존 경로** — 위 셋과 달리 **`devDependencies`를 한 번도 거치지 않는다.**
-
-```
-qs@6.15.3
-└─ body-parser@2.3.0 / express@5.2.1
-   └─ @nestjs/platform-express@11.2.1
-      └─ @fixer/api (dependencies)
-```
-
-**왜 다른가**
-
-express는 **모든 요청의 쿼리스트링을 `qs`로 파싱한다.** 서버가 떠 있는 동안 외부 입력이 매 요청 이 코드를 지나간다. 대장 1~3번이 "개발 PC를 노리는 것"이라면 이건 사용자를 노릴 수 있는 자리다.
-
-- `array-limit bypass via bracket-key comma parsing`
-- `Denial of Service via Attacker Controlled isBuffer`
-
-DoS 쪽은 **인증 없이도 때릴 수 있다.**
-
-**그런데도 지금 안 고치는 이유**
-
-- 우리가 직접 올릴 수 없다. `express@5.2.1`이 `body-parser`를 통해 고정한다
-- `pnpm overrides`로 강제할 수는 있으나 express 5의 요청 파싱을 건드리는 일이라 회귀 범위가 크다. **의존성 변경은 사람이 판단한다**
-- **배포된 환경이 아직 없다.** 지금은 노출 면이 로컬뿐이다
-
-**해소 조건 — 이건 날짜보다 사건이 먼저다**
-
-- **배포하기 전에 반드시 재판정한다.** 배포되는 순간 "노출 면이 없다"는 수용 근거가 사라진다
-- `express`가 `qs >= 6.15.4`를 물고 오는 버전을 내면 그 버전으로 올린다
-- 그 전에 올려야 하면 `pnpm-workspace.yaml`의 `overrides`로 강제하고, `pnpm test`와 실제 쿼리 파싱(`GET /job-posts?...`, `GET /applications/me?...`)을 확인한다
 
 ---
 
@@ -245,7 +209,20 @@ DoS 쪽은 **인증 없이도 때릴 수 있다.**
 
 ## 해소됨
 
-(아직 없음)
+### `qs` < 6.16.0 (moderate × 2) — 첫 배포 직전에 해소
+
+| 항목        | 내용                                                                         |
+| ----------- | ---------------------------------------------------------------------------- |
+| **권고 ID** | GHSA-x5fp-wj9c-mxmx (array-limit bypass), GHSA-4mjr-xmp4-gh2g (isBuffer DoS) |
+| **기록일**  | 2026-09-05 (`/security-review 17`, 🟡 수용 · 배포 전 재판정)                 |
+| **해소일**  | 2026-09-30 (`/security-review 76`)                                           |
+| **조치**    | 잠금 파일만 갱신 `qs 6.15.3 → 6.16.0`. package.json 범위는 그대로다          |
+
+**왜 이때 풀었나** — 수용 근거가 "배포된 환경이 없다"였는데, #76이 서버에 올릴 운영 이미지를 만들었다. `express@5.2.1`(`qs ^6.14.0`)과 `body-parser@2.3.0`(`qs ^6.15.2`)의 범위 안에 고쳐진 6.16.0이 있어서 `overrides` 없이 올라갔다. 기록 당시 적은 "express가 고정한다"는 틀린 판단이었다 — 범위(`^`)였지 고정이 아니었다.
+
+**같은 자리에서 함께 푼 것** — `multer@2.2.0`(high 3건 포함 5건, GHSA-wc9g-mqfw-jrwm 등). `@nestjs/platform-express@11.2.1`이 정확히 `2.2.0`으로 고정하고 있어 대장에 새로 올라올 참이었다. api가 기동할 때 로드되지만 업로드 라우트가 없어 요청으로는 닿지 않았다(multipart 요청이 zod 400으로 끝남). `@nestjs/platform-express`를 기존 범위(`^11`) 안의 11.2.6으로 올리자 `multer 2.4.0`이 됐다.
+
+**확인** — `pnpm install --frozen-lockfile`, `pnpm typecheck` 0건, `pnpm test` 1,227건 통과. 운영 이미지 안의 버전이 `multer@2.4.0`·`qs@6.16.0`이고, compose로 띄워 seed → 관리자 로그인 → 가입 → 서명이 통과했다.
 
 ---
 
