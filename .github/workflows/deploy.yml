@@ -23,6 +23,9 @@ on:
     branches: [main]
   # 시크릿을 넣은 뒤 첫 배포, 또는 main 최신을 다시 배포할 때.
   workflow_dispatch:
+  # [임시] 이슈 77 머지 전 배포 확인용. 이 브랜치에만 있다.
+  push:
+    branches: [test/deploy-77]
 
 # 배포는 겹치지 않게 줄 세운다. 도중에 취소하면 서버가 반쯤 바뀐 상태로 남는다.
 concurrency:
@@ -44,6 +47,7 @@ jobs:
     # 이름의 브랜치로 연 PR의 CI도 통과시킨다. 그래서 CI를 띄운 이벤트가 이 저장소의 push였는지까지 본다.
     # 수동 실행도 다른 브랜치를 고르면 그 브랜치의 이 파일로 배포되므로 main에서만 받는다.
     if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/test/deploy-77') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
