@@ -4,6 +4,9 @@
 #   seed:  docker compose -f docker-compose.prod.yml run --rm migrate prisma db seed
 #   종료:  docker compose -f docker-compose.prod.yml down
 #
+# 운영 서버에서는 빌드하지 않는다. scripts/deploy.sh가 GHCR 이미지를 digest로 고정해
+# API_IMAGE·MIGRATE_IMAGE·WEB_IMAGE에 넣고 `up --no-build`로 띄운다(.github/workflows/deploy.yml).
+#
 # 값은 같은 디렉터리의 .env에서 읽는다(.env.production.example 참고). 필수 값이 비어 있으면
 # compose가 기동 전에 멈춘다(${VAR:?}).
 #
@@ -14,6 +17,22 @@
 # 프로젝트 이름을 고정한다. 개발용 docker-compose.yml(프로젝트 fixer)과 볼륨 이름이
 # 겹치면 한쪽의 `down -v`가 다른 쪽 DB를 지운다.
 name: fixer-prod
+
+# 로그 크기 제한. 기본 json-file 드라이버는 끝없이 쌓인다. api 로그에는 메일 연동 전까지
+# 인증 코드·재설정 토큰이 찍히므로 오래 남기지 않는다. 서비스당 최대 10MB × 3개.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+# node 컨테이너(migrate·api·web)는 비root로 돌고 특권이 필요 없다. 뚫려도 권한을 올리지 못하게 한다.
+# Postgres에는 걸지 않는다 — 공식 이미지가 root로 시작해 데이터 디렉터리 소유권을 맞춘 뒤 권한을 내린다.
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
 
 x-database-url: &database-url postgresql://${POSTGRES_USER:?POSTGRES_USER required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB required}?schema=public
 
@@ -40,6 +59,7 @@ services:
     mem_limit: 512m
     cpus: 1.0
     restart: unless-stopped
+    logging: *logging
 
   # api보다 먼저 한 번 돌고 끝난다. 실패하면 api가 뜨지 않는다(depends_on 조건).
   migrate:
@@ -66,6 +86,8 @@ services:
     mem_limit: 512m
     cpus: 0.5
     restart: 'no'
+    logging: *logging
+    <<: *hardening
 
   api:
     build:
@@ -108,6 +130,8 @@ services:
     mem_limit: 512m
     cpus: 1.0
     restart: unless-stopped
+    logging: *logging
+    <<: *hardening
 
   web:
     build:
@@ -128,6 +152,8 @@ services:
     mem_limit: 384m
     cpus: 0.5
     restart: unless-stopped
+    logging: *logging
+    <<: *hardening
 
 networks:
   app:
