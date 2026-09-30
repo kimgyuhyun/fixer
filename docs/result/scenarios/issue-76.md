@@ -122,7 +122,12 @@ Postgres까지 arm64로 빈 DB에서 기동 (-p fixer-arm64, DOCKER_DEFAULT_PLAT
   가입 → 서명 201 → 로그인 200 → 서명 PDF 200
 ```
 
-위 검증 뒤 migrate 이미지 구조를 바꿨다(아래 "이미지 크기"). 바뀐 migrate는 arm64로 다시 빌드해 빈 arm64 Postgres에 `prisma migrate deploy`를 돌려 `All migrations have been successfully applied.`를 확인했다. api·web 런타임 이미지는 바뀌지 않았다.
+위 검증 뒤 migrate 이미지 구조를 바꿨다(아래 "이미지 크기"). 바뀐 migrate로 다시 확인한 것:
+
+- amd64, 빈 DB: `up -d` → migrate `All migrations have been successfully applied.` → api Healthy → `run --rm migrate prisma db seed`(템플릿·카테고리·관리자 seed 로그) → 가입 201 → 서명 201 → 서명 PDF 200. **관리자 로그인은 이 재실행에서 다시 하지 않았다**(구조 변경 전 AC3 증거만 있다)
+- arm64, 빈 Postgres: `prisma migrate deploy` → `All migrations have been successfully applied.` seed는 다시 돌리지 않았다
+
+api·web 런타임 이미지의 구성은 바뀌지 않았다.
 
 bcrypt는 패키지에 들어 있는 `prebuilds/linux-arm64/bcrypt.glibc.node`를 쓴다(설치 스크립트 없이). **실제 arm64 하드웨어(오라클 A1)에서는 미검증** — #77 배포에서 확인된다.
 
@@ -148,7 +153,7 @@ docker export 파일시스템 전체  → 값 0건,  .env 파일 없음
 
 - 비밀값은 compose의 `${VAR:?}`로만 들어간다. 비어 있으면 기동 전에 멈춘다: `required variable AUTH_JWT_SECRET is missing a value` (exit 1)
 - `.env.production.example`의 비밀값 칸은 전부 비어 있다
-- `.dockerignore`가 `.env*`(예시 파일 제외)와 `.storage`를 빌드 컨텍스트에서 뺀다
+- `.dockerignore`가 `**/.env*`(예시 파일 제외)와 `**/.storage`를 **모든 깊이에서** 빌드 컨텍스트에서 뺀다. 처음엔 루트에만 걸려 있었는데 `ac-verifier`가 짚어 고쳤다. `apps/api/.env`, `apps/web/.env.local`, `apps/api/.storage/`를 임시로 만들고 migrate 이미지와 web 빌드 단계를 빌드해 셋 다 들어가지 않는 것을 확인했다
 - `ADMIN_*`은 migrate 서비스에만, JWT·웹훅·암호화 키는 api에만 넘긴다. web은 비밀값을 받지 않는다
 
 ## 이미지 크기
