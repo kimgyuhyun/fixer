@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MyProfile } from '@fixer/shared';
@@ -203,6 +203,39 @@ describe('MyPage 로그아웃', () => {
     await userEvent.click(screen.getByRole('button', { name: '로그아웃' }));
 
     expect(replace).toHaveBeenCalledWith('/login');
+  });
+});
+
+/**
+ * 미들웨어는 Refresh 쿠키만 있어도 통과시킨다 (#83). 그 Refresh가 서버에서
+ * 폐기됐으면(비밀번호 재설정 등) 여기서 처음으로 401을 받는다.
+ */
+describe('MyPage 로그인 만료', () => {
+  it('should replace the location with /login without showing an error when /api/auth/me answers 401', async () => {
+    mockFetchOnce(401, {
+      errorCode: 'AUTH_UNAUTHENTICATED',
+      message: '로그인이 필요합니다.',
+    });
+    render(<MyPage />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith('/login');
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('should keep the server message and not move when /api/auth/me answers 403', async () => {
+    // 401만 로그인 화면으로 보낸다. 탈퇴 안내까지 지우면 재활성화로 갈 길을 잃는다.
+    mockFetchOnce(403, {
+      errorCode: 'AUTH_ACCOUNT_DEACTIVATED',
+      message: '탈퇴한 계정입니다. 재활성화 후 이용해 주세요.',
+    });
+    render(<MyPage />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '탈퇴한 계정입니다. 재활성화 후 이용해 주세요.',
+    );
+    expect(replace).not.toHaveBeenCalled();
   });
 });
 

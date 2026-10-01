@@ -20,6 +20,9 @@ function requestFor(path: string, cookies: Record<string, string> = {}) {
 
 const LOGGED_IN = { [AUTH_COOKIES.access]: 'access-token-value' };
 
+/** Access 쿠키가 만료돼 지워지고 Refresh 쿠키만 남은 상태 */
+const REFRESH_ONLY = { [AUTH_COOKIES.refresh]: 'refresh-token-value' };
+
 describe('middleware', () => {
   it('should let the request through when the access cookie is present', () => {
     const response = middleware(requestFor('/my', LOGGED_IN));
@@ -35,14 +38,19 @@ describe('middleware', () => {
     expect(response.headers.get('location')).toContain('/login');
   });
 
-  it('should redirect to /login when only the access cookie was cleared but refresh remains', () => {
-    // 로그아웃이 둘 다 지우지만, 하나만 지워진 상태로도 보호는 유지돼야 한다.
-    const response = middleware(
-      requestFor('/my', { [AUTH_COOKIES.refresh]: 'refresh-token-value' }),
-    );
+  it('should let /my through when only the refresh cookie remains', () => {
+    // #5 때는 막았다. Access 쿠키는 15분 뒤 브라우저가 지우지만 API는 Refresh로
+    // 갱신해 응답하므로(#69), 막으면 15분마다 로그인이 풀린 것처럼 보인다. (#83)
+    const response = middleware(requestFor('/my', REFRESH_ONLY));
 
-    expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toContain('/login');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
+  it('should set Cache-Control no-store when a protected page passes with only the refresh cookie', () => {
+    const response = middleware(requestFor('/my', REFRESH_ONLY));
+
+    expect(response.headers.get('cache-control')).toContain('no-store');
   });
 
   it('should not touch public paths such as /signup/account', () => {
@@ -74,5 +82,13 @@ describe('middleware — 관리자 경로 (#35)', () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toContain('/login');
+  });
+
+  it('should let /admin/job-posts through when only the refresh cookie remains', () => {
+    // 관리자인지는 여기서 보지 않는다. AdminGuard가 요청마다 판정한다.
+    const response = middleware(requestFor('/admin/job-posts', REFRESH_ONLY));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
   });
 });

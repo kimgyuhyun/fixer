@@ -31,9 +31,14 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
 
-  // Access 쿠키가 있어야 통과다. Refresh만 남은 상태도 막는다 —
-  // 갱신은 API가 판단할 일이지 화면 접근 허가의 근거가 아니다.
-  if (!request.cookies.has(AUTH_COOKIES.access)) {
+  // 둘 중 하나만 있어도 통과다 (#83). Access 쿠키는 15분 뒤 브라우저가 지우지만
+  // API는 Refresh로 갱신해 응답한다(#69 MemberGuard). 여기는 서명을 검증하지 않으므로
+  // Access가 있다는 것이 Refresh가 있다는 것보다 강한 근거도 아니다. 서버에서
+  // 폐기된 Refresh는 화면이 `/api/auth/me`의 401을 받고 로그인 화면으로 보낸다.
+  if (
+    !request.cookies.has(AUTH_COOKIES.access) &&
+    !request.cookies.has(AUTH_COOKIES.refresh)
+  ) {
     const login = new URL('/login', request.url);
     return NextResponse.redirect(login);
   }

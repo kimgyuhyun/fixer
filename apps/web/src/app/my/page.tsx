@@ -51,6 +51,12 @@ export default function MyPage() {
         const json: unknown = await res.json();
         if (cancelled) return;
 
+        // Refresh 쿠키가 남았지만 서버에서 폐기됐다(비밀번호 재설정 등). 미들웨어는
+        // 쿠키가 있는지만 보므로 여기서 처음 알게 된다. (#83)
+        if (res.status === 401) {
+          router.replace('/login');
+          return;
+        }
         if (!res.ok) {
           setError(messageOf(json));
           return;
@@ -65,6 +71,8 @@ export default function MyPage() {
     return () => {
       cancelled = true;
     };
+    // 들어올 때 한 번만 묻는다. router는 바뀌지 않으므로 deps에 넣을 이유가 없다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
