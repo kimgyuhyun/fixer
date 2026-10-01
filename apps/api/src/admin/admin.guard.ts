@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ADMIN_ERRORS, AUTH_COOKIES, type UserRole } from '@fixer/shared';
 import type { Request, Response } from 'express';
+import { setAuthCookie } from '../auth/auth-cookie';
 import { LoginError, LoginService } from '../auth/login.service';
 import { LoginHttpError } from '../auth/login.http-error';
 
@@ -91,16 +92,11 @@ export class AdminGuard implements CanActivate {
       });
 
       if (session.renewedAccessToken) {
-        // 속성이 `auth-cookie.ts`의 `AUTH_COOKIE_OPTIONS`와 **한 글자도
-        // 달라선 안 된다.** 하나라도 다르면 브라우저가 다른 쿠키로 보고
-        // 갱신분이 원래 것을 덮어쓰지 못한다.
-        response.cookie(AUTH_COOKIES.access, session.renewedAccessToken.value, {
-          httpOnly: true,
-          secure: true,
-          sameSite: 'lax',
-          path: '/',
-          expires: session.renewedAccessToken.expiresAt,
-        });
+        setAuthCookie(
+          response,
+          AUTH_COOKIES.access,
+          session.renewedAccessToken,
+        );
       }
 
       return session.userId;
