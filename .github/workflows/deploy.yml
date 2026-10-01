@@ -1,0 +1,166 @@
+## 배포 — main의 CI가 통과하면 arm64 이미지를 GHCR에 올리고 서버에 SSH로 배포한다.
+##
+## 이미지 3개(api·migrate·web)를 커밋 SHA 태그로 올린다. 서버(scripts/deploy.sh)는 그 태그로
+## 받은 것이 여기서 올린 digest와 같은지 대조한 뒤 digest로 고정해 띄우고, 헬스체크가 실패하면
+## 직전 이미지로 되돌린다.
+##
+## 서버가 aarch64(오라클 A1)라 GitHub의 arm 러너에서 네이티브로 빌드한다(에뮬레이션 없음).
+## 서버에서는 빌드하지 않는다 — record_site와 CPU·메모리를 나눠 쓴다.
+##
+## GHCR 인증은 워크플로의 GITHUB_TOKEN(잡이 끝나면 만료)만 쓴다. 서버에 장기 토큰을 두지 않는다.
+##
+## 필요한 리포 시크릿:
+##   DEPLOY_SSH_KEY      배포 전용 SSH 개인키 (공개키는 서버 ubuntu 계정의 authorized_keys에)
+##   DEPLOY_HOST         서버 주소
+##   DEPLOY_KNOWN_HOSTS  서버 호스트키(ssh-keyscan 결과). 중간자 공격을 막으려고 고정한다
+name: Deploy
+
+on:
+  # CI가 main에서 끝나면 이어서 돈다. 테스트가 깨진 커밋은 이미지도 만들지 않는다.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # 시크릿을 넣은 뒤 첫 배포, 또는 main 최신을 다시 배포할 때.
+  workflow_dispatch:
+
+# 배포는 겹치지 않게 줄 세운다. 도중에 취소하면 서버가 반쯤 바뀐 상태로 남는다.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  # GHCR 이름은 소문자여야 한다. kimgyuhyun/fixer는 이미 소문자다.
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/fixer
+  # workflow_run이면 CI가 검증한 그 커밋, 수동 실행이면 main 최신.
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  build:
+    name: arm64 이미지 → GHCR
+    # main에서 온 것만 받는다. branches 필터는 브랜치 **이름**만 보므로, 포크에서 main이라는
+    # 이름의 브랜치로 연 PR의 CI도 통과시킨다. 그래서 CI를 띄운 이벤트가 이 저장소의 push였는지까지 본다.
+    # 수동 실행도 다른 브랜치를 고르면 그 브랜치의 이 파일로 배포되므로 main에서만 받는다.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    # 방금 올린 이미지의 digest. 서버가 태그로 받은 것과 대조한다(태그는 push 뒤에 바뀔 수 있다).
+    outputs:
+      api: ${{ steps.api.outputs.digest }}
+      migrate: ${{ steps.migrate.outputs.digest }}
+      web: ${{ steps.web.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # api와 migrate는 같은 Dockerfile의 build 단계를 나눠 쓴다. migrate를 먼저 빌드하면
+      # api는 같은 빌더 안의 캐시로 build 단계를 건너뛴다.
+      - name: migrate
+        id: migrate
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: migrate
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-migrate:${{ env.SHA }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: api
+        id: api
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-api:${{ env.SHA }}
+          cache-from: type=gha,scope=api
+
+      - name: web
+        id: web
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-web:${{ env.SHA }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    name: 서버 배포
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # 서버가 GHCR에서 pull할 때 넘겨주는 GITHUB_TOKEN의 권한
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: SSH 설정
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      # 서버에는 저장소를 두지 않는다. 이 커밋의 compose와 배포 스크립트만 올린다.
+      # 그래서 서버에 저장소 읽기 권한이 필요 없고, 이미지와 compose가 늘 같은 커밋이다.
+      - name: compose · 배포 스크립트 전송
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          tar -cf - docker-compose.prod.yml scripts/deploy.sh |
+            ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "ubuntu@$DEPLOY_HOST" \
+              'mkdir -p ~/fixer && tar -xf - -C ~/fixer'
+
+      # 토큰은 표준 입력으로 넘긴다. 명령줄에 두면 서버의 프로세스 목록에 보인다.
+      - name: 배포
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          API_DIGEST: ${{ needs.build.outputs.api }}
+          MIGRATE_DIGEST: ${{ needs.build.outputs.migrate }}
+          WEB_DIGEST: ${{ needs.build.outputs.web }}
+        run: |
+          printf '%s\n' "$GHCR_TOKEN" |
+            ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "ubuntu@$DEPLOY_HOST" \
+              "TAG='$SHA' GHCR_USER='$GHCR_USER' API_DIGEST='$API_DIGEST' MIGRATE_DIGEST='$MIGRATE_DIGEST' WEB_DIGEST='$WEB_DIGEST' bash ~/fixer/scripts/deploy.sh"
+
+      # 서버 안 헬스체크는 Caddy를 거치지 않는다. 밖에서 실제 주소로 한 번 더 본다.
+      - name: 외부 확인
+        run: |
+          curl -fsS -o /dev/null --max-time 15 https://fixer.kozow.com/
+          curl -fsS --max-time 15 https://fixer.kozow.com/api/health | grep -q '"database":"connected"'
+          echo "https://fixer.kozow.com OK"
