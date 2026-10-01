@@ -1,0 +1,63 @@
+/*
+ * 이슈 #84 · 모든 화면의 공통 헤더.
+ *
+ * 왼쪽에 홈 링크, 오른쪽에 로그인 상태와 알림 벨.
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ */
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.home {
+  display: inline-flex;
+  align-items: center;
+
+  /* 터치 목표 최소 44px */
+  min-height: 44px;
+
+  color: var(--color-text);
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* 긴 이름이 버튼을 밀어내지 않게 줄인다 */
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: none;
+  background: none;
+
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.9375rem;
+  text-decoration: none;
+  cursor: pointer;
+}

@@ -3,7 +3,7 @@
 > GitHub: https://github.com/kimgyuhyun/fixer/issues/84
 > PRD: `docs/result/prd/auth-member.md`
 > 담당: B · 선행: 없음 (#82·#83 머지됨)
-> 상태: 시그니처 확정 / 시나리오 도출 완료 (2026-10-01)
+> 상태: 시그니처 확정 / 시나리오 도출 완료 / Green 완료 (2026-10-01)
 
 ---
 
@@ -148,33 +148,33 @@ export default function Home(): JSX.Element; // Props 없음
 
 ### 정상
 
-- [ ] [정상] `getMyProfile` — should return role ADMIN when the member is an admin
-- [ ] [정상] `getMyProfile` — should return role USER when the member is a regular member
-- [ ] [정상] `Home` — should show login and signup links when /api/auth/me answers 401
-- [ ] [정상] `Home` — should show neither the developer feature list nor the connection status when logged out
-- [ ] [정상] `Home` — should show the member name and the main menu links when /api/auth/me answers 200
-- [ ] [정상] `Home` — should show a to-do link to /signup/address when the address is null
-- [ ] [정상] `Home` — should show a to-do link to /signup/agreement when /api/agreements/mine answers 204
-- [ ] [정상] `Home` — should show the admin menu links when the role is ADMIN
-- [ ] [정상] `SiteHeader` — should link fixer to the home page
-- [ ] [정상] `SiteHeader` — should show the member name and a logout button when /api/auth/me answers 200
-- [ ] [정상] `SiteHeader` — should show a login link to /login when /api/auth/me answers 401
-- [ ] [정상] `SiteHeader` — should post /api/auth/logout then refresh then replace to /login when logout is clicked
+- [x] [정상] `getMyProfile` — should return role ADMIN when the member is an admin
+- [x] [정상] `getMyProfile` — should return role USER when the member is a regular member
+- [x] [정상] `Home` — should show login and signup links when /api/auth/me answers 401
+- [x] [정상] `Home` — should show neither the developer feature list nor the connection status when logged out
+- [x] [정상] `Home` — should show the member name and the main menu links when /api/auth/me answers 200
+- [x] [정상] `Home` — should show a to-do link to /signup/address when the address is null
+- [x] [정상] `Home` — should show a to-do link to /signup/agreement when /api/agreements/mine answers 204
+- [x] [정상] `Home` — should show the admin menu links when the role is ADMIN
+- [x] [정상] `SiteHeader` — should link fixer to the home page
+- [x] [정상] `SiteHeader` — should show the member name and a logout button when /api/auth/me answers 200
+- [x] [정상] `SiteHeader` — should show a login link to /login when /api/auth/me answers 401
+- [x] [정상] `SiteHeader` — should post /api/auth/logout then refresh then replace to /login when logout is clicked
 
 ### 경계
 
-- [ ] [경계] `Home` — should show no to-do section when the address exists and the agreement is signed
-- [ ] [경계] `Home` — should show no agreement to-do when /api/agreements/mine answers neither 200 nor 204
-- [ ] [경계] `Home` — should show neither login links nor the menu while /api/auth/me is pending
-- [ ] [경계] `SiteHeader` — should ask /api/auth/me again when the path changes
-- [ ] [경계] `SiteHeader` — should show neither the name nor the login link while /api/auth/me is pending
+- [x] [경계] `Home` — should show no to-do section when the address exists and the agreement is signed
+- [x] [경계] `Home` — should show no agreement to-do when /api/agreements/mine answers neither 200 nor 204
+- [x] [경계] `Home` — should show neither login links nor the menu while /api/auth/me is pending
+- [x] [경계] `SiteHeader` — should ask /api/auth/me again when the path changes
+- [x] [경계] `SiteHeader` — should show neither the name nor the login link while /api/auth/me is pending
 
 ### 예외
 
-- [ ] [예외] `Home` — should not show the admin menu when the role is USER
-- [ ] [예외] `Home` — should show login and signup links when /api/auth/me fails with 500
-- [ ] [예외] `SiteHeader` — should show the login link when /api/auth/me fails with a network error
-- [ ] [예외] `SiteHeader` — should still refresh and replace to /login when the logout request fails
+- [x] [예외] `Home` — should not show the admin menu when the role is USER
+- [x] [예외] `Home` — should show login and signup links when /api/auth/me fails with 500
+- [x] [예외] `SiteHeader` — should show the login link when /api/auth/me fails with a network error
+- [x] [예외] `SiteHeader` — should still refresh and replace to /login when the logout request fails
 
 ---
 

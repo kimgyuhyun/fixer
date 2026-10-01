@@ -73,7 +73,7 @@ const PROFILE = {
   email: 'worker@example.com',
   name: '김구직',
   address: null,
-  role: 'USER',
+  role: 'USER' as const,
   createdAt: NOW.toISOString(),
 };
 
