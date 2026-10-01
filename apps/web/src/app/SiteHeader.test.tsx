@@ -32,12 +32,17 @@ type Reply = { status: number; body?: unknown } | 'pending' | 'network-error';
 /**
  * 헤더는 요청을 셋 보낸다 — 내 정보, 알림(벨), 로그아웃. 주소로 갈라 답한다.
  * 알림은 이 테스트의 관심이 아니므로 빈 목록으로 둔다.
+ *
+ * `me`에 배열을 주면 묻는 차례마다 다음 응답을 준다 (마지막 것은 반복).
+ * 화면을 옮기는 사이에 로그인·로그아웃한 상황을 흉내 낸다.
  */
-function mockServer(replies: { me: Reply; logout?: Reply }) {
+function mockServer(replies: { me: Reply | Reply[]; logout?: Reply }) {
+  const meReplies = Array.isArray(replies.me) ? replies.me : [replies.me];
+  let meCalls = 0;
   const fetchMock = vi.fn((url: string) => {
     const reply =
       url === '/api/auth/me'
-        ? replies.me
+        ? meReplies[Math.min(meCalls++, meReplies.length - 1)]!
         : url === '/api/auth/logout'
           ? (replies.logout ?? { status: 204 })
           : { status: 200, body: { items: [], unreadCount: 0 } };
@@ -147,6 +152,37 @@ describe('SiteHeader', () => {
     });
   });
 
+  it('should replace the login link with the member name and logout button when the path changes and /api/auth/me then answers 200', async () => {
+    mockServer({ me: [UNAUTHENTICATED, { status: 200, body: profile() }] });
+    const { rerender } = render(<SiteHeader />);
+    await screen.findByRole('link', { name: '로그인' });
+
+    path.current = '/my';
+    rerender(<SiteHeader />);
+
+    expect(
+      await screen.findByRole('button', { name: '로그아웃' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(NAME)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: '로그인' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('should replace the member name with the login link when the path changes and /api/auth/me then answers 401', async () => {
+    mockServer({ me: [{ status: 200, body: profile() }, UNAUTHENTICATED] });
+    const { rerender } = render(<SiteHeader />);
+    await screen.findByText(NAME);
+
+    path.current = '/login';
+    rerender(<SiteHeader />);
+
+    expect(
+      await screen.findByRole('link', { name: '로그인' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(NAME)).not.toBeInTheDocument();
+  });
+
   it('should show neither the name nor the login link while /api/auth/me is pending', async () => {
     const fetchMock = mockServer({ me: 'pending' });
     render(<SiteHeader />);
@@ -154,6 +190,7 @@ describe('SiteHeader', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith('/api/auth/me');
     });
+    expect(screen.queryByText(NAME)).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: '로그인' }),
     ).not.toBeInTheDocument();

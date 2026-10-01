@@ -92,6 +92,23 @@ describe('Home', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/health');
   });
 
+  it('should not show any main menu link when /api/auth/me answers 401', async () => {
+    mockServer({ me: UNAUTHENTICATED });
+    render(<Home />);
+    await screen.findByRole('link', { name: '로그인' });
+
+    const shown = [
+      '공고 목록',
+      '공고 등록',
+      '포인트',
+      '환전 계좌',
+      '마이페이지',
+    ]
+      .map((name) => screen.queryByRole('link', { name }))
+      .filter((link) => link !== null);
+    expect(shown).toEqual([]);
+  });
+
   it('should show the member name and the main menu links when /api/auth/me answers 200', async () => {
     mockServer({ me: { status: 200, body: profile() } });
     render(<Home />);
@@ -201,9 +218,10 @@ describe('Home', () => {
     render(<Home />);
     await memberScreen();
 
-    expect(
-      screen.queryByRole('link', { name: '회원 관리' }),
-    ).not.toBeInTheDocument();
+    const shown = ['회원 관리', '공고 관리', '환전 관리', '제재 관리']
+      .map((name) => screen.queryByRole('link', { name }))
+      .filter((link) => link !== null);
+    expect(shown).toEqual([]);
   });
 
   it('should show login and signup links when /api/auth/me fails with 500', async () => {
