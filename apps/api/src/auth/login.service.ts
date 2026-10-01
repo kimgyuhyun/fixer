@@ -72,11 +72,25 @@ export interface AuthUserStore {
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
 }
 
-/** 로그인이 발급한 것. 컨트롤러가 이걸 쿠키 두 개로 옮긴다 */
-export interface IssuedSession {
-  user: SignedIn;
+/** 세션 하나를 이루는 토큰 두 개. 컨트롤러가 쿠키 두 개로 옮긴다 */
+export interface SessionTokens {
   accessToken: { value: string; expiresAt: Date };
   refreshToken: { value: string; expiresAt: Date };
+}
+
+/** 로그인이 발급한 것. 컨트롤러가 이걸 쿠키 두 개로 옮긴다 */
+export interface IssuedSession extends SessionTokens {
+  user: SignedIn;
+}
+
+/**
+ * 마이페이지에 보일 기본 주소. (#82)
+ *
+ * 가장 먼저 등록한 주소의 도로명, 비어 있으면 지번이다. #12 공고의 근무 주소
+ * 기본값과 같은 규칙이다 (ADR-AUTH-2 — 회원당 주소가 여럿일 수 있다).
+ */
+export interface ProfileAddressReader {
+  defaultAddressOf(userId: string): Promise<string | null>;
 }
 
 /**
@@ -121,7 +135,32 @@ export class LoginService {
     private readonly users: AuthUserStore,
     private readonly refreshTokens: RefreshTokenStore,
     private readonly accessTokens: AccessTokenSigner,
+    private readonly addresses: ProfileAddressReader,
   ) {}
+
+  /** Refresh 행을 하나 추가하고 토큰 두 개를 돌려준다 (ADR-AUTH-5) */
+  async startSession(
+    userId: string,
+    now: Date = new Date(),
+  ): Promise<SessionTokens> {
+    const accessToken = this.accessTokens.sign(userId, now);
+    const refreshToken = {
+      value: randomBytes(REFRESH_TOKEN_BYTES).toString('hex'),
+      expiresAt: new Date(
+        now.getTime() + AUTH_TOKEN_RULES.refreshTokenDays * DAY_MS,
+      ),
+    };
+
+    // 세션마다 행을 추가한다. 덮어쓰지 않으므로 휴대폰과 PC에 동시에
+    // 로그인할 수 있다. (ADR-AUTH-1)
+    await this.refreshTokens.create({
+      userId,
+      tokenHash: hashToken(refreshToken.value),
+      expiresAt: refreshToken.expiresAt,
+    });
+
+    return { accessToken, refreshToken };
+  }
 
   /** 조회 → 비밀번호 대조 → 토큰 두 개 발급 → Refresh 행 추가 */
   async login(
@@ -154,26 +193,9 @@ export class LoginService {
       throw new LoginError(LOGIN_ERRORS.ACCOUNT_DEACTIVATED);
     }
 
-    const accessToken = this.accessTokens.sign(user.id, now);
-    const refreshToken = {
-      value: randomBytes(REFRESH_TOKEN_BYTES).toString('hex'),
-      expiresAt: new Date(
-        now.getTime() + AUTH_TOKEN_RULES.refreshTokenDays * DAY_MS,
-      ),
-    };
-
-    // 로그인마다 행을 추가한다. 덮어쓰지 않으므로 휴대폰과 PC에 동시에
-    // 로그인할 수 있다. (ADR-AUTH-1)
-    await this.refreshTokens.create({
-      userId: user.id,
-      tokenHash: hashToken(refreshToken.value),
-      expiresAt: refreshToken.expiresAt,
-    });
-
     return {
       user: { id: user.id, email: user.email, name: user.name },
-      accessToken,
-      refreshToken,
+      ...(await this.startSession(user.id, now)),
     };
   }
 
@@ -216,8 +238,7 @@ export class LoginService {
       id: user.id,
       email: user.email,
       name: user.name,
-      // 주소는 #3이 채운다. 이 이슈는 자리만 만들어 둔다.
-      address: null,
+      address: await this.addresses.defaultAddressOf(user.id),
       createdAt: user.createdAt.toISOString(),
     };
   }

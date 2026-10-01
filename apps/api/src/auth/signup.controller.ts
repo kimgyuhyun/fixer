@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Res,
 } from '@nestjs/common';
 import {
   SIGNUP_ERRORS,
@@ -13,25 +14,39 @@ import {
   type SignedUp,
   type SignupErrorCode,
 } from '@fixer/shared';
+import type { Response } from 'express';
 import { ZodError } from 'zod';
+import { setSessionCookies } from './auth-cookie';
+import { LoginService } from './login.service';
 import { SignupError, SignupService } from './signup.service';
 import { SignupHttpError } from './signup.http-error';
 
 @Controller('auth/signup')
 export class SignupController {
-  constructor(private readonly service: SignupService) {}
+  constructor(
+    private readonly service: SignupService,
+    private readonly logins: LoginService,
+  ) {}
 
   /** 가입 */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async signup(@Body() body: unknown): Promise<SignedUp> {
+  async signup(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<SignedUp> {
     try {
       // 컨트롤러가 입력을 먼저 검증한다. 서비스는 이미 검증된 값을 받는다.
       const input = signupRequestSchema.parse(body);
       const result = await this.service.signup(input);
       // 응답도 공유 스키마로 파싱한다. 서비스가 실수로 해시를 얹어 보내도
       // 스키마에 자리가 없어 여기서 떨어져 나간다.
-      return signedUpSchema.parse(result);
+      const created = signedUpSchema.parse(result);
+
+      // 가입이 성공한 **뒤에만** 세션을 연다. 주소·서명 단계가 이 세션으로
+      // 회원을 판정한다 (ADR-AUTH-5).
+      setSessionCookies(res, await this.logins.startSession(created.id));
+      return created;
     } catch (error) {
       throw toHttpError(error);
     }

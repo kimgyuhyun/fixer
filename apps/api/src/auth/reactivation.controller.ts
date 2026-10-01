@@ -7,6 +7,7 @@ import {
   HttpStatus,
   NotFoundException,
   Post,
+  Res,
 } from '@nestjs/common';
 import {
   REACTIVATION_ERRORS,
@@ -14,7 +15,10 @@ import {
   signedUpSchema,
   type SignedUp,
 } from '@fixer/shared';
+import type { Response } from 'express';
 import { ZodError } from 'zod';
+import { setSessionCookies } from './auth-cookie';
+import { LoginService } from './login.service';
 import { ReactivationError, ReactivationService } from './reactivation.service';
 
 /**
@@ -25,16 +29,26 @@ import { ReactivationError, ReactivationService } from './reactivation.service';
  */
 @Controller('auth/reactivate')
 export class ReactivationController {
-  constructor(private readonly service: ReactivationService) {}
+  constructor(
+    private readonly service: ReactivationService,
+    private readonly logins: LoginService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.OK)
-  async reactivate(@Body() body: unknown): Promise<SignedUp> {
+  async reactivate(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<SignedUp> {
     try {
       const input = reactivateRequestSchema.parse(body);
-      return signedUpSchema.parse(
+      const revived = signedUpSchema.parse(
         await this.service.reactivate(input, new Date()),
       );
+
+      // 되살린 화면은 곧장 마이페이지로 간다. 가입과 같이 세션을 연다 (ADR-AUTH-5).
+      setSessionCookies(res, await this.logins.startSession(revived.id));
+      return revived;
     } catch (error) {
       throw toHttpError(error);
     }

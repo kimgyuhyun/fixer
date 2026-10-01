@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { hash } from 'bcrypt';
 import { AUTH_TOKEN_RULES, LOGIN_ERRORS } from '@fixer/shared';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -5,6 +6,7 @@ import { AccessTokenSigner } from './access-token';
 import {
   LoginService,
   type AuthUserStore,
+  type ProfileAddressReader,
   type RefreshTokenRecord,
   type RefreshTokenStore,
 } from './login.service';
@@ -119,11 +121,28 @@ class FakeRefreshTokenStore implements RefreshTokenStore {
   }
 }
 
-function setup(members: UserRecord[] = [member()]) {
+/** 회원 id → 기본 주소. 고르는 규칙(가장 먼저 등록한 것)은 Prisma 구현체의 몫이다 */
+class FakeProfileAddressReader implements ProfileAddressReader {
+  constructor(private readonly byMember: Record<string, string> = {}) {}
+
+  defaultAddressOf(userId: string): Promise<string | null> {
+    return Promise.resolve(this.byMember[userId] ?? null);
+  }
+}
+
+function setup(
+  members: UserRecord[] = [member()],
+  addresses: Record<string, string> = {},
+) {
   const users = new FakeUserStore(members);
   const refreshTokens = new FakeRefreshTokenStore();
   const accessTokens = new AccessTokenSigner({ secret: SECRET });
-  const service = new LoginService(users, refreshTokens, accessTokens);
+  const service = new LoginService(
+    users,
+    refreshTokens,
+    accessTokens,
+    new FakeProfileAddressReader(addresses),
+  );
   return { service, users, refreshTokens, accessTokens };
 }
 
@@ -424,13 +443,89 @@ describe('getMyProfile', () => {
     expect(profile).toMatchObject({ email: EMAIL, name: NAME });
   });
 
-  it('should return a null address until the address feature exists', async () => {
-    const { service } = setup();
+  it('should return the default address from the address reader when the member has one', async () => {
+    const { service } = setup([member()], {
+      usr_1: '서울 강남구 테헤란로 152',
+    });
 
     const profile = await service.getMyProfile('usr_1');
 
-    // 주소 컬럼은 #3이 들고 온다. 그전까지 자리만 있고 값은 없다.
+    expect(profile.address).toBe('서울 강남구 테헤란로 152');
+  });
+
+  it('should return a null address when the member registered no address', async () => {
+    const { service } = setup([member()], {});
+
+    const profile = await service.getMyProfile('usr_1');
+
+    // 주소는 가입 3단계에서 건너뛸 수 있다. 마이페이지가 "주소 등록하기"를 띄운다.
     expect(profile.address).toBeNull();
+  });
+});
+
+/**
+ * 가입·재활성화·로그인이 함께 쓰는 세션 발급. (#82, ADR-AUTH-5)
+ *
+ * 비밀번호 대조 없이 회원 id만으로 세션을 연다 — 가입은 방금 비밀번호를
+ * 정한 사람이므로 대조할 것이 없다. 그래서 컨트롤러가 **성공한 뒤에만** 부른다.
+ */
+describe('startSession', () => {
+  it('should return an access token and a refresh token when given a member id', async () => {
+    const { service, accessTokens } = setup();
+
+    const session = await service.startSession('usr_1', NOW);
+
+    expect({
+      subject: accessTokens.verify(session.accessToken.value, NOW)?.sub,
+      refresh: session.refreshToken.value,
+    }).toEqual({
+      subject: 'usr_1',
+      refresh: expect.stringMatching(/^[0-9a-f]{64}$/) as unknown,
+    });
+  });
+
+  it('should store one refresh row holding the hash of the returned refresh token, not the token itself', async () => {
+    const { service, refreshTokens } = setup();
+
+    const session = await service.startSession('usr_1', NOW);
+
+    expect(refreshTokens.rows).toEqual([
+      expect.objectContaining({
+        userId: 'usr_1',
+        tokenHash: createHash('sha256')
+          .update(session.refreshToken.value)
+          .digest('hex'),
+      }),
+    ]);
+  });
+
+  it('should set the refresh expiry exactly 14 days and the access expiry exactly 15 minutes after now', async () => {
+    const { service, refreshTokens } = setup();
+
+    const session = await service.startSession('usr_1', NOW);
+
+    expect({
+      access: session.accessToken.expiresAt.getTime(),
+      refresh: session.refreshToken.expiresAt.getTime(),
+      stored: refreshTokens.rows[0]?.expiresAt.getTime(),
+    }).toEqual({
+      access: NOW.getTime() + AUTH_TOKEN_RULES.accessTokenMinutes * MINUTE_MS,
+      refresh: NOW.getTime() + AUTH_TOKEN_RULES.refreshTokenDays * DAY_MS,
+      stored: NOW.getTime() + AUTH_TOKEN_RULES.refreshTokenDays * DAY_MS,
+    });
+  });
+
+  it("should add a new refresh row without deleting the member's existing rows when the member already has a session", async () => {
+    const { service, refreshTokens } = setup();
+    await service.login({ email: EMAIL, password: PASSWORD }, NOW);
+
+    await service.startSession('usr_1', NOW);
+
+    // ADR-AUTH-1. 가입도 "로그인 한 번"이다. 덮어쓰면 다른 기기가 끊긴다.
+    expect(refreshTokens.rows.map((row) => row.userId)).toEqual([
+      'usr_1',
+      'usr_1',
+    ]);
   });
 });
 

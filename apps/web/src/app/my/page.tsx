@@ -10,12 +10,14 @@ import styles from './page.module.css';
 /**
  * 이슈 #4의 마이페이지.
  *
- * 주소는 #3(주소 등록)이 채운다. 그전까지는 "아직 등록하지 않았습니다"로 둔다.
+ * 가입을 중간에 멈췄으면(주소·동의서) 그 화면으로 가는 링크를 띄운다. (#82)
  */
 export default function MyPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 동의서를 서명했는가. 묻는 중이거나 묻지 못했으면 null — 링크를 띄우지 않는다 */
+  const [agreementSigned, setAgreementSigned] = useState<boolean | null>(null);
 
   /**
    * 로그아웃. 서버가 쿠키와 Refresh 행을 지운다.
@@ -65,6 +67,27 @@ export default function MyPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAgreement() {
+      try {
+        // 서명하지 않았으면 204다. 본문이 없으므로 상태 코드만 본다.
+        const res = await fetch('/api/agreements/mine');
+        if (cancelled) return;
+        if (res.status === 200) setAgreementSigned(true);
+        else if (res.status === 204) setAgreementSigned(false);
+      } catch {
+        // 링크 하나 못 띄울 뿐이다. 화면은 그대로 둔다.
+      }
+    }
+
+    void loadAgreement();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (error !== null) {
     return (
       <main className={styles.page}>
@@ -108,13 +131,34 @@ export default function MyPage() {
           >
             {profile.address ?? '아직 등록하지 않았습니다'}
           </dd>
+          {profile.address === null && (
+            <dd className={styles.empty}>
+              <Link className={styles.link} href="/signup/address">
+                주소 등록하기
+              </Link>
+            </dd>
+          )}
         </div>
+        {agreementSigned !== null && (
+          <div className={styles.row}>
+            <dt className={styles.label}>동의서</dt>
+            <dd className={styles.value}>
+              {agreementSigned ? (
+                <Link className={styles.link} href="/my/agreement">
+                  내 동의서 보기
+                </Link>
+              ) : (
+                <Link className={styles.link} href="/signup/agreement">
+                  동의서 서명하기
+                </Link>
+              )}
+            </dd>
+          </div>
+        )}
       </dl>
 
       {/* 구인자 평점과 구직자 평점은 별개다 (#26, spec §2.1) */}
       <MemberRating userId={profile.id} />
-
-      <p className={styles.note}>주소 등록은 이슈 #3에서 만듭니다.</p>
 
       <button className={styles.secondary} type="button" onClick={logout}>
         로그아웃

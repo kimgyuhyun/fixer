@@ -130,7 +130,8 @@ describe('POST /agreements', () => {
     });
 
     const body = await controller.sign(
-      { userId: 'usr_1', signaturePngBase64: TINY_PNG_BASE64 },
+      'usr_1',
+      { signaturePngBase64: TINY_PNG_BASE64 },
       fakeRequest(),
     );
 
@@ -150,8 +151,8 @@ describe('POST /agreements', () => {
     const controller = controllerWith({ sign });
 
     await controller.sign(
+      'usr_1',
       {
-        userId: 'usr_1',
         signaturePngBase64: TINY_PNG_BASE64,
         ip: '10.0.0.1',
         userAgent: 'forged-agent',
@@ -168,10 +169,7 @@ describe('POST /agreements', () => {
     const controller = controllerWith({ sign: vi.fn() });
 
     const error = await rejectionOf(
-      controller.sign(
-        { userId: 'usr_1', signaturePngBase64: '' },
-        fakeRequest(),
-      ),
+      controller.sign('usr_1', { signaturePngBase64: '' }, fakeRequest()),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
@@ -191,7 +189,8 @@ describe('POST /agreements', () => {
 
     const error = await rejectionOf(
       controller.sign(
-        { userId: 'usr_1', signaturePngBase64: TINY_PNG_BASE64 },
+        'usr_1',
+        { signaturePngBase64: TINY_PNG_BASE64 },
         fakeRequest(),
       ),
     );

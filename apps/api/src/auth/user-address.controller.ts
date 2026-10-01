@@ -4,8 +4,8 @@ import {
   Controller,
   HttpCode,
   HttpStatus,
-  Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ADDRESS_ERRORS,
@@ -15,26 +15,27 @@ import {
   type RegisteredAddress,
 } from '@fixer/shared';
 import { ZodError } from 'zod';
+import { CurrentMember, MemberGuard } from './member.guard';
 import { UserAddressError, UserAddressService } from './user-address.service';
 import { UserAddressHttpError } from './user-address.http-error';
 
 /**
- * 주소 등록. 가입 흐름 4단계(`spec-fixed.md` §2.2)에서 불린다.
+ * 주소 등록. 가입 흐름 4단계(`spec-fixed.md` §2.2)와 마이페이지에서 불린다.
  *
- * FIXME(#4): `userId`를 경로에서 그대로 받는다. 주소 입력은 로그인 이전
- * 단계라 아직 토큰이 없기 때문이다(#3의 선행은 #2이지 #4가 아니다).
- * #4가 인증 가드를 들고 오면 경로 대신 토큰의 주체를 쓴다.
- * `docs/result/security-exceptions.md`에 기록돼 있다.
+ * 회원은 경로가 아니라 **세션의 주체**다. 가입이 성공하면 세션이 열리므로
+ * (ADR-AUTH-5) 가입 직후에도 가드를 지난다. 경로에 `:userId`를 남기지 않는
+ * 이유는, 남겨 두면 "경로의 id는 무시된다"는 함정이 되기 때문이다. (#82)
  */
-@Controller('members/:userId/addresses')
+@Controller('members/me/addresses')
 export class UserAddressController {
   constructor(private readonly service: UserAddressService) {}
 
   /** 주소 등록 */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(MemberGuard)
   async register(
-    @Param('userId') userId: string,
+    @CurrentMember() userId: string,
     @Body() body: unknown,
   ): Promise<RegisteredAddress> {
     try {

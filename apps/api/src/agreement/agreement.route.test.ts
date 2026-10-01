@@ -24,10 +24,10 @@ import { AgreementError, type AgreementService } from './agreement.service';
  * `agreement.controller.test.ts`는 컨트롤러 혼자를 보고, 이 파일은 회원 판정이
  * 실제로 라우트에 걸려 있는지와 **가드 → 핸들러 순서**를 본다.
  *
- * 컨트롤러 통째로 붙일 수 없는 컨트롤러다. 서명(`POST`)은 가입 5단계에서
- * 일어나 그 시점에 세션이 없고(`spec-fixed.md` §2.2), 템플릿은 가입 전에 읽는
- * 문서다. **막는 것만큼 안 막을 것을 안 막는 것**도 이 이슈의 결과물이라
- * 넷을 한 파일에서 함께 못 박는다.
+ * 컨트롤러 통째로 붙일 수 없는 컨트롤러다. 템플릿은 가입 전에 읽는 문서다.
+ * 서명(`POST`)은 가입 5단계지만 #82부터 가입 직후 세션이 있으므로
+ * (ADR-AUTH-5) 가드 뒤로 들어갔다. **막는 것만큼 안 막을 것을 안 막는 것**도
+ * 결과물이라 넷을 한 파일에서 함께 못 박는다.
  */
 
 /** 로그인한 사람. 토큰의 주체다 */
@@ -84,7 +84,12 @@ function memberGuardedRoutes(): string[] {
  * 같은 단언 하나가 잡는다.
  */
 function assertReadRoutesAreGuarded(): void {
-  expect(memberGuardedRoutes()).toEqual(['mine', 'one']);
+  // 서명(`sign`)은 자기 테스트가 따로 못 박는다 (#82). 이 지도는 읽기 두 개와
+  // 공개로 남을 템플릿을 본다.
+  expect(memberGuardedRoutes().filter((route) => route !== 'sign')).toEqual([
+    'mine',
+    'one',
+  ]);
 }
 
 /** 세션을 흉내 내는 가짜. 쿠키를 보고 정해진 답을 돌려준다 */
@@ -158,7 +163,7 @@ function statusSetOn(res: Response): unknown {
     .mock.calls[0]?.[0];
 }
 
-/** 서명 요청. 가입 도중이라 쿠키가 없다 */
+/** 서명 요청이 핸들러에 넘기는 `@Req()`. 접속 정보만 쓴다 */
 function signupRequest(): Request {
   return {
     ip: '203.0.113.7',
@@ -463,31 +468,90 @@ describe('GET /agreements/:id', () => {
   });
 });
 
+/**
+ * 요청 하나가 Nest에서 지나가는 순서 그대로 — **가드 먼저, 핸들러 나중.**
+ * 본문은 가드를 지난 뒤 핸들러에 그대로 넘어간다.
+ */
+async function requestSign(
+  guard: CanActivate,
+  context: ExecutionContext,
+  controller: AgreementController,
+  body: unknown,
+): Promise<unknown> {
+  await guard.canActivate(context);
+  return controller.sign(memberOf(undefined, context), body, signupRequest());
+}
+
 describe('POST /agreements', () => {
-  it('should stay guardless so the signup flow is not blocked', () => {
+  it('should carry MemberGuard on the sign route', () => {
     assertReadRoutesAreGuarded();
 
-    // 서명은 가입 5단계에서 일어나고 그 시점에 세션이 없다
-    // (`spec-fixed.md` §2.2). 가드를 붙이면 가입이 그 자리에서 막힌다.
-    expect(memberGuardedRoutes()).not.toContain('sign');
+    // 가입 직후 세션이 있다 (ADR-AUTH-5). 가드가 없으면 남의 id로 서명된다.
+    expect(memberGuardedRoutes()).toContain('sign');
   });
 
-  it('should still sign during signup when the request carries no cookie', async () => {
-    assertReadRoutesAreGuarded();
-
+  it('should sign for the token subject', async () => {
     const sign = vi.fn().mockResolvedValue(SAVED);
     const controller = controllerWith({ sign });
+    const guard = guardOn(
+      'sign',
+      logins(() => ({ userId: CALLER })),
+    );
+    const { context } = contextWith(`${AUTH_COOKIES.access}=valid`);
 
-    const body = await controller.sign(
-      { userId: CALLER, signaturePngBase64: TINY_PNG_BASE64 },
-      signupRequest(),
+    await requestSign(guard, context, controller, {
+      signaturePngBase64: TINY_PNG_BASE64,
+    });
+
+    expect(sign).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: CALLER }),
+    );
+  });
+
+  it('should answer 401 AUTH_UNAUTHENTICATED and sign nothing when the request carries no cookie even though the body carries a userId', async () => {
+    const sign = vi.fn().mockResolvedValue(SAVED);
+    const controller = controllerWith({ sign });
+    const guard = guardOn(
+      'sign',
+      logins(() => ({ userId: CALLER })),
+    );
+    const { context } = contextWith(undefined);
+
+    const error = await rejectionOf(
+      requestSign(guard, context, controller, {
+        userId: SOMEONE_ELSE,
+        signaturePngBase64: TINY_PNG_BASE64,
+      }),
     );
 
-    expect(body).toEqual({
-      id: 'agr_1',
-      templateVersion: 3,
-      agreedAt: NOW.toISOString(),
+    expect({
+      status: statusOf(error),
+      errorCode: bodyOf(error).errorCode,
+      signed: sign.mock.calls.length,
+    }).toEqual({
+      status: HttpStatus.UNAUTHORIZED,
+      errorCode: LOGIN_ERRORS.UNAUTHENTICATED,
+      signed: 0,
     });
+  });
+
+  it("should ignore another member's userId in the body and sign for the token subject", async () => {
+    const sign = vi.fn().mockResolvedValue(SAVED);
+    const controller = controllerWith({ sign });
+    const guard = guardOn(
+      'sign',
+      logins(() => ({ userId: CALLER })),
+    );
+    const { context } = contextWith(`${AUTH_COOKIES.access}=valid`);
+
+    await requestSign(guard, context, controller, {
+      userId: SOMEONE_ELSE,
+      signaturePngBase64: TINY_PNG_BASE64,
+    });
+
+    expect(sign).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: CALLER }),
+    );
   });
 });
 

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { ProfileAddressReader } from './login.service';
 import type {
   MemberChecker,
   UserAddressRecord,
@@ -48,5 +49,26 @@ export class PrismaMemberChecker implements MemberChecker {
     });
 
     return found !== null;
+  }
+}
+
+/**
+ * `ProfileAddressReader`의 Prisma 구현체. (#82)
+ *
+ * 가장 먼저 등록한 주소를 기본으로 본다 — #12 공고의 근무 주소 기본값
+ * (`PrismaMemberAddressReader.defaultAddressOf`)과 같은 규칙이다.
+ */
+@Injectable()
+export class PrismaProfileAddressReader implements ProfileAddressReader {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async defaultAddressOf(userId: string): Promise<string | null> {
+    const row = await this.prisma.userAddress.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      select: { roadAddress: true, jibunAddress: true },
+    });
+    if (row === null) return null;
+    return row.roadAddress || row.jibunAddress;
   }
 }

@@ -17,6 +17,7 @@ import { PasswordResetService } from './password-reset.service';
 import { PrismaPasswordResetStore } from './prisma-password-reset.store';
 import {
   PrismaMemberChecker,
+  PrismaProfileAddressReader,
   PrismaUserAddressStore,
 } from './prisma-user-address.store';
 import { PrismaUserStore } from './prisma-user.store';
@@ -53,6 +54,7 @@ import { UserAddressService } from './user-address.service';
     PrismaPointLedgerStore,
     PrismaUserAddressStore,
     PrismaMemberChecker,
+    PrismaProfileAddressReader,
     ConsoleMailProvider,
     KakaoLocalGeocoder,
     {
@@ -76,8 +78,14 @@ import { UserAddressService } from './user-address.service';
         users: PrismaUserStore,
         refreshTokens: PrismaRefreshTokenStore,
         accessTokens: AccessTokenSigner,
-      ) => new LoginService(users, refreshTokens, accessTokens),
-      inject: [PrismaUserStore, PrismaRefreshTokenStore, AccessTokenSigner],
+        addresses: PrismaProfileAddressReader,
+      ) => new LoginService(users, refreshTokens, accessTokens, addresses),
+      inject: [
+        PrismaUserStore,
+        PrismaRefreshTokenStore,
+        AccessTokenSigner,
+        PrismaProfileAddressReader,
+      ],
     },
     {
       provide: PasswordResetService,
