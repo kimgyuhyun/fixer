@@ -1,3 +1,9 @@
+/*
+ * 이슈 #84 · 첫 화면.
+ *
+ * css-standards 규약: 모바일 우선, 색·간격은 globals.css 토큰만.
+ */
+
 .page {
   display: flex;
   flex-direction: column;
@@ -9,47 +15,53 @@
   font-size: 1.5rem;
 }
 
-.subtitle {
+.lead {
   color: var(--color-text-muted);
-  font-size: 0.875rem;
 }
 
-.card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  padding: var(--space-3);
+/* ---------- 비로그인: 로그인 · 가입하기 ---------- */
+
+.actions {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.row {
+.primary,
+.secondary {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: var(--space-3);
+  justify-content: center;
+
+  /* 터치 목표 최소 44px */
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
 }
 
-.label {
-  color: var(--color-text-muted);
-  font-size: 0.875rem;
+.primary {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-bg);
 }
 
-.value {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
+.secondary {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
-.ok {
-  color: var(--color-success);
+.primary:focus-visible,
+.secondary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
-.fail {
-  color: var(--color-danger);
-}
-
-/* ---------- 기능 목록 ---------- */
+/* ---------- 로그인: 남은 할 일 · 메뉴 ---------- */
 
 .section {
   display: flex;
@@ -69,73 +81,29 @@
   gap: var(--space-2);
 }
 
-/*
- * 목록 한 줄. 링크와 비활성 항목이 같은 모양을 쓰므로 하나로 둔다.
- * 44px는 터치 목표 최소 크기.
- */
 .item {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: center;
 
   min-height: 2.75rem;
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
 
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
-}
 
-.itemHead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.itemTitle {
+  color: var(--color-text);
   font-weight: 600;
+  text-decoration: none;
 }
 
-.itemSummary {
-  color: var(--color-text-muted);
-  font-size: 0.875rem;
-}
-
-.badge {
-  padding: 0 var(--space-1);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-}
-
-a.item:hover {
+.item:hover {
   border-color: var(--color-primary);
 }
 
-a.item:focus-visible {
+.item:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
-}
-
-/* 아직 없는 기능은 눌러도 갈 곳이 없다는 것이 보여야 한다. */
-.itemDisabled {
-  background: none;
-  border-style: dashed;
-  opacity: 0.6;
-}
-
-.note {
-  color: var(--color-text-muted);
-  font-size: 0.8125rem;
-  line-height: 1.6;
-}
-
-.code {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
 }
 
 @media (min-width: 768px) {
@@ -143,5 +111,14 @@ a.item:focus-visible {
     max-width: 720px;
     margin: 0 auto;
     padding: var(--space-5) var(--space-4);
+  }
+
+  .actions {
+    flex-direction: row;
+  }
+
+  .primary,
+  .secondary {
+    flex: 1;
   }
 }

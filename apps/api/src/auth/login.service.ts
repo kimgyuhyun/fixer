@@ -239,6 +239,7 @@ export class LoginService {
       email: user.email,
       name: user.name,
       address: await this.addresses.defaultAddressOf(user.id),
+      role: user.role ?? 'USER',
       createdAt: user.createdAt.toISOString(),
     };
   }

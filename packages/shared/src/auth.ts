@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { USER_ROLES } from './admin.js';
 
 /**
  * 이메일 인증 코드 규칙. (이슈 #1, ADR-AUTH-4)
@@ -294,6 +295,11 @@ export const myProfileSchema = z.object({
    * 함께 깨지기 때문이다. 자리만 만들어 두고 채우는 것은 #3에 맡긴다.
    */
   address: z.string().nullable(),
+  /**
+   * 홈이 관리자 메뉴를 보일지 정하는 데만 쓴다. (#84)
+   * 권한은 `AdminGuard`가 요청마다 DB를 보고 판정한다 — 이 값을 믿고 막지 않는다.
+   */
+  role: z.enum(USER_ROLES),
   createdAt: z.iso.datetime(),
 });
 export type MyProfile = z.infer<typeof myProfileSchema>;
