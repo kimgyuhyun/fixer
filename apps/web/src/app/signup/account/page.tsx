@@ -5,9 +5,11 @@ import {
   signupRequestSchema,
   signedUpSchema,
 } from '@fixer/shared';
+import { useRouter } from 'next/navigation';
 import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { ZodError } from 'zod';
+import { SignupSteps } from '../SignupSteps';
 import styles from './page.module.css';
 
 /**
@@ -49,9 +51,10 @@ type FieldErrors = Partial<Record<'name' | 'password', string>>;
 /**
  * 이슈 #2의 화면. 인증을 마친 이메일에 이름과 비밀번호를 붙여 가입한다.
  *
- * 주소(#3)와 동의서(#7)는 다음 이슈들이 이 뒤에 붙인다.
+ * 성공하면 서버가 세션 쿠키를 심고(ADR-AUTH-5) 주소 화면으로 넘어간다.
  */
 export default function SignupAccountPage() {
+  const router = useRouter();
   const email = useSyncExternalStore(
     subscribeToNothing,
     readVerifiedEmail,
@@ -62,7 +65,6 @@ export default function SignupAccountPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
   /**
    * 탈퇴한 계정의 이메일로 가입을 시도했다. (#10)
    *
@@ -101,7 +103,9 @@ export default function SignupAccountPage() {
         return;
       }
       signedUpSchema.parse(json);
-      setDone(true);
+      // replace다. 뒤로 가기로 이 폼에 돌아와 다시 제출하면 "이미 가입된
+      // 이메일"만 난다.
+      router.replace('/signup/address');
     } catch {
       setError('요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
@@ -125,8 +129,9 @@ export default function SignupAccountPage() {
         return;
       }
       signedUpSchema.parse(json);
-      setReactivating(false);
-      setDone(true);
+      // 되살린 계정은 주소·동의서가 이미 있을 수 있다. 빠진 것은 마이페이지가
+      // 안내한다.
+      router.replace('/my');
     } catch {
       setError('요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
@@ -172,23 +177,6 @@ export default function SignupAccountPage() {
     );
   }
 
-  if (done) {
-    return (
-      <main className={styles.page}>
-        <h1 className={styles.title}>가입이 완료되었습니다</h1>
-        <p className={styles.lead}>
-          <strong>{email}</strong> 으로 가입되었습니다.
-        </p>
-        <p className={styles.note}>
-          다음 단계(주소 등록)는 이슈 #3에서 만듭니다.
-        </p>
-        <Link className={styles.secondary} href="/">
-          처음으로
-        </Link>
-      </main>
-    );
-  }
-
   // 인증을 마치지 않고 이 주소로 바로 들어온 경우다. 되돌려 보낸다.
   if (email === null) {
     return (
@@ -204,6 +192,7 @@ export default function SignupAccountPage() {
 
   return (
     <main className={styles.page}>
+      <SignupSteps current={2} />
       <h1 className={styles.title}>가입 정보 입력</h1>
 
       <form className={styles.form} onSubmit={submit} noValidate>

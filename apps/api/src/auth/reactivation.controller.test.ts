@@ -33,11 +33,15 @@ const SESSION: SessionTokens = {
 
 /** 되살린 직후 세션을 여는 쪽 (ADR-AUTH-5) */
 function sessionStarter() {
-  return { startSession: vi.fn().mockResolvedValue(SESSION) };
+  return {
+    startSession: vi
+      .fn<(userId: string) => Promise<SessionTokens>>()
+      .mockResolvedValue(SESSION),
+  };
 }
 
 function fakeResponse() {
-  const cookie = vi.fn();
+  const cookie = vi.fn<(name: string, value: string) => void>();
   return { res: { cookie } as unknown as Response, cookie };
 }
 

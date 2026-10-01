@@ -62,7 +62,13 @@ export class PrismaMemberChecker implements MemberChecker {
 export class PrismaProfileAddressReader implements ProfileAddressReader {
   constructor(private readonly prisma: PrismaService) {}
 
-  defaultAddressOf(_userId: string): Promise<string | null> {
-    throw new Error('not implemented');
+  async defaultAddressOf(userId: string): Promise<string | null> {
+    const row = await this.prisma.userAddress.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      select: { roadAddress: true, jibunAddress: true },
+    });
+    if (row === null) return null;
+    return row.roadAddress || row.jibunAddress;
   }
 }

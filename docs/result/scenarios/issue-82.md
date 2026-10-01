@@ -173,82 +173,82 @@ interface SignupStepsProps {
 
 **API — 세션 발급**
 
-- [ ] [정상] `LoginService.startSession` — should return an access token and a refresh token when given a member id
-- [ ] [정상] `LoginService.startSession` — should store one refresh row holding the hash of the returned refresh token, not the token itself
-- [ ] [정상] `setSessionCookies` — should set fixer_access and fixer_refresh as httpOnly, secure, sameSite lax, path / cookies expiring with each token
-- [ ] [정상] `POST /auth/signup` — should set both auth cookies from a session started for the new member when signup succeeds
-- [ ] [정상] `POST /auth/signup` — should answer the SignedUp body without any token when signup succeeds
-- [ ] [정상] `POST /auth/reactivate` — should set both auth cookies from a session started for the reactivated member when reactivation succeeds
+- [x] [정상] `LoginService.startSession` — should return an access token and a refresh token when given a member id
+- [x] [정상] `LoginService.startSession` — should store one refresh row holding the hash of the returned refresh token, not the token itself
+- [x] [정상] `setSessionCookies` — should set fixer_access and fixer_refresh as httpOnly, secure, sameSite lax, path / cookies expiring with each token
+- [x] [정상] `POST /auth/signup` — should set both auth cookies from a session started for the new member when signup succeeds
+- [x] [정상] `POST /auth/signup` — should answer the SignedUp body without any token when signup succeeds
+- [x] [정상] `POST /auth/reactivate` — should set both auth cookies from a session started for the reactivated member when reactivation succeeds
 
 **API — 주소·서명이 토큰 주체를 쓴다**
 
-- [ ] [정상] `UserAddressController` — should be mounted at members/me/addresses with MemberGuard on register
-- [ ] [정상] `POST /members/me/addresses` — should register the address for the token subject
-- [ ] [정상] `POST /agreements` — should carry MemberGuard on the sign route
-- [ ] [정상] `POST /agreements` — should sign for the token subject
+- [x] [정상] `UserAddressController` — should be mounted at members/me/addresses with MemberGuard on register
+- [x] [정상] `POST /members/me/addresses` — should register the address for the token subject
+- [x] [정상] `POST /agreements` — should carry MemberGuard on the sign route
+- [x] [정상] `POST /agreements` — should sign for the token subject
 
 **API — 마이페이지 주소**
 
-- [ ] [정상] `LoginService.getMyProfile` — should return the default address from the address reader when the member has one
-- [ ] [정상] `PrismaProfileAddressReader.defaultAddressOf` — should return the road address of the member's address (통합)
+- [x] [정상] `LoginService.getMyProfile` — should return the default address from the address reader when the member has one
+- [x] [정상] `PrismaProfileAddressReader.defaultAddressOf` — should return the road address of the member's address (통합)
 
 **웹 — 단계 표시**
 
-- [ ] [정상] `SignupSteps` — should show "2/4" and mark only the second step with aria-current="step" when current is 2
-- [ ] [정상] `VerifyEmailPage` — should show step 1/4
-- [ ] [정상] `SignupAccountPage` — should show step 2/4
-- [ ] [정상] `SignupAddressPage` — should show step 3/4
-- [ ] [정상] `AgreementPage` — should show step 4/4 with the signature form
+- [x] [정상] `SignupSteps` — should show "2/4" and mark only the second step with aria-current="step" when current is 2
+- [x] [정상] `VerifyEmailPage` — should show step 1/4
+- [x] [정상] `SignupAccountPage` — should show step 2/4
+- [x] [정상] `SignupAddressPage` — should show step 3/4
+- [x] [정상] `AgreementPage` — should show step 4/4 with the signature form
 
 **웹 — 화면 전이**
 
-- [ ] [정상] `SignupAccountPage` — should replace the route with /signup/address when signup succeeds
-- [ ] [정상] `SignupAccountPage` — should replace the route with /my when reactivation succeeds
-- [ ] [정상] `SignupAddressPage` — should show the address form when sessionStorage holds no signup value
-- [ ] [정상] `SignupAddressPage` — should post the chosen address to /api/members/me/addresses with no userId in the url or body
-- [ ] [정상] `SignupAddressPage` — should replace the route with /signup/agreement when saving succeeds
-- [ ] [정상] `AgreementPage` — should show the signature form when /api/agreements/mine answers 204
-- [ ] [정상] `AgreementPage` — should post a body holding only signaturePngBase64 to /api/agreements
-- [ ] [정상] `AgreementPage` — should show the signup-finished screen with links to / and /my when signing succeeds
+- [x] [정상] `SignupAccountPage` — should replace the route with /signup/address when signup succeeds
+- [x] [정상] `SignupAccountPage` — should replace the route with /my when reactivation succeeds
+- [x] [정상] `SignupAddressPage` — should show the address form when sessionStorage holds no signup value
+- [x] [정상] `SignupAddressPage` — should post the chosen address to /api/members/me/addresses with no userId in the url or body
+- [x] [정상] `SignupAddressPage` — should replace the route with /signup/agreement when saving succeeds
+- [x] [정상] `AgreementPage` — should show the signature form when /api/agreements/mine answers 204
+- [x] [정상] `AgreementPage` — should post a body holding only signaturePngBase64 to /api/agreements
+- [x] [정상] `AgreementPage` — should show the signup-finished screen with links to / and /my when signing succeeds
 
 **웹 — 마이페이지**
 
-- [ ] [정상] `MyPage` — should show the registered address when the profile carries one
-- [ ] [정상] `MyPage` — should show a link to /my/agreement when /api/agreements/mine answers 200
+- [x] [정상] `MyPage` — should show the registered address when the profile carries one
+- [x] [정상] `MyPage` — should show a link to /my/agreement when /api/agreements/mine answers 200
 
 ### 경계
 
-- [ ] [경계] `LoginService.startSession` — should set the refresh expiry exactly 14 days and the access expiry exactly 15 minutes after now
-- [ ] [경계] `LoginService.startSession` — should add a new refresh row without deleting the member's existing rows when the member already has a session
-- [ ] [경계] `LoginService.getMyProfile` — should return a null address when the member registered no address
-- [ ] [경계] `PrismaProfileAddressReader.defaultAddressOf` — should return the earliest registered address when the member has two (통합)
-- [ ] [경계] `PrismaProfileAddressReader.defaultAddressOf` — should fall back to the jibun address when the road address is empty (통합)
-- [ ] [경계] `PrismaProfileAddressReader.defaultAddressOf` — should return null when the member has no address (통합)
-- [ ] [경계] `SignupSteps` — should show "1/4" and mark the first step when current is 1
-- [ ] [경계] `SignupSteps` — should show "4/4" and mark the last step when current is 4
-- [ ] [경계] `AgreementPage` — should show an already-signed message with a link to /my instead of the form when /api/agreements/mine answers 200
-- [ ] [경계] `MyPage` — should show a link to /signup/address when the profile address is null
-- [ ] [경계] `MyPage` — should show a link to /signup/agreement when /api/agreements/mine answers 204
-- [ ] [경계] `MyPage` — should not show the old note about issue #3
+- [x] [경계] `LoginService.startSession` — should set the refresh expiry exactly 14 days and the access expiry exactly 15 minutes after now
+- [x] [경계] `LoginService.startSession` — should add a new refresh row without deleting the member's existing rows when the member already has a session
+- [x] [경계] `LoginService.getMyProfile` — should return a null address when the member registered no address
+- [x] [경계] `PrismaProfileAddressReader.defaultAddressOf` — should return the earliest registered address when the member has two (통합)
+- [x] [경계] `PrismaProfileAddressReader.defaultAddressOf` — should fall back to the jibun address when the road address is empty (통합)
+- [x] [경계] `PrismaProfileAddressReader.defaultAddressOf` — should return null when the member has no address (통합)
+- [x] [경계] `SignupSteps` — should show "1/4" and mark the first step when current is 1
+- [x] [경계] `SignupSteps` — should show "4/4" and mark the last step when current is 4
+- [x] [경계] `AgreementPage` — should show an already-signed message with a link to /my instead of the form when /api/agreements/mine answers 200
+- [x] [경계] `MyPage` — should show a link to /signup/address when the profile address is null
+- [x] [경계] `MyPage` — should show a link to /signup/agreement when /api/agreements/mine answers 204
+- [x] [경계] `MyPage` — should not show the old note about issue #3
 
 ### 예외
 
 **API**
 
-- [ ] [예외] `POST /auth/signup` — should set no cookie and start no session when the email already exists
-- [ ] [예외] `POST /auth/signup` — should set no cookie and start no session when the input is invalid
-- [ ] [예외] `POST /auth/reactivate` — should set no cookie and start no session when the email is not verified
-- [ ] [예외] `POST /members/me/addresses` — should answer 401 AUTH_UNAUTHENTICATED and register nothing when the request carries no cookie
-- [ ] [예외] `POST /members/me/addresses` — should ignore a userId in the body and register for the token subject
-- [ ] [예외] `POST /agreements` — should answer 401 AUTH_UNAUTHENTICATED and sign nothing when the request carries no cookie even though the body carries a userId
-- [ ] [예외] `POST /agreements` — should ignore another member's userId in the body and sign for the token subject
+- [x] [예외] `POST /auth/signup` — should set no cookie and start no session when the email already exists
+- [x] [예외] `POST /auth/signup` — should set no cookie and start no session when the input is invalid
+- [x] [예외] `POST /auth/reactivate` — should set no cookie and start no session when the email is not verified
+- [x] [예외] `POST /members/me/addresses` — should answer 401 AUTH_UNAUTHENTICATED and register nothing when the request carries no cookie
+- [x] [예외] `POST /members/me/addresses` — should ignore a userId in the body and register for the token subject
+- [x] [예외] `POST /agreements` — should answer 401 AUTH_UNAUTHENTICATED and sign nothing when the request carries no cookie even though the body carries a userId
+- [x] [예외] `POST /agreements` — should ignore another member's userId in the body and sign for the token subject
 
 **웹**
 
-- [ ] [예외] `SignupAccountPage` — should stay on the form with the server message and not move when signup fails
-- [ ] [예외] `SignupAddressPage` — should show a login-required message with a link to /login when saving answers 401
-- [ ] [예외] `AgreementPage` — should show a login-required message with a link to /login instead of the form when /api/agreements/mine answers 401
-- [ ] [예외] `AgreementPage` — should show the login-required message when submitting answers 401
+- [x] [예외] `SignupAccountPage` — should stay on the form with the server message and not move when signup fails
+- [x] [예외] `SignupAddressPage` — should show a login-required message with a link to /login when saving answers 401
+- [x] [예외] `AgreementPage` — should show a login-required message with a link to /login instead of the form when /api/agreements/mine answers 401
+- [x] [예외] `AgreementPage` — should show the login-required message when submitting answers 401
 
 ---
 

@@ -7,6 +7,7 @@ import {
 } from '@fixer/shared';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { SignupSteps } from '../SignupSteps';
 import styles from './page.module.css';
 
 type Step = 'request' | 'verify' | 'done';
@@ -92,6 +93,7 @@ export default function VerifyEmailPage() {
   if (step === 'done') {
     return (
       <main className={styles.page}>
+        <SignupSteps current={1} />
         <h1 className={styles.title}>인증되었습니다</h1>
         <p className={styles.lead}>
           <strong>{email}</strong> 주소가 확인되었습니다.
@@ -108,6 +110,7 @@ export default function VerifyEmailPage() {
 
   return (
     <main className={styles.page}>
+      <SignupSteps current={1} />
       <h1 className={styles.title}>이메일 인증</h1>
 
       {step === 'request' ? (

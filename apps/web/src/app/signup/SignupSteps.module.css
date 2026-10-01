@@ -1,0 +1,37 @@
+/*
+ * 이슈 #82 · 가입 단계 표시. 가입 화면 네 개의 맨 위에 붙는다.
+ * 색·간격은 globals.css 토큰만 쓴다.
+ */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.counter {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.step,
+.current {
+  font-size: 0.875rem;
+}
+
+.step {
+  color: var(--color-text-muted);
+}
+
+.current {
+  color: var(--color-primary);
+  font-weight: 700;
+}

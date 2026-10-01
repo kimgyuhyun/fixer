@@ -34,8 +34,8 @@ import { AgreementError, AgreementService } from './agreement.service';
  * 동의 시점의 접속 정보는 분쟁 시 증거라 서버가 본 것만 남긴다.
  *
  * **가드는 컨트롤러가 아니라 라우트마다 붙는다.** (이슈 #72) 템플릿은 가입
- * 전에 읽는 문서이고 서명은 가입 5단계라 그 시점에 세션이 없다
- * (`spec-fixed.md` §2.2). 통째로 붙이면 가입이 그 자리에서 막힌다.
+ * 전에 읽는 문서라 공개로 둔다. 서명은 가입 5단계지만 가입이 성공하면 세션이
+ * 열리므로(ADR-AUTH-5, #82) 가드 뒤에 있다.
  */
 @Controller('agreements')
 export class AgreementController {
@@ -57,16 +57,16 @@ export class AgreementController {
   /** 서명 제출 */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(MemberGuard)
   async sign(
-    _userId: string,
+    @CurrentMember() userId: string,
     @Body() body: unknown,
     @Req() req: Request,
   ): Promise<SignedAgreement> {
     try {
       const input = signAgreementRequestSchema.parse(body);
       const saved = await this.service.sign({
-        // 몸체에 실린 것을 쓴다. 이 시점에 세션이 없다 — 아래 참고.
-        userId: readUserId(body),
+        userId,
         signaturePng: Buffer.from(input.signaturePngBase64, 'base64'),
         ip: req.ip ?? '',
         userAgent: req.headers['user-agent'] ?? '',
@@ -130,26 +130,6 @@ export class AgreementController {
       throw toHttpError(error);
     }
   }
-}
-
-/**
- * 가입 흐름이라 아직 토큰이 없다. #3(주소)이 같은 이유로 경로에서 `userId`를
- * 받았고, 여기서도 같은 전제를 쓴다.
- *
- * **#72에서 다시 확인했다.** 서명은 가입 5단계이고 6단계가 "가입 완료"다
- * (`spec-fixed.md` §2.2). 가입 응답은 쿠키를 내려주지 않으므로 이 요청에는
- * 실을 쿠키가 없다. 서명을 세션에 묶으려면 가입 직후 자동 로그인이나 1회용
- * 서명 토큰 중 하나를 **새로 정해야 하고**, 그건 ADR이 먼저다.
- */
-function readUserId(body: unknown): string {
-  const value = (body as { userId?: unknown }).userId;
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new BadRequestException({
-      errorCode: 'VALIDATION_FAILED',
-      message: '회원 정보가 없습니다. 가입부터 다시 진행해 주세요.',
-    });
-  }
-  return value;
 }
 
 function toHttpError(error: unknown): unknown {

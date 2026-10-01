@@ -17,8 +17,13 @@ import {
   type MyProfile,
   type SignedIn,
 } from '@fixer/shared';
-import type { CookieOptions, Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { ZodError } from 'zod';
+import {
+  AUTH_COOKIE_OPTIONS,
+  setAuthCookie,
+  setSessionCookies,
+} from './auth-cookie';
 import { LoginError, LoginService } from './login.service';
 import { LoginHttpError } from './login.http-error';
 
@@ -43,8 +48,7 @@ export class LoginController {
       const input = loginRequestSchema.parse(body);
       const session = await this.service.login(input);
 
-      setAuthCookie(res, AUTH_COOKIES.access, session.accessToken);
-      setAuthCookie(res, AUTH_COOKIES.refresh, session.refreshToken);
+      setSessionCookies(res, session);
 
       // 응답도 공유 스키마로 파싱한다. 스키마에 토큰 자리가 없으므로
       // 실수로 얹어 보내도 여기서 떨어져 나간다.
@@ -95,30 +99,6 @@ export class LoginController {
     res.clearCookie(AUTH_COOKIES.access, AUTH_COOKIE_OPTIONS);
     res.clearCookie(AUTH_COOKIES.refresh, AUTH_COOKIE_OPTIONS);
   }
-}
-
-/**
- * 토큰 쿠키의 공통 속성. (spec-fixed §2.5)
- *
- * `secure`는 개발 중에도 켜둔다. 브라우저가 `localhost`를 안전한 출처로
- * 취급하므로 http로도 저장되고, 환경에 따라 속성이 달라지지 않는 편이 낫다.
- */
-const AUTH_COOKIE_OPTIONS: CookieOptions = {
-  httpOnly: true,
-  secure: true,
-  sameSite: 'lax',
-  path: '/',
-};
-
-function setAuthCookie(
-  res: Response,
-  name: string,
-  token: { value: string; expiresAt: Date },
-): void {
-  res.cookie(name, token.value, {
-    ...AUTH_COOKIE_OPTIONS,
-    expires: token.expiresAt,
-  });
 }
 
 /**

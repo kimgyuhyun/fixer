@@ -480,7 +480,7 @@ describe('startSession', () => {
       refresh: session.refreshToken.value,
     }).toEqual({
       subject: 'usr_1',
-      refresh: expect.stringMatching(/^[0-9a-f]{64}$/),
+      refresh: expect.stringMatching(/^[0-9a-f]{64}$/) as unknown,
     });
   });
 

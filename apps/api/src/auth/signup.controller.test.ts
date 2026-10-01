@@ -34,12 +34,16 @@ const SESSION: SessionTokens = {
 
 /** 가입 직후 세션을 여는 쪽 (ADR-AUTH-5). 누구로 열었는지 기록한다 */
 function sessionStarter() {
-  return { startSession: vi.fn().mockResolvedValue(SESSION) };
+  return {
+    startSession: vi
+      .fn<(userId: string) => Promise<SessionTokens>>()
+      .mockResolvedValue(SESSION),
+  };
 }
 
 /** `@Res({ passthrough: true })`가 넘겨주는 것 중 쓰는 것만 흉내낸다 */
 function fakeResponse() {
-  const cookie = vi.fn();
+  const cookie = vi.fn<(name: string, value: string) => void>();
   return { res: { cookie } as unknown as Response, cookie };
 }
 

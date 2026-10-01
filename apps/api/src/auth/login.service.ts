@@ -139,11 +139,27 @@ export class LoginService {
   ) {}
 
   /** Refresh 행을 하나 추가하고 토큰 두 개를 돌려준다 (ADR-AUTH-5) */
-  startSession(
-    _userId: string,
-    _now: Date = new Date(),
+  async startSession(
+    userId: string,
+    now: Date = new Date(),
   ): Promise<SessionTokens> {
-    throw new Error('not implemented');
+    const accessToken = this.accessTokens.sign(userId, now);
+    const refreshToken = {
+      value: randomBytes(REFRESH_TOKEN_BYTES).toString('hex'),
+      expiresAt: new Date(
+        now.getTime() + AUTH_TOKEN_RULES.refreshTokenDays * DAY_MS,
+      ),
+    };
+
+    // 세션마다 행을 추가한다. 덮어쓰지 않으므로 휴대폰과 PC에 동시에
+    // 로그인할 수 있다. (ADR-AUTH-1)
+    await this.refreshTokens.create({
+      userId,
+      tokenHash: hashToken(refreshToken.value),
+      expiresAt: refreshToken.expiresAt,
+    });
+
+    return { accessToken, refreshToken };
   }
 
   /** 조회 → 비밀번호 대조 → 토큰 두 개 발급 → Refresh 행 추가 */
@@ -177,26 +193,9 @@ export class LoginService {
       throw new LoginError(LOGIN_ERRORS.ACCOUNT_DEACTIVATED);
     }
 
-    const accessToken = this.accessTokens.sign(user.id, now);
-    const refreshToken = {
-      value: randomBytes(REFRESH_TOKEN_BYTES).toString('hex'),
-      expiresAt: new Date(
-        now.getTime() + AUTH_TOKEN_RULES.refreshTokenDays * DAY_MS,
-      ),
-    };
-
-    // 로그인마다 행을 추가한다. 덮어쓰지 않으므로 휴대폰과 PC에 동시에
-    // 로그인할 수 있다. (ADR-AUTH-1)
-    await this.refreshTokens.create({
-      userId: user.id,
-      tokenHash: hashToken(refreshToken.value),
-      expiresAt: refreshToken.expiresAt,
-    });
-
     return {
       user: { id: user.id, email: user.email, name: user.name },
-      accessToken,
-      refreshToken,
+      ...(await this.startSession(user.id, now)),
     };
   }
 
@@ -239,8 +238,7 @@ export class LoginService {
       id: user.id,
       email: user.email,
       name: user.name,
-      // 주소는 #3이 채운다. 이 이슈는 자리만 만들어 둔다.
-      address: null,
+      address: await this.addresses.defaultAddressOf(user.id),
       createdAt: user.createdAt.toISOString(),
     };
   }
