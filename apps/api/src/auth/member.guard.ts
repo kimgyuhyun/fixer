@@ -58,7 +58,7 @@ export class MemberGuard implements CanActivate {
       });
 
       if (session.renewedAccessToken) {
-        // 속성이 `login.controller.ts`의 `AUTH_COOKIE_OPTIONS`와 **한 글자도
+        // 속성이 `auth-cookie.ts`의 `AUTH_COOKIE_OPTIONS`와 **한 글자도
         // 달라선 안 된다.** 하나라도 다르면 브라우저가 다른 쿠키로 보고
         // 갱신분이 원래 것을 덮어쓰지 못한다.
         response.cookie(AUTH_COOKIES.access, session.renewedAccessToken.value, {
