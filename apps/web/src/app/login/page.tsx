@@ -14,7 +14,8 @@ type FieldErrors = Partial<Record<'email' | 'password', string>>;
  * 이슈 #4의 로그인 화면.
  *
  * 토큰은 서버가 httpOnly 쿠키로 내려주므로 이 화면이 저장할 것이 없다.
- * 성공하면 마이페이지로 옮겨가는 것이 전부다.
+ * 성공하면 마이페이지로 옮겨간다. 들어올 때 이미 로그인했으면 폼 대신
+ * 마이페이지로 보낸다. (#83)
  */
 export default function LoginPage() {
   const router = useRouter();
