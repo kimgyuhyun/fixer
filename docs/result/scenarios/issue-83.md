@@ -3,7 +3,7 @@
 > GitHub: https://github.com/kimgyuhyun/fixer/issues/83
 > PRD: `docs/result/prd/auth-member.md`
 > 담당: B · 선행: 없음 (#5·#69 머지됨)
-> 상태: 시그니처 확정 / 시나리오 도출 완료 (2026-10-01)
+> 상태: 시그니처 확정 / 시나리오 승인 / Green 완료 (2026-10-01)
 
 ---
 
@@ -89,22 +89,22 @@ export function middleware(request: NextRequest): NextResponse;
 
 ### 정상
 
-- [ ] [정상] `middleware` — should let /my through when only the refresh cookie remains
-- [ ] [정상] `middleware` — should let /admin/job-posts through when only the refresh cookie remains
-- [ ] [정상] `LoginPage` — should replace the location with /my without showing the inputs when /api/auth/me answers 200
-- [ ] [정상] `LoginPage` — should show the login form when /api/auth/me answers 401
-- [ ] [정상] `LoginPage` — should send the email and password and replace the location with /my when login succeeds
+- [x] [정상] `middleware` — should let /my through when only the refresh cookie remains
+- [x] [정상] `middleware` — should let /admin/job-posts through when only the refresh cookie remains
+- [x] [정상] `LoginPage` — should replace the location with /my without showing the inputs when /api/auth/me answers 200
+- [x] [정상] `LoginPage` — should show the login form when /api/auth/me answers 401
+- [x] [정상] `LoginPage` — should send the email and password and replace the location with /my when login succeeds
 
 ### 경계
 
-- [ ] [경계] `middleware` — should set Cache-Control no-store when a protected page passes with only the refresh cookie
-- [ ] [경계] `LoginPage` — should not show the inputs while /api/auth/me has not answered yet
-- [ ] [경계] `MyPage` — should keep the server message and not move when /api/auth/me answers 403
+- [x] [경계] `middleware` — should set Cache-Control no-store when a protected page passes with only the refresh cookie
+- [x] [경계] `LoginPage` — should not show the inputs while /api/auth/me has not answered yet
+- [x] [경계] `MyPage` — should keep the server message and not move when /api/auth/me answers 403
 
 ### 예외
 
-- [ ] [예외] `MyPage` — should replace the location with /login without showing an error when /api/auth/me answers 401
-- [ ] [예외] `LoginPage` — should show the login form when the /api/auth/me request fails
+- [x] [예외] `MyPage` — should replace the location with /login without showing an error when /api/auth/me answers 401
+- [x] [예외] `LoginPage` — should show the login form when the /api/auth/me request fails
 
 ---
 

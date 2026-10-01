@@ -2,7 +2,7 @@
 
 import { loginRequestSchema, signedInSchema } from '@fixer/shared';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ZodError } from 'zod';
 import styles from './page.module.css';
@@ -23,6 +23,38 @@ export default function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /**
+   * 이미 로그인했는지 묻는 중인가. 묻는 동안 폼을 띄우지 않는다 — 띄웠다가
+   * 마이페이지로 옮기면 입력 칸이 깜빡인다. (#83)
+   */
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function check() {
+      // 쿠키가 아니라 서버에 묻는다. 쿠키가 남았는데 서버에서 폐기됐으면
+      // 쿠키만 보고 막는 순간 이 화면에 영영 못 들어온다.
+      try {
+        const res = await fetch('/api/auth/me');
+        if (cancelled) return;
+        if (res.ok) {
+          router.replace('/my');
+          return;
+        }
+      } catch {
+        // 확인이 실패했다고 로그인할 길까지 막지 않는다
+      }
+      if (!cancelled) setChecking(false);
+    }
+
+    void check();
+    return () => {
+      cancelled = true;
+    };
+    // 들어올 때 한 번만 묻는다. router는 바뀌지 않으므로 deps에 넣을 이유가 없다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,12 +83,22 @@ export default function LoginPage() {
         return;
       }
       signedInSchema.parse(json);
-      router.push('/my');
+      // push면 뒤로 가기가 이 입력 화면으로 돌아가 로그인이 풀린 것처럼 보인다. (#83)
+      router.replace('/my');
     } catch {
       setError('요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setLoading(false);
     }
+  }
+
+  if (checking) {
+    return (
+      <main className={styles.page}>
+        <h1 className={styles.title}>로그인</h1>
+        <p className={styles.lead}>로그인 상태를 확인하는 중…</p>
+      </main>
+    );
   }
 
   return (
