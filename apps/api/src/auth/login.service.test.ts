@@ -461,6 +461,23 @@ describe('getMyProfile', () => {
     // 주소는 가입 3단계에서 건너뛸 수 있다. 마이페이지가 "주소 등록하기"를 띄운다.
     expect(profile.address).toBeNull();
   });
+
+  // 홈이 관리자 메뉴를 보일지 정한다 (#84). 권한은 AdminGuard가 따로 판정한다.
+  it('should return role ADMIN when the member is an admin', async () => {
+    const { service } = setup([member({ role: 'ADMIN' })]);
+
+    const profile = await service.getMyProfile('usr_1');
+
+    expect(profile.role).toBe('ADMIN');
+  });
+
+  it('should return role USER when the member is a regular member', async () => {
+    const { service } = setup([member({ role: 'USER' })]);
+
+    const profile = await service.getMyProfile('usr_1');
+
+    expect(profile.role).toBe('USER');
+  });
 });
 
 /**

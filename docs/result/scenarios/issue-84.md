@@ -99,13 +99,13 @@ export default function Home(): JSX.Element; // Props 없음
 
 로그인한 회원의 화면:
 
-| 묶음       | 항목                                                                                                                          | 조건                                      |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| 남은 할 일 | `주소 등록하기` → `/signup/address`                                                                                           | `address === null`                        |
-|            | `동의서 서명하기` → `/signup/agreement`                                                                                       | `/api/agreements/mine`이 204              |
-|            | (묶음 전체)                                                                                                                   | 위 둘 다 없으면 묶음 제목까지 그리지 않음 |
-| 메뉴       | `공고 목록` `/job-posts` · `공고 등록` `/job-posts/new` · `포인트` `/points` · `환전 계좌` `/my/account` · `마이페이지` `/my` | 항상                                      |
-| 관리자     | `회원` `/admin/members` · `공고` `/admin/job-posts` · `환전` `/admin/exchange-requests` · `제재` `/admin/suspensions`         | `role === 'ADMIN'`                        |
+| 묶음       | 항목                                                                                                                                      | 조건                                      |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| 남은 할 일 | `주소 등록하기` → `/signup/address`                                                                                                       | `address === null`                        |
+|            | `동의서 서명하기` → `/signup/agreement`                                                                                                   | `/api/agreements/mine`이 204              |
+|            | (묶음 전체)                                                                                                                               | 위 둘 다 없으면 묶음 제목까지 그리지 않음 |
+| 메뉴       | `공고 목록` `/job-posts` · `공고 등록` `/job-posts/new` · `포인트` `/points` · `환전 계좌` `/my/account` · `마이페이지` `/my`             | 항상                                      |
+| 관리자     | `회원 관리` `/admin/members` · `공고 관리` `/admin/job-posts` · `환전 관리` `/admin/exchange-requests` · `제재 관리` `/admin/suspensions` | `role === 'ADMIN'`                        |
 
 - `/api/agreements/mine`이 200도 204도 아니면(실패) 동의서 항목을 띄우지 않는다 — `my/page.tsx`와 같다.
 - 개발용 기능 목록(`READY`·`PLANNED`)과 개발 연결 상태(`/api/health` 호출)를 홈에서 지운다. `/api/health`는 그대로 둔다.

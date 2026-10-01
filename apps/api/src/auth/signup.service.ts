@@ -7,6 +7,7 @@ import {
   type SignedUp,
   type SignupErrorCode,
   type SignupRequest,
+  type UserRole,
 } from '@fixer/shared';
 
 /**
@@ -30,6 +31,11 @@ export interface UserRecord {
   createdAt: Date;
   /** 비활성화 시각. `null`이면 활성이다 (#9, ADR-AUTH-3) */
   deactivatedAt?: Date | null;
+  /**
+   * 회원 등급. Prisma 행에는 항상 있다 (#84). 이 필드를 모르는 가짜 저장소를
+   * 위해 선택으로 둔다 — `deactivatedAt`과 같은 이유다.
+   */
+  role?: UserRole;
 }
 
 /**
