@@ -1,7 +1,13 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SignupAccountPage from './page';
+
+const replace = vi.fn();
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace, push: vi.fn(), refresh: vi.fn() }),
+}));
 
 const EMAIL = 'worker@example.com';
 const NAME = '김구직';
@@ -49,6 +55,7 @@ beforeEach(() => {
 afterEach(() => {
   sessionStorage.clear();
   vi.unstubAllGlobals();
+  replace.mockReset();
 });
 
 describe('SignupAccountPage', () => {
@@ -73,7 +80,7 @@ describe('SignupAccountPage', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('should show the server message when the server rejects the signup', async () => {
+  it('should stay on the form with the server message and not move when signup fails', async () => {
     mockFetchOnce(409, {
       errorCode: 'MEMBER_EMAIL_ALREADY_EXISTS',
       message: '이미 가입된 이메일입니다.',
@@ -81,21 +88,30 @@ describe('SignupAccountPage', () => {
     render(<SignupAccountPage />);
 
     await fillAndSubmit(PASSWORD);
+    await screen.findByText('이미 가입된 이메일입니다.');
 
-    expect(
-      await screen.findByText('이미 가입된 이메일입니다.'),
-    ).toBeInTheDocument();
+    expect({
+      form: screen.queryByRole('button', { name: '가입하기' }) !== null,
+      moved: replace.mock.calls.length,
+    }).toEqual({ form: true, moved: 0 });
   });
 
-  it('should show the completion state when signup succeeds', async () => {
+  it('should replace the route with /signup/address when signup succeeds', async () => {
     mockFetchOnce(201, createdBody());
     render(<SignupAccountPage />);
 
     await fillAndSubmit(PASSWORD);
 
-    expect(
-      await screen.findByText('가입이 완료되었습니다'),
-    ).toBeInTheDocument();
+    // replace다. 뒤로 가기로 이 폼에 돌아와 다시 제출하면 "이미 가입된 이메일"만 난다.
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith('/signup/address'),
+    );
+  });
+
+  it('should show step 2/4', () => {
+    render(<SignupAccountPage />);
+
+    expect(screen.getByText('2/4')).toBeInTheDocument();
   });
 
   it('should guide back to email verification when no verified email was carried over', () => {
@@ -144,7 +160,7 @@ describe('탈퇴한 계정의 이메일로 가입할 때 (#10)', () => {
     );
   });
 
-  it('should show the completion screen after reactivating', async () => {
+  it('should replace the route with /my when reactivation succeeds', async () => {
     mockFetchOnce(409, { errorCode: 'AUTH_REACTIVATION_AVAILABLE' });
     render(<SignupAccountPage />);
     await fillAndSubmit(PASSWORD);
@@ -155,9 +171,8 @@ describe('탈퇴한 계정의 이메일로 가입할 때 (#10)', () => {
       .setup()
       .click(screen.getByRole('button', { name: '재활성화하기' }));
 
-    expect(
-      await screen.findByRole('heading', { name: '가입이 완료되었습니다' }),
-    ).toBeInTheDocument();
+    // 되살린 계정은 주소·동의서가 이미 있을 수 있다. 빠진 것은 마이페이지가 안내한다.
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/my'));
   });
 
   it('should go back to the form when cancelled', async () => {

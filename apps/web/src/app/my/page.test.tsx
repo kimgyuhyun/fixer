@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MyProfile } from '@fixer/shared';
 import MyPage from './page';
 
 /** 로그아웃 뒤에 어디로 보냈는지만 본다. 실제 라우팅은 Next의 몫이다 */
@@ -24,7 +25,7 @@ function mockFetchOnce(status: number, body: unknown) {
   return fetchMock;
 }
 
-function profile() {
+function profile(): MyProfile {
   return {
     id: 'usr_1',
     email: EMAIL,
@@ -56,6 +57,94 @@ describe('MyPage', () => {
     expect(
       await screen.findByText('아직 등록하지 않았습니다'),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * 마이페이지는 요청을 셋 보낸다 — 내 정보, 내 동의서, 평점. 주소로 갈라 답한다.
+ * 204에는 본문이 없으므로 `json()`이 실패하게 둔다 (진짜 fetch처럼).
+ */
+function mockServer(replies: {
+  profile: ReturnType<typeof profile>;
+  agreement: { status: number; body?: unknown };
+}) {
+  const fetchMock = vi.fn((url: string) => {
+    const reply =
+      url === '/api/auth/me'
+        ? { status: 200, body: replies.profile as unknown }
+        : url === '/api/agreements/mine'
+          ? replies.agreement
+          : { status: 200, body: { asPoster: null, asWorker: null } };
+    return Promise.resolve({
+      ok: reply.status >= 200 && reply.status < 300,
+      status: reply.status,
+      json: () =>
+        reply.body === undefined
+          ? Promise.reject(new SyntaxError('Unexpected end of JSON input'))
+          : Promise.resolve(reply.body),
+    });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+const SIGNED = {
+  status: 200,
+  body: {
+    id: 'agr_1',
+    templateVersion: 3,
+    agreedAt: '2026-09-03T00:00:00.000Z',
+  },
+};
+const NOT_SIGNED = { status: 204 };
+
+/** 가입을 중간에 멈춘 회원이 이어서 할 길 (#82 AC7) */
+describe('MyPage 이어서 하기', () => {
+  it('should show the registered address when the profile carries one', async () => {
+    mockServer({
+      profile: { ...profile(), address: '서울 강남구 테헤란로 152' },
+      agreement: SIGNED,
+    });
+    render(<MyPage />);
+
+    expect(
+      await screen.findByText('서울 강남구 테헤란로 152'),
+    ).toBeInTheDocument();
+  });
+
+  it('should show a link to /signup/address when the profile address is null', async () => {
+    mockServer({ profile: profile(), agreement: SIGNED });
+    render(<MyPage />);
+
+    expect(
+      await screen.findByRole('link', { name: '주소 등록하기' }),
+    ).toHaveAttribute('href', '/signup/address');
+  });
+
+  it('should show a link to /signup/agreement when /api/agreements/mine answers 204', async () => {
+    mockServer({ profile: profile(), agreement: NOT_SIGNED });
+    render(<MyPage />);
+
+    expect(
+      await screen.findByRole('link', { name: '동의서 서명하기' }),
+    ).toHaveAttribute('href', '/signup/agreement');
+  });
+
+  it('should show a link to /my/agreement when /api/agreements/mine answers 200', async () => {
+    mockServer({ profile: profile(), agreement: SIGNED });
+    render(<MyPage />);
+
+    expect(
+      await screen.findByRole('link', { name: '내 동의서 보기' }),
+    ).toHaveAttribute('href', '/my/agreement');
+  });
+
+  it('should not show the old note about issue #3', async () => {
+    mockServer({ profile: profile(), agreement: SIGNED });
+    render(<MyPage />);
+    await screen.findByText(EMAIL);
+
+    expect(screen.queryByText(/이슈 #3/)).not.toBeInTheDocument();
   });
 });
 

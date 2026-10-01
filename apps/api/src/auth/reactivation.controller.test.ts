@@ -1,7 +1,9 @@
 import 'reflect-metadata';
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { REACTIVATION_ERRORS } from '@fixer/shared';
+import { AUTH_COOKIES, REACTIVATION_ERRORS } from '@fixer/shared';
+import type { Response } from 'express';
 import { describe, expect, it, vi } from 'vitest';
+import type { LoginService, SessionTokens } from './login.service';
 import { ReactivationController } from './reactivation.controller';
 import {
   ReactivationError,
@@ -10,8 +12,33 @@ import {
 
 function controllerWith(
   impl: Partial<ReactivationService>,
+  logins: Partial<LoginService> = sessionStarter(),
 ): ReactivationController {
-  return new ReactivationController(impl as ReactivationService);
+  return new ReactivationController(
+    impl as ReactivationService,
+    logins as LoginService,
+  );
+}
+
+const SESSION: SessionTokens = {
+  accessToken: {
+    value: 'access-token-value',
+    expiresAt: new Date('2026-09-01T00:15:00.000Z'),
+  },
+  refreshToken: {
+    value: 'refresh-token-value',
+    expiresAt: new Date('2026-09-15T00:00:00.000Z'),
+  },
+};
+
+/** 되살린 직후 세션을 여는 쪽 (ADR-AUTH-5) */
+function sessionStarter() {
+  return { startSession: vi.fn().mockResolvedValue(SESSION) };
+}
+
+function fakeResponse() {
+  const cookie = vi.fn();
+  return { res: { cookie } as unknown as Response, cookie };
 }
 
 function statusOf(error: unknown): number {
@@ -49,7 +76,9 @@ describe('POST /auth/reactivate', () => {
       reactivate: vi.fn().mockResolvedValue(REVIVED),
     });
 
-    await expect(controller.reactivate(REQUEST)).resolves.toEqual(REVIVED);
+    await expect(
+      controller.reactivate(REQUEST, fakeResponse().res),
+    ).resolves.toEqual(REVIVED);
   });
 
   it('should return 403 when the email was not verified', async () => {
@@ -61,7 +90,9 @@ describe('POST /auth/reactivate', () => {
         ),
     });
 
-    const error = await rejectionOf(controller.reactivate(REQUEST));
+    const error = await rejectionOf(
+      controller.reactivate(REQUEST, fakeResponse().res),
+    );
 
     expect(statusOf(error)).toBe(HttpStatus.FORBIDDEN);
   });
@@ -75,7 +106,9 @@ describe('POST /auth/reactivate', () => {
         ),
     });
 
-    const error = await rejectionOf(controller.reactivate(REQUEST));
+    const error = await rejectionOf(
+      controller.reactivate(REQUEST, fakeResponse().res),
+    );
 
     expect(statusOf(error)).toBe(HttpStatus.NOT_FOUND);
     expect(bodyOf(error)).toMatchObject({
@@ -87,10 +120,58 @@ describe('POST /auth/reactivate', () => {
     const controller = controllerWith({ reactivate: vi.fn() });
 
     const error = await rejectionOf(
-      controller.reactivate({ ...REQUEST, password: 'short' }),
+      controller.reactivate(
+        { ...REQUEST, password: 'short' },
+        fakeResponse().res,
+      ),
     );
 
     expect(statusOf(error)).toBe(HttpStatus.BAD_REQUEST);
     expect(bodyOf(error)).toHaveProperty('fieldErrors.password');
+  });
+
+  it('should set both auth cookies from a session started for the reactivated member when reactivation succeeds', async () => {
+    const logins = sessionStarter();
+    const controller = controllerWith(
+      { reactivate: vi.fn().mockResolvedValue(REVIVED) },
+      logins,
+    );
+    const { res, cookie } = fakeResponse();
+
+    await controller.reactivate(REQUEST, res);
+
+    // 되살린 화면은 곧장 마이페이지로 간다. 세션이 없으면 거기서 막힌다.
+    expect({
+      startedFor: logins.startSession.mock.calls.map((call) => call[0]),
+      cookies: cookie.mock.calls.map((call) => [call[0], call[1]]),
+    }).toEqual({
+      startedFor: [REVIVED.id],
+      cookies: [
+        [AUTH_COOKIES.access, SESSION.accessToken.value],
+        [AUTH_COOKIES.refresh, SESSION.refreshToken.value],
+      ],
+    });
+  });
+
+  it('should set no cookie and start no session when the email is not verified', async () => {
+    const logins = sessionStarter();
+    const controller = controllerWith(
+      {
+        reactivate: vi
+          .fn()
+          .mockRejectedValue(
+            new ReactivationError(REACTIVATION_ERRORS.EMAIL_NOT_VERIFIED),
+          ),
+      },
+      logins,
+    );
+    const { res, cookie } = fakeResponse();
+
+    await rejectionOf(controller.reactivate(REQUEST, res));
+
+    expect({
+      sessions: logins.startSession.mock.calls.length,
+      cookies: cookie.mock.calls.length,
+    }).toEqual({ sessions: 0, cookies: 0 });
   });
 });

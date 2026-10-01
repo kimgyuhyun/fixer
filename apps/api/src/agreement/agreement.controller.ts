@@ -58,6 +58,7 @@ export class AgreementController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async sign(
+    _userId: string,
     @Body() body: unknown,
     @Req() req: Request,
   ): Promise<SignedAgreement> {

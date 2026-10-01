@@ -72,11 +72,25 @@ export interface AuthUserStore {
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
 }
 
-/** 로그인이 발급한 것. 컨트롤러가 이걸 쿠키 두 개로 옮긴다 */
-export interface IssuedSession {
-  user: SignedIn;
+/** 세션 하나를 이루는 토큰 두 개. 컨트롤러가 쿠키 두 개로 옮긴다 */
+export interface SessionTokens {
   accessToken: { value: string; expiresAt: Date };
   refreshToken: { value: string; expiresAt: Date };
+}
+
+/** 로그인이 발급한 것. 컨트롤러가 이걸 쿠키 두 개로 옮긴다 */
+export interface IssuedSession extends SessionTokens {
+  user: SignedIn;
+}
+
+/**
+ * 마이페이지에 보일 기본 주소. (#82)
+ *
+ * 가장 먼저 등록한 주소의 도로명, 비어 있으면 지번이다. #12 공고의 근무 주소
+ * 기본값과 같은 규칙이다 (ADR-AUTH-2 — 회원당 주소가 여럿일 수 있다).
+ */
+export interface ProfileAddressReader {
+  defaultAddressOf(userId: string): Promise<string | null>;
 }
 
 /**
@@ -121,7 +135,16 @@ export class LoginService {
     private readonly users: AuthUserStore,
     private readonly refreshTokens: RefreshTokenStore,
     private readonly accessTokens: AccessTokenSigner,
+    private readonly addresses: ProfileAddressReader,
   ) {}
+
+  /** Refresh 행을 하나 추가하고 토큰 두 개를 돌려준다 (ADR-AUTH-5) */
+  startSession(
+    _userId: string,
+    _now: Date = new Date(),
+  ): Promise<SessionTokens> {
+    throw new Error('not implemented');
+  }
 
   /** 조회 → 비밀번호 대조 → 토큰 두 개 발급 → Refresh 행 추가 */
   async login(

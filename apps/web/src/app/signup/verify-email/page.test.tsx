@@ -41,6 +41,12 @@ async function requestCodeFor(email: string) {
 }
 
 describe('VerifyEmailPage', () => {
+  it('should show step 1/4', () => {
+    render(<VerifyEmailPage />);
+
+    expect(screen.getByText('1/4')).toBeInTheDocument();
+  });
+
   it('should show the email form first', () => {
     render(<VerifyEmailPage />);
 

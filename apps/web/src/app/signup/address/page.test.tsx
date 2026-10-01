@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SignupAddressPage from './page';
@@ -14,10 +14,11 @@ vi.mock('./kakao-postcode', () => ({
 
 const popup = vi.mocked(openPostcodePopup);
 
-/** 가입한 회원의 id는 #2 화면이 sessionStorage에 남긴다 */
-const SIGNED_UP_USER_ID_KEY = 'fixer.signup.userId';
+const replace = vi.fn();
 
-const USER_ID = 'usr_1';
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace, push: vi.fn(), refresh: vi.fn() }),
+}));
 
 const SELECTED = {
   postalCode: '06236',
@@ -57,8 +58,11 @@ async function save() {
   await userEvent.click(screen.getByRole('button', { name: '저장하기' }));
 }
 
+/**
+ * 가입 직후 세션이 있다 (ADR-AUTH-5). 회원 id는 화면이 들고 다니지 않는다 —
+ * sessionStorage에 아무것도 넣지 않고 시작한다.
+ */
 beforeEach(() => {
-  sessionStorage.setItem(SIGNED_UP_USER_ID_KEY, USER_ID);
   popup.mockResolvedValue(SELECTED);
 });
 
@@ -108,20 +112,50 @@ describe('SignupAddressPage', () => {
     expect(screen.getByLabelText('도로명주소')).toHaveValue('');
   });
 
-  it('should send the chosen address and show the completion state when saving succeeds', async () => {
+  it('should show step 3/4', () => {
+    render(<SignupAddressPage />);
+
+    expect(screen.getByText('3/4')).toBeInTheDocument();
+  });
+
+  it('should show the address form when sessionStorage holds no signup value', () => {
+    render(<SignupAddressPage />);
+
+    expect(
+      screen.queryByRole('button', { name: '주소 검색' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should post the chosen address to /api/members/me/addresses with no userId in the url or body', async () => {
     const fetchMock = mockFetchOnce(201, createdBody());
     render(<SignupAddressPage />);
 
     await chooseAddress();
     await save();
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      `/api/members/${USER_ID}/addresses`,
-      expect.objectContaining({ method: 'POST' }),
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect({
+      url,
+      method: init.method,
+      body: JSON.parse(init.body as string) as unknown,
+    }).toEqual({
+      url: '/api/members/me/addresses',
+      method: 'POST',
+      body: SELECTED,
+    });
+  });
+
+  it('should replace the route with /signup/agreement when saving succeeds', async () => {
+    mockFetchOnce(201, createdBody());
+    render(<SignupAddressPage />);
+
+    await chooseAddress();
+    await save();
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith('/signup/agreement'),
     );
-    expect(
-      await screen.findByText('주소가 등록되었습니다'),
-    ).toBeInTheDocument();
   });
 
   it('should send no request when no address has been chosen yet', async () => {
@@ -148,13 +182,18 @@ describe('SignupAddressPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('should guide back to signup when no signed-up member was carried over', () => {
-    sessionStorage.clear();
-
+  it('should show a login-required message with a link to /login when saving answers 401', async () => {
+    mockFetchOnce(401, {
+      errorCode: 'AUTH_UNAUTHENTICATED',
+      message: '로그인이 필요합니다.',
+    });
     render(<SignupAddressPage />);
 
+    await chooseAddress();
+    await save();
+
     expect(
-      screen.getByRole('link', { name: '가입하러 가기' }),
-    ).toBeInTheDocument();
+      await screen.findByRole('link', { name: '로그인하러 가기' }),
+    ).toHaveAttribute('href', '/login');
   });
 });

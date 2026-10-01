@@ -7,6 +7,7 @@ import {
   HttpStatus,
   NotFoundException,
   Post,
+  Res,
 } from '@nestjs/common';
 import {
   REACTIVATION_ERRORS,
@@ -14,7 +15,9 @@ import {
   signedUpSchema,
   type SignedUp,
 } from '@fixer/shared';
+import type { Response } from 'express';
 import { ZodError } from 'zod';
+import { LoginService } from './login.service';
 import { ReactivationError, ReactivationService } from './reactivation.service';
 
 /**
@@ -25,11 +28,17 @@ import { ReactivationError, ReactivationService } from './reactivation.service';
  */
 @Controller('auth/reactivate')
 export class ReactivationController {
-  constructor(private readonly service: ReactivationService) {}
+  constructor(
+    private readonly service: ReactivationService,
+    private readonly logins: LoginService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.OK)
-  async reactivate(@Body() body: unknown): Promise<SignedUp> {
+  async reactivate(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) _res: Response,
+  ): Promise<SignedUp> {
     try {
       const input = reactivateRequestSchema.parse(body);
       return signedUpSchema.parse(

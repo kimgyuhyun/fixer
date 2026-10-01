@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Res,
 } from '@nestjs/common';
 import {
   SIGNUP_ERRORS,
@@ -13,18 +14,26 @@ import {
   type SignedUp,
   type SignupErrorCode,
 } from '@fixer/shared';
+import type { Response } from 'express';
 import { ZodError } from 'zod';
+import { LoginService } from './login.service';
 import { SignupError, SignupService } from './signup.service';
 import { SignupHttpError } from './signup.http-error';
 
 @Controller('auth/signup')
 export class SignupController {
-  constructor(private readonly service: SignupService) {}
+  constructor(
+    private readonly service: SignupService,
+    private readonly logins: LoginService,
+  ) {}
 
   /** 가입 */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async signup(@Body() body: unknown): Promise<SignedUp> {
+  async signup(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) _res: Response,
+  ): Promise<SignedUp> {
     try {
       // 컨트롤러가 입력을 먼저 검증한다. 서비스는 이미 검증된 값을 받는다.
       const input = signupRequestSchema.parse(body);
