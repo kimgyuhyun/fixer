@@ -66,7 +66,9 @@ jobs:
     # 취약점에 매주 막히고, 결국 감사를 꺼버리게 된다.
     #
     # 그래서 여기서는 신호만 내고, 판정은 /security-review에서 사람이 한다.
-    # 수용한 항목은 docs/result/security-exceptions.md에 기록한다.
+    # 수용한 항목은 docs/result/security-exceptions.md에 기록하고, 그 권고 ID를
+    # pnpm-workspace.yaml의 auditConfig.ignoreGhsas에 넣어 여기서 뺀다.
+    # 그래서 이 잡이 빨개지면 대장에 없는 새 항목이 생겼다는 뜻이다.
     continue-on-error: true
 
     steps:
