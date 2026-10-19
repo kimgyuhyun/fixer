@@ -33,6 +33,7 @@
 - **예외는 3건 이하로 유지한다.** 넘으면 "관리되고 있지 않다"는 신호다
 - **재검토 날짜가 지나면 다시 판단한다.** 영구 면제가 아니다
 - 해소되면 지우지 말고 **아래 "해소됨"으로 옮긴다.** 같은 것을 다시 조사하지 않기 위해서다
+- **"수용 중인 예외"의 권고 ID는 `pnpm-workspace.yaml`의 `auditConfig.ignoreGhsas`와 같아야 한다.** 거기 넣은 것만 `pnpm audit`(로컬·CI 모두)에서 빠지므로, 수용한 것 때문에 audit 잡이 늘 빨간 상태로 남지 않고 **빨간불이 뜨면 대장에 없는 새 항목**이라는 뜻이 된다. 대장에 없는 ID는 넣지 않고, 해소되거나 수용을 거두면 두 곳에서 함께 뺀다. `--ignore-unfixable`처럼 묶어서 빼는 옵션은 쓰지 않는다 — 운영 경로의 고칠 수 없는 취약점까지 조용히 사라진다
 
 ---
 
@@ -76,7 +77,7 @@ braces@3.0.3
 
 **해소 조건**
 
-- `braces` 3.0.4가 나오면 `pnpm -r update --depth Infinity braces`로 올린다. `micromatch`의 범위(`^3.0.3`) 안이라 `overrides`가 필요 없다
+- `braces` 3.0.4가 나오면 `pnpm -r update --depth Infinity braces`로 올린다. `micromatch`의 범위(`^3.0.3`) 안이라 `overrides`가 필요 없다. 올린 뒤 `pnpm-workspace.yaml`의 `ignoreGhsas`에서 `GHSA-vfj7-8cjw-p6xm`을 뺀다 — 이 ID는 지금 audit에 안 보이므로 3.0.4 소식은 npm에서 직접 확인해야 한다(`npm view braces version`)
 - 또는 `@next/eslint-plugin-next`가 `fast-glob`을 빼거나 올린 버전을 내면 `next`와 함께 올린다
 - `braces`·`micromatch`를 운영 코드에서 직접 쓰게 되면 **즉시 재판정한다**
 

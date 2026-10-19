@@ -51,6 +51,8 @@ cat docs/result/security-exceptions.md
 pnpm audit
 ```
 
+대장에서 수용한 권고는 `pnpm-workspace.yaml`의 `auditConfig.ignoreGhsas`로 빠져 `(N ignored)`로만 보인다. **출력에 뜨는 것은 전부 대장에 없는 새 항목이다.** 빠진 항목은 출력에 안 보이므로 재검토 날짜는 대장에서 확인하고, 수용을 거두거나 해소되면 대장과 `ignoreGhsas`에서 함께 뺀다.
+
 각 항목에서 볼 것:
 
 - **심각도** (critical / high / moderate / low)
